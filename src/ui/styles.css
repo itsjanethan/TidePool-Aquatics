@@ -242,3 +242,7 @@ input:focus { border-color: var(--accent); }
 .ta-b { right: 92px; bottom: 34px; border-radius: 50%; }
 .ta-menu { right: 18px; bottom: 16px; width: 44px; height: 44px; font-size: 16px; }
 .ta-feed { right: 100px; bottom: 112px; width: 44px; height: 44px; font-size: 16px; }
+.save-text {
+  width: 100%; height: calc(var(--px) * 70); margin-top: calc(var(--px) * 3); font: inherit; font-size: 0.7em; color: var(--ink);
+  background: #0e1226; border: calc(var(--px) * 1) solid var(--edge-in); resize: none; user-select: text;
+}

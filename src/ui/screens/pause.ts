@@ -63,8 +63,42 @@ export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fr
   void fromTitle;
 }
 
+/** Hosts that block downloads (single-file builds) get a copyable text box instead. */
+export const DOWNLOADS_BLOCKED = import.meta.env.MODE === 'single';
+
+function showSaveText(c: GameController, data: string): void {
+  const ta = h('textarea', { class: 'save-text', readonly: true, id: 'save-export-text' }, data) as HTMLTextAreaElement;
+  const scr = c.ui.menu({
+    title: 'Export Save',
+    body: h('div', null, h('div', { class: 'small' }, 'Copy this text and keep it somewhere safe. Use Import on the title screen to restore it.'), ta),
+    items: [
+      {
+        label: 'Copy to clipboard',
+        action: () => {
+          const fallback = () => {
+            ta.focus();
+            ta.select();
+            c.ui.toast('Text selected. Press Ctrl+C (or Cmd+C) to copy.', 'info');
+          };
+          try {
+            navigator.clipboard.writeText(data).then(() => c.ui.toast('Save copied to clipboard.', 'good'), fallback);
+          } catch {
+            fallback();
+          }
+        },
+      },
+      { label: 'Done', action: () => c.ui.remove(scr) },
+    ],
+    className: 'wide',
+  });
+}
+
 export function exportSave(c: GameController): void {
   const data = c.saves.exportString(c.state);
+  if (DOWNLOADS_BLOCKED) {
+    showSaveText(c, data);
+    return;
+  }
   const blob = new Blob([data], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -76,6 +110,32 @@ export function exportSave(c: GameController): void {
     a.remove();
   }, 1000);
   c.ui.toast('Save file downloaded.', 'good');
+}
+
+export function importSaveText(c: GameController): void {
+  const ta = h('textarea', { class: 'save-text', id: 'save-import-text', placeholder: 'Paste your save text here' }) as HTMLTextAreaElement;
+  const scr = c.ui.menu({
+    title: 'Import Save Text',
+    body: h('div', null, ta),
+    items: [
+      {
+        label: 'Load this save',
+        action: () => {
+          try {
+            const st = c.saves.importString(ta.value.trim());
+            c.ui.remove(scr);
+            c.startGame(st);
+            c.ui.toast('Save imported', 'good');
+          } catch (e) {
+            c.ui.toast(`Import failed: ${(e as Error).message}`, 'bad');
+          }
+        },
+      },
+      { label: 'Cancel', action: () => c.ui.remove(scr) },
+    ],
+    className: 'wide',
+  });
+  setTimeout(() => ta.focus(), 50);
 }
 
 export function importSave(c: GameController): void {

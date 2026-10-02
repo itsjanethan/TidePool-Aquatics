@@ -11,6 +11,7 @@ import {
 import { nudgeRep } from '../../sim/reputation';
 import type { CustomerState } from '../../sim/types';
 import { play } from '../../audio/sfx';
+import { minuteOfDay } from '../../sim/time';
 
 function greeting(c: GameController, cu: CustomerState): string {
   const arch = ARCHETYPES.find((a) => a.id === cu.archetype);
@@ -36,7 +37,8 @@ export async function serveAtTill(c: GameController): Promise<void> {
       return;
     }
     const linesText = q.lines.map((l) => `${l.qty} x ${l.label}`).join(', ');
-    const text = `${intro ? `${greeting(c, cu)} ` : ''}I'll take ${linesText}. That comes to ${formatMoney(q.total)}.`;
+    const hello = cu.returning ? `Hi ${s.playerName}!` : minuteOfDay(s.minute) < 720 ? 'Morning!' : 'Afternoon!';
+    const text = `${intro ? `${hello} ` : ''}I'll take ${linesText}. That comes to ${formatMoney(q.total)}.`;
     intro = false;
     const choices = [`Ring it up (${formatMoney(q.total)})`, 'Give 10% off'];
     const addOnIds = ['conditioner', 'test_kit', 'flake_food'].filter((id) => (s.dryGoods[id] ?? 0) > 0 && !cu.addOns.includes(id));

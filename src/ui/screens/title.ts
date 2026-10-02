@@ -7,7 +7,7 @@ import { h } from '../dom';
 import { Menu, type MenuItem } from '../menu';
 import type { Screen } from '../ui';
 import { showHelp } from './help';
-import { importSave, openSaveSlots } from './pause';
+import { importSave, importSaveText, openSaveSlots } from './pause';
 
 export const GAME_TITLE = 'Tidepool Aquatics';
 export const GAME_VERSION = '0.1.0';
@@ -40,6 +40,7 @@ export async function showTitle(c: GameController): Promise<void> {
     { label: 'New Game', action: () => showNewGame(c) },
     { label: 'Load Game', action: () => void openSaveSlots(c, 'load', true) },
     { label: 'Import Save File', action: () => importSave(c) },
+    { label: 'Import Save Text', hint: 'Paste text from Export Save.', action: () => importSaveText(c) },
     { label: 'How to Play', action: () => showHelp(c) },
   );
   const latestText = latest ? `Last played: ${latest.shopName}, ${latest.dateLabel}, ${formatMoney(latest.money)}` : '';

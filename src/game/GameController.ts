@@ -21,7 +21,8 @@ import { play } from '../audio/sfx';
 import { installTouchControls } from '../ui/touch';
 
 export const DEV_ALLOWED: boolean =
-  import.meta.env.DEV || (typeof location !== 'undefined' && new URLSearchParams(location.search).has('dev'));
+  import.meta.env.DEV ||
+  (typeof location !== 'undefined' && (new URLSearchParams(location.search).has('dev') || location.hash === '#dev'));
 
 export const SPEEDS = [1, 2, 4];
 

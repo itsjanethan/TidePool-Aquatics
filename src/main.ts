@@ -14,8 +14,9 @@ const uiRoot = document.getElementById('ui')!;
 
 /** Fits the stage to the window keeping 3:2, exposing the scale as --px for the HTML UI. */
 function layout(): void {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const app = document.getElementById('app');
+  const vw = app?.clientWidth || window.innerWidth;
+  const vh = app?.clientHeight || window.innerHeight;
   let scale = Math.min(vw / GAME_W, vh / GAME_H);
   // Prefer crisp integer scaling when it costs little screen space.
   if (scale >= 2 && scale - Math.floor(scale) < 0.25) scale = Math.floor(scale);
