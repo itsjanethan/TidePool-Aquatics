@@ -1,0 +1,260 @@
+/**
+ * Procedural pixel art for the shop overworld: floor, walls, props.
+ */
+import Phaser from 'phaser';
+import type { FloorLayout, PropPlacement } from '../../data/shopLayout';
+import { TILE } from '../../data/shopLayout';
+import { Rng } from '../../core/rng';
+import { makeTexture, noiseFill, outlineRect, px, shade, type Ctx } from './pixel';
+
+export const SHOP_PALETTE = {
+  floorA: '#efe4c8',
+  floorB: '#e2d3b0',
+  grout: '#cfbf9b',
+  wallTop: '#3d3550',
+  wallTopHi: '#544a6c',
+  wall: '#86c1b6',
+  wallStripe: '#7ab4a9',
+  wallShadow: '#5e958c',
+  skirting: '#9b6a44',
+  skirtingHi: '#bb8a5a',
+  wood: '#8a5a36',
+  woodHi: '#a8744a',
+  woodLo: '#6a4228',
+  metal: '#2c303a',
+  metalHi: '#4a505e',
+  glass: '#cfe8f0',
+};
+
+function drawFloorTile(ctx: Ctx, ox: number, oy: number, variant: number): void {
+  const P = SHOP_PALETTE;
+  const a = variant % 2 === 0 ? P.floorA : P.floorB;
+  px(ctx, ox, oy, a, 16, 16);
+  // subtle speckle
+  noiseFill(ctx, ox + 1, oy + 1, 14, 14, [shade(a, -0.03), shade(a, 0.03)], 100 + variant, 0.08);
+  px(ctx, ox, oy + 15, P.grout, 16, 1);
+  px(ctx, ox + 15, oy, P.grout, 1, 16);
+  px(ctx, ox, oy, shade(a, 0.12), 15, 1);
+}
+
+/** Pre-renders the static floor/wall layer for a layout into one texture. */
+export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key = 'floor-layer'): void {
+  const P = SHOP_PALETTE;
+  makeTexture(scene, key, layout.width * TILE, layout.height * TILE, (ctx) => {
+    for (let y = 0; y < layout.height; y++) {
+      for (let x = 0; x < layout.width; x++) {
+        const c = layout.tiles[y][x];
+        const ox = x * TILE;
+        const oy = y * TILE;
+        if (c === '.' || c === 'M') {
+          drawFloorTile(ctx, ox, oy, (x + y) % 2);
+          if (c === 'M') {
+            px(ctx, ox, oy + 2, '#8e3f33', 16, 12);
+            px(ctx, ox, oy + 3, '#b0594a', 16, 1);
+            px(ctx, ox, oy + 12, '#6e2f26', 16, 1);
+            for (let i = 1; i < 16; i += 3) px(ctx, ox + i, oy + 6, '#a24e40', 1, 4);
+          }
+        } else if (c === 'D') {
+          px(ctx, ox, oy, P.metal, 16, 16);
+          px(ctx, ox + 2, oy + 1, '#a9d6e6', 12, 15);
+          px(ctx, ox + 3, oy + 2, '#d8f0f8', 2, 8);
+          px(ctx, ox + (x % 2 === 0 ? 13 : 2), oy + 8, '#e8c060', 1, 3);
+        } else {
+          // Wall: top band of the map is a two-tile-tall wall face; edges are dark tops.
+          if (y <= 1 && x > 0 && x < layout.width - 1) {
+            px(ctx, ox, oy, P.wall, 16, 16);
+            for (let i = 0; i < 16; i += 4) px(ctx, ox + i, oy, P.wallStripe, 1, 16);
+            if (y === 0) {
+              px(ctx, ox, oy, P.wallTop, 16, 3);
+              px(ctx, ox, oy + 3, P.wallTopHi, 16, 1);
+            } else {
+              px(ctx, ox, oy + 11, P.skirting, 16, 5);
+              px(ctx, ox, oy + 11, P.skirtingHi, 16, 1);
+              px(ctx, ox, oy + 15, shade(P.skirting, -0.3), 16, 1);
+            }
+          } else {
+            px(ctx, ox, oy, P.wallTop, 16, 16);
+            px(ctx, ox + 1, oy + 1, P.wallTopHi, 14, 1);
+            if (y === layout.height - 1) px(ctx, ox, oy, shade(P.wallTop, 0.15), 16, 2);
+          }
+        }
+      }
+    }
+    // Window above the shelves and a wall clock + fish plaque.
+    drawWindow(ctx, 20 * TILE + 4, 4);
+    drawPlaque(ctx, 24 * TILE - 2, 3);
+  });
+}
+
+function drawWindow(ctx: Ctx, x: number, y: number): void {
+  px(ctx, x, y, '#f4f0e8', 26, 20);
+  px(ctx, x + 2, y + 2, '#9fd4ec', 22, 16);
+  px(ctx, x + 2, y + 12, '#bfe6c8', 22, 6);
+  px(ctx, x + 12, y + 2, '#f4f0e8', 2, 16);
+  px(ctx, x + 4, y + 4, '#e8f8ff', 3, 1);
+  px(ctx, x + 15, y + 5, '#e8f8ff', 4, 1);
+}
+
+function drawPlaque(ctx: Ctx, x: number, y: number): void {
+  px(ctx, x, y, '#6a4228', 44, 20);
+  px(ctx, x + 1, y + 1, '#c8935a', 42, 18);
+  px(ctx, x + 1, y + 1, '#dcaa70', 42, 1);
+  // stylised fish
+  const fx = x + 12;
+  const fy = y + 6;
+  px(ctx, fx, fy + 2, '#2e7d9a', 14, 5);
+  px(ctx, fx + 2, fy + 1, '#2e7d9a', 10, 7);
+  px(ctx, fx + 4, fy, '#2e7d9a', 6, 9);
+  px(ctx, fx - 4, fy + 1, '#e07a3a', 4, 7);
+  px(ctx, fx - 2, fy + 3, '#e07a3a', 2, 3);
+  px(ctx, fx + 10, fy + 3, '#f4f0e8', 2, 2);
+  px(ctx, fx + 11, fy + 3, '#1a1a22', 1, 1);
+  for (let i = 0; i < 3; i++) px(ctx, x + 30 + i * 3, y + 8 - i * 2, '#e8f8ff', 2, 2);
+}
+
+export function propTextureKey(p: PropPlacement): string {
+  return `prop-${p.kind}-${p.w}x${p.h}`;
+}
+
+/** Generates textures for every prop kind/size used by a layout. */
+export function makePropTextures(scene: Phaser.Scene, layout: FloorLayout): void {
+  const done = new Set<string>();
+  for (const p of layout.props) {
+    const key = propTextureKey(p);
+    if (done.has(key)) continue;
+    done.add(key);
+    const w = p.w * TILE;
+    const h = p.h * TILE;
+    switch (p.kind) {
+      case 'tank':
+        makeTexture(scene, key, w, h + 2, (ctx) => drawTankProp(ctx, w, h));
+        break;
+      case 'counter':
+        makeTexture(scene, key, w, h + 10, (ctx) => drawCounter(ctx, w, h + 10));
+        break;
+      case 'shelf':
+        makeTexture(scene, key, w, h, (ctx) => drawShelf(ctx, w, h, p.id.length));
+        break;
+      case 'desk':
+        makeTexture(scene, key, w, h, (ctx) => drawDesk(ctx, w, h));
+        break;
+      case 'plant':
+        makeTexture(scene, key, 16, 24, (ctx) => drawPlant(ctx));
+        break;
+      case 'bench':
+        makeTexture(scene, key, w, h + 4, (ctx) => drawBench(ctx, w));
+        break;
+      default:
+        makeTexture(scene, key, w, h, (ctx) => px(ctx, 0, 0, '#888', w, h));
+    }
+  }
+}
+
+/** Tank rect where the animated water is drawn (relative to prop texture). */
+export function tankWaterRect(w: number): { x: number; y: number; w: number; h: number } {
+  return { x: 2, y: 5, w: w - 4, h: 14 };
+}
+
+function drawTankProp(ctx: Ctx, w: number, h: number): void {
+  const P = SHOP_PALETTE;
+  // Hood / light.
+  px(ctx, 0, 0, P.metal, w, 4);
+  px(ctx, 1, 1, P.metalHi, w - 2, 1);
+  // Glass frame (water drawn dynamically inside).
+  px(ctx, 0, 4, P.metal, w, 17);
+  px(ctx, 1, 4, '#1d2028', w - 2, 16);
+  // Stand.
+  px(ctx, 0, 20, P.woodLo, w, h - 20 + 2);
+  px(ctx, 1, 21, P.wood, w - 2, h - 22);
+  px(ctx, 1, 21, P.woodHi, w - 2, 1);
+  const doors = Math.max(1, Math.round(w / 16));
+  const dw = (w - 2) / doors;
+  for (let i = 0; i < doors; i++) {
+    const dx = 1 + Math.round(i * dw);
+    outlineRect(ctx, dx + 1, 23, Math.round(dw) - 2, h - 26, P.woodLo);
+    px(ctx, dx + Math.round(dw / 2) - 1, 26, '#e8c060', 2, 1);
+  }
+  // Label plate.
+  px(ctx, w / 2 - 5, 21, '#f2eee0', 10, 3);
+  px(ctx, 0, h, shade(P.woodLo, -0.3), w, 2);
+}
+
+function drawCounter(ctx: Ctx, w: number, h: number): void {
+  const P = SHOP_PALETTE;
+  px(ctx, 0, 0, P.woodLo, w, h);
+  px(ctx, 1, 1, P.woodHi, w - 2, 9);
+  px(ctx, 1, 1, shade(P.woodHi, 0.2), w - 2, 1);
+  px(ctx, 1, 10, P.wood, w - 2, h - 11);
+  for (let x = 8; x < w; x += 16) px(ctx, x, 12, P.woodLo, 1, h - 14);
+  // Till.
+  const tx = 30;
+  px(ctx, tx, 0, '#3a3f4a', 16, 8);
+  px(ctx, tx + 1, 1, '#9ff0c8', 9, 4);
+  px(ctx, tx + 11, 1, '#e8e8e8', 4, 6);
+  px(ctx, tx + 1, 6, '#5a606e', 9, 1);
+  // Bag of fish food display + card reader.
+  px(ctx, 6, 2, '#e05a3a', 6, 7);
+  px(ctx, 7, 3, '#ffd070', 4, 2);
+  px(ctx, 60, 3, '#2a2a30', 6, 5);
+  px(ctx, 61, 4, '#5ad0ff', 4, 1);
+}
+
+function drawShelf(ctx: Ctx, w: number, h: number, seed: number): void {
+  const P = SHOP_PALETTE;
+  const rng = new Rng(seed * 31 + 7);
+  px(ctx, 0, 0, P.woodLo, w, h);
+  px(ctx, 1, 1, '#5a3a24', w - 2, h - 2);
+  const colours = ['#e05a3a', '#3a9ad0', '#f0c040', '#5ab04a', '#c060c0', '#f2f2ee', '#40c0b0'];
+  for (let row = 0; row < 3; row++) {
+    const sy = 3 + row * 9;
+    px(ctx, 1, sy + 7, P.woodHi, w - 2, 2);
+    let x = 2;
+    while (x < w - 4) {
+      const bw = rng.int(2, 4);
+      const bh = rng.int(4, 7);
+      const c = rng.pick(colours);
+      px(ctx, x, sy + 7 - bh, c, bw, bh);
+      px(ctx, x, sy + 7 - bh, shade(c, 0.3), bw, 1);
+      x += bw + 1;
+    }
+  }
+}
+
+function drawDesk(ctx: Ctx, w: number, h: number): void {
+  const P = SHOP_PALETTE;
+  px(ctx, 0, 12, P.woodLo, w, h - 12);
+  px(ctx, 1, 13, P.woodHi, w - 2, 6);
+  px(ctx, 1, 19, P.wood, w - 2, h - 20);
+  outlineRect(ctx, 3, 21, 10, 9, P.woodLo);
+  // Monitor.
+  px(ctx, 8, 0, '#2a2e38', 18, 13);
+  px(ctx, 9, 1, '#5ad8e8', 16, 10);
+  px(ctx, 10, 2, '#9ff0ff', 6, 1);
+  px(ctx, 10, 5, '#e0f8ff', 10, 1);
+  px(ctx, 10, 7, '#e0f8ff', 7, 1);
+  px(ctx, 15, 13, '#2a2e38', 4, 2);
+  px(ctx, 8, 15, '#d8d8d0', 14, 3);
+  px(ctx, 24, 14, '#f2f2ee', 4, 4);
+}
+
+function drawPlant(ctx: Ctx): void {
+  px(ctx, 4, 16, '#a0522d', 8, 8);
+  px(ctx, 3, 16, '#c0703d', 10, 2);
+  px(ctx, 5, 22, '#7a3a1d', 6, 2);
+  const leaf = ['#3a8a3a', '#4aa64a', '#2a6a30', '#5cc05a'];
+  const pts = [[7, 2], [4, 5], [10, 4], [2, 9], [12, 8], [6, 9], [9, 11], [3, 13], [11, 13], [7, 6]];
+  pts.forEach(([x, y], i) => {
+    px(ctx, x, y, leaf[i % leaf.length], 3, 4);
+    px(ctx, x + 1, y - 1, leaf[(i + 1) % leaf.length], 1, 2);
+  });
+  px(ctx, 7, 10, '#2a5a20', 2, 6);
+}
+
+function drawBench(ctx: Ctx, w: number): void {
+  const P = SHOP_PALETTE;
+  px(ctx, 0, 4, P.woodLo, w, 8);
+  px(ctx, 1, 5, P.woodHi, w - 2, 3);
+  px(ctx, 1, 8, P.wood, w - 2, 3);
+  px(ctx, 3, 12, P.woodLo, 2, 6);
+  px(ctx, w - 5, 12, P.woodLo, 2, 6);
+}

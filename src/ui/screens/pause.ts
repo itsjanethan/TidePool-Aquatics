@@ -1,0 +1,93 @@
+/** Pause menu with save/load/export. */
+import type { GameController } from '../../game/GameController';
+import { SPEEDS } from '../../game/GameController';
+import { formatMoney } from '../../core/math';
+import { SLOTS } from '../../sim/save';
+import { h } from '../dom';
+import { showHelp } from './help';
+import { openGoals, reputationEl } from './office';
+
+export function openPauseMenu(c: GameController): void {
+  const s = c.state;
+  const scr = c.ui.menu({
+    title: 'Paused',
+    body: () => h('div', null, h('div', { class: 'row' }, h('span', null, s.shopName), h('b', null, formatMoney(s.money))), reputationEl(c)),
+    items: [
+      { label: 'Resume', action: () => c.ui.remove(scr) },
+      { label: 'Save game', action: () => openSaveSlots(c, 'save') },
+      { label: 'Load game', action: () => openSaveSlots(c, 'load') },
+      { label: 'Goals', action: () => openGoals(c) },
+      { label: 'Game speed', right: `${s.settings.speed}x`, onLeft: () => { s.settings.speed = SPEEDS[Math.max(0, SPEEDS.indexOf(s.settings.speed) - 1)]; scr.refresh(); }, onRight: () => { s.settings.speed = SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(s.settings.speed) + 1)]; scr.refresh(); } },
+      { label: 'Export save file', hint: 'Download a backup you can import on any device.', action: () => exportSave(c) },
+      { label: 'How to play', action: () => showHelp(c) },
+      { label: 'Quit to title', action: () => void c.ui.confirm('Quit to the title screen? Unsaved progress since the last save will be lost.').then((y) => y && c.toTitle()) },
+    ],
+    className: 'wide',
+  });
+}
+
+export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fromTitle = false): Promise<void> {
+  const sums = await c.saves.list();
+  const slots = mode === 'save' ? SLOTS.filter((sl) => sl !== 'auto') : SLOTS;
+  const scr = c.ui.menu({
+    title: mode === 'save' ? 'Save Game' : 'Load Game',
+    body: h('div', { class: 'small' }, `Saves are stored in this browser (${c.saves.storage.kind}). Export a file for a backup.`),
+    items: [
+      ...slots.map((sl) => {
+        const sum = sums.find((x) => x.slot === sl);
+        const label = sl === 'auto' ? 'Autosave' : `Slot ${sl.slice(-1)}`;
+        return {
+          label: sum ? `${label}: ${sum.shopName}` : `${label}: empty`,
+          right: sum ? sum.dateLabel : '',
+          hint: sum ? `${formatMoney(sum.money)} · saved ${new Date(sum.savedAt).toLocaleString()}` : undefined,
+          disabled: mode === 'load' && !sum,
+          action: async () => {
+            if (mode === 'save') {
+              if (sum && !(await c.ui.confirm('Overwrite this save?'))) return;
+              if (await c.save(sl)) c.ui.toast('Game saved', 'good');
+              c.ui.remove(scr);
+            } else {
+              c.ui.remove(scr);
+              await c.load(sl);
+            }
+          },
+        };
+      }),
+      { label: 'Back', action: () => c.ui.remove(scr) },
+    ],
+  });
+  void fromTitle;
+}
+
+export function exportSave(c: GameController): void {
+  const data = c.saves.exportString(c.state);
+  const blob = new Blob([data], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `tidepool-${c.state.shopName.replace(/\W+/g, '_')}-day${Math.floor(c.state.minute / 1440) + 1}.json`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 1000);
+  c.ui.toast('Save file downloaded.', 'good');
+}
+
+export function importSave(c: GameController): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const st = c.saves.importString(await file.text());
+      c.startGame(st);
+      c.ui.toast('Save imported', 'good');
+    } catch (e) {
+      c.ui.toast(`Import failed: ${(e as Error).message}`, 'bad');
+    }
+  };
+  input.click();
+}
