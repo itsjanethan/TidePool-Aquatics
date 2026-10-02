@@ -328,7 +328,7 @@ export class TankRenderer {
       const p = this.world.pellets.find((q) => q.settled) ?? this.world.pellets[0];
       this.removePellet(p);
     } else if (t.food > total + 0.4 && this.world.pellets.length < 60) {
-      this.addPellet(vr.range(VIEW.left + 20, VIEW.right - 20), VIEW.floor - vr.range(0, 4), Math.min(0.3, t.food - total), true);
+      this.addPellet(vr.range(VIEW.left + 20, VIEW.right - 20), VIEW.floor - 3 + vr.range(0, 2), Math.min(0.3, t.food - total), true);
     }
   }
 
@@ -351,8 +351,8 @@ export class TankRenderer {
         p.vy = Math.min(14, p.vy + 20 * dt);
         p.y += p.vy * dt;
         p.x += Math.sin(this.time * 1.5 + p.x * 0.1) * 6 * dt;
-        if (p.y >= VIEW.floor - 1) {
-          p.y = VIEW.floor - 1 + vr.range(0, 4);
+        if (p.y >= VIEW.floor - 3) {
+          p.y = VIEW.floor - 3 + vr.range(0, 2);
           p.settled = true;
         }
       }

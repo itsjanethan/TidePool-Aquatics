@@ -1,6 +1,7 @@
 /** Keyboard/gamepad/mouse navigable menu list. */
 import type { Action } from '../input/input';
 import { h } from './dom';
+import { play } from '../audio/sfx';
 
 export interface MenuItem {
   label: string;
@@ -100,7 +101,12 @@ export class Menu {
 
   activate(): void {
     const it = this.current();
-    if (!it || it.disabled || it.header) return;
+    if (!it || it.header) return;
+    if (it.disabled) {
+      play('back');
+      return;
+    }
+    play('confirm');
     it.action?.();
   }
 
@@ -109,21 +115,29 @@ export class Menu {
     const cols = this.opts.columns ?? 1;
     switch (a) {
       case 'up':
+        play('move');
         this.select(cols > 1 ? Math.max(0, this.index - cols) : this.nextSelectable(this.index, -1));
         return true;
       case 'down':
+        play('move');
         this.select(cols > 1 ? Math.min(this.items.length - 1, this.index + cols) : this.nextSelectable(this.index, 1));
         return true;
       case 'left': {
         const it = this.current();
-        if (it?.onLeft) it.onLeft();
+        if (it?.onLeft) {
+          play('move');
+          it.onLeft();
+        }
         else if (cols > 1) this.select(Math.max(0, this.index - 1));
         else return false;
         return true;
       }
       case 'right': {
         const it = this.current();
-        if (it?.onRight) it.onRight();
+        if (it?.onRight) {
+          play('move');
+          it.onRight();
+        }
         else if (cols > 1) this.select(Math.min(this.items.length - 1, this.index + 1));
         else return false;
         return true;

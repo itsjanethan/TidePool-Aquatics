@@ -10,6 +10,7 @@ import {
 } from '../../sim/customers';
 import { nudgeRep } from '../../sim/reputation';
 import type { CustomerState } from '../../sim/types';
+import { play } from '../../audio/sfx';
 
 function greeting(c: GameController, cu: CustomerState): string {
   const arch = ARCHETYPES.find((a) => a.id === cu.archetype);
@@ -86,6 +87,7 @@ export async function serveAtTill(c: GameController): Promise<void> {
 
 async function finish(c: GameController, cu: CustomerState, total: number, line: string): Promise<void> {
   const res = completeSale(c.state, c.sim!.customerCtx, cu, total);
+  play('cash');
   c.sim!.advance(1);
   c.ui.toast(`Sold ${res.fishCount ? `${res.fishCount} fish` : 'goods'} for ${formatMoney(total)}`, 'good');
   await c.ui.say(cu.name, line);

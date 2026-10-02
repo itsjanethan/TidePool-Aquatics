@@ -224,3 +224,21 @@ input:focus { border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .menu-item.selected::before, .bubble.help, .dialogue-arrow.blink { animation: none; }
 }
+
+/* Overlays that must let clicks reach the canvas (fish selection). */
+#screens > .tank-view-ui { pointer-events: none; }
+.tv-waiting { color: var(--bad); font-weight: 600; white-space: nowrap; }
+
+/* Touch controls ---------------------------------------------------------- */
+.touch-controls { position: fixed; inset: auto 0 0 0; height: 0; z-index: 50; pointer-events: none; }
+.touch-btn {
+  position: fixed; pointer-events: auto; width: 54px; height: 54px; border-radius: 12px; border: 2px solid rgba(255, 255, 255, 0.5);
+  background: rgba(20, 18, 40, 0.45); color: #fff; font-size: 20px; touch-action: none; -webkit-tap-highlight-color: transparent;
+}
+.touch-btn.down { background: rgba(255, 212, 90, 0.6); }
+.tp-up { left: 70px; bottom: 128px; } .tp-down { left: 70px; bottom: 16px; }
+.tp-left { left: 14px; bottom: 72px; } .tp-right { left: 126px; bottom: 72px; }
+.ta-a { right: 18px; bottom: 80px; border-radius: 50%; width: 62px; height: 62px; }
+.ta-b { right: 92px; bottom: 34px; border-radius: 50%; }
+.ta-menu { right: 18px; bottom: 16px; width: 44px; height: 44px; font-size: 16px; }
+.ta-feed { right: 100px; bottom: 112px; width: 44px; height: 44px; font-size: 16px; }

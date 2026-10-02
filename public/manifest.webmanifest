@@ -1,0 +1,12 @@
+{
+  "name": "Tidepool Aquatics",
+  "short_name": "Tidepool",
+  "description": "Build a tiny fish shop into a thriving aquarium centre.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#120f22",
+  "theme_color": "#1b1830",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

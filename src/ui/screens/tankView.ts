@@ -3,6 +3,7 @@ import type { GameController } from '../../game/GameController';
 import type { Action } from '../../input/input';
 import type { TankScene } from '../../render/scenes/TankScene';
 import { clockString } from '../../sim/time';
+import { queueCustomers } from '../../sim/customers';
 import { h } from '../dom';
 import type { Screen } from '../ui';
 import { fishCard, speciesSummary, tankStatusLine } from './common';
@@ -38,14 +39,19 @@ export class TankViewScreen implements Screen {
   refreshTop(): void {
     const s = this.c.state;
     const t = this.tank;
+    const waiting = queueCustomers(s).filter((q) => q.phase === 'queueing').length;
+    const help = s.customers.filter((q) => q.phase === 'waiting_help' || q.phase === 'seeking_help').length;
     this.top.innerHTML = '';
-    this.top.append(
+    const parts: Array<HTMLElement | null> = [
       h('span', { class: 'tv-name' }, `${t.name} · ${t.litres}L`),
       h('span', null, `${t.water.temperature.toFixed(1)}°C`),
       h('span', { class: 'tv-species' }, speciesSummary(s, t.id)),
       h('span', { class: 'tv-status' }, tankStatusLine(s, t)),
+      waiting ? h('span', { class: 'tv-waiting' }, `${waiting} at till`) : null,
+      help ? h('span', { class: 'tv-waiting' }, `${help} need help`) : null,
       h('span', { class: 'tv-clock' }, `${clockString(s.minute)}${t.lightOn ? '' : ' (lights off)'}`),
-    );
+    ];
+    for (const p of parts) if (p) this.top.appendChild(p);
   }
 
   refreshFish(): void {

@@ -17,6 +17,8 @@ import { markObjective } from '../sim/progression';
 import { toggleDevPanel } from '../ui/screens/devPanel';
 import { showDayReport } from '../ui/screens/report';
 import { showIntro } from '../ui/screens/help';
+import { play } from '../audio/sfx';
+import { installTouchControls } from '../ui/touch';
 
 export const DEV_ALLOWED: boolean =
   import.meta.env.DEV || (typeof location !== 'undefined' && new URLSearchParams(location.search).has('dev'));
@@ -53,6 +55,7 @@ export class GameController {
     this.input = new InputManager(window);
     this.hud = new Hud(this);
     this.input.events.on('press', (a) => this.onPress(a));
+    installTouchControls(this.input);
     game.events.on(Phaser.Core.Events.STEP, (_t: number, delta: number) => this.step(delta));
     this.ready = createStorage().then((st) => {
       this.saves = new SaveManager(st);
@@ -107,6 +110,9 @@ export class GameController {
     });
     this.sim.events.on('dayReport', (r) => {
       this.reportQueue.push(() => showDayReport(this, r));
+    });
+    this.sim.events.on('customer', (e) => {
+      if (e.type === 'arrived' && this.game.scene.isActive('Shop')) play('door');
     });
     this.sim.events.on('shopOpened', () => {
       void this.autosave();
@@ -176,9 +182,11 @@ export class GameController {
   /** Runs a timed player action: advances game time and reports the result. */
   perform(result: ActionResult, quiet = false): ActionResult {
     if (result.ok) {
+      play(result.message.toLowerCase().includes('feed') || result.message.toLowerCase().includes('food') ? 'feed' : result.message.toLowerCase().includes('water') ? 'splash' : 'confirm');
       if (result.minutes > 0) this.sim!.advance(result.minutes);
       if (!quiet) this.ui.toast(result.message, 'good', 2400);
     } else {
+      play('warn');
       this.ui.toast(result.message, 'warn');
     }
     return result;

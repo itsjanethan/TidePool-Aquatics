@@ -72,7 +72,6 @@ export function runBot(days: number, seed: number) {
 describe('balance', () => {
   it('a competent player stays solvent and keeps fish alive for three weeks', () => {
     const { s, revenue, startRep, endRep } = runBot(21, 1234);
-    // eslint-disable-next-line no-console
     console.log(JSON.stringify({ money: s.money, revenue: Math.round(revenue), served: s.stats.customersServed, died: s.stats.fishDied, sold: s.stats.totalFishSold, startRep: Math.round(startRep), endRep: Math.round(endRep), rep: s.reputation }));
     expect(s.money).toBeGreaterThan(400);
     expect(s.stats.customersServed).toBeGreaterThan(100);

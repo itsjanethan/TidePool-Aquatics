@@ -65,8 +65,19 @@ export class InputManager {
     }
   }
 
+  private virtualHeld = new Set<Action>();
+
   isHeld(a: Action): boolean {
-    return this.held.has(a) || this.padHeld.has(a);
+    return this.held.has(a) || this.padHeld.has(a) || this.virtualHeld.has(a);
+  }
+
+  /** On-screen (touch) buttons. */
+  setVirtual(a: Action, down: boolean): void {
+    if (down && !this.virtualHeld.has(a)) {
+      this.virtualHeld.add(a);
+      this.lastDevice = 'pointer';
+      this.events.emit('press', a);
+    } else if (!down) this.virtualHeld.delete(a);
   }
 
   /** Current held direction (last one wins for keyboard). */

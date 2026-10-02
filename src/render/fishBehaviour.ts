@@ -255,7 +255,7 @@ export class FishAgent {
         this.ty = best.y;
         maxSpeed *= 1.6;
         arrive = 4;
-        if (Math.hypot(best.x - this.x - this.heading * this.len * 0.35, best.y - this.y) < Math.max(5, this.len * 0.35)) world.onEat(this, best);
+        if (Math.hypot(best.x - this.x - this.heading * this.len * 0.35, best.y - this.y) < Math.max(6, this.len * 0.4)) world.onEat(this, best);
         break;
       }
       case 'hide':
@@ -359,7 +359,7 @@ export class FishAgent {
     // Bounds.
     const halfL = this.len / 2;
     const top = world.surface + this.height * 0.35;
-    const bottom = world.floor - this.height * (this.bottomDweller ? 0.3 : 0.45);
+    const bottom = world.floor - this.height * (this.bottomDweller || this.mode === 'feed' ? 0.3 : 0.45);
     if (this.x < world.left + halfL) { this.x = world.left + halfL; this.vx = Math.abs(this.vx) * 0.5; }
     if (this.x > world.right - halfL) { this.x = world.right - halfL; this.vx = -Math.abs(this.vx) * 0.5; }
     if (this.y < top) { this.y = top; this.vy = Math.abs(this.vy) * 0.3; }

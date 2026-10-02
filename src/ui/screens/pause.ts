@@ -4,24 +4,28 @@ import { SPEEDS } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
 import { SLOTS } from '../../sim/save';
 import { h } from '../dom';
+import type { MenuItem } from '../menu';
 import { showHelp } from './help';
+import { isMuted, setMuted } from '../../audio/sfx';
 import { openGoals, reputationEl } from './office';
 
 export function openPauseMenu(c: GameController): void {
   const s = c.state;
-  const scr = c.ui.menu({
-    title: 'Paused',
-    body: () => h('div', null, h('div', { class: 'row' }, h('span', null, s.shopName), h('b', null, formatMoney(s.money))), reputationEl(c)),
-    items: [
+  const items = (): MenuItem[] => [
       { label: 'Resume', action: () => c.ui.remove(scr) },
       { label: 'Save game', action: () => openSaveSlots(c, 'save') },
       { label: 'Load game', action: () => openSaveSlots(c, 'load') },
       { label: 'Goals', action: () => openGoals(c) },
-      { label: 'Game speed', right: `${s.settings.speed}x`, onLeft: () => { s.settings.speed = SPEEDS[Math.max(0, SPEEDS.indexOf(s.settings.speed) - 1)]; scr.refresh(); }, onRight: () => { s.settings.speed = SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(s.settings.speed) + 1)]; scr.refresh(); } },
+      { label: 'Game speed', right: `${s.settings.speed}x`, onLeft: () => { s.settings.speed = SPEEDS[Math.max(0, SPEEDS.indexOf(s.settings.speed) - 1)]; scr.refresh(items()); }, onRight: () => { s.settings.speed = SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(s.settings.speed) + 1)]; scr.refresh(items()); } },
+      { label: 'Sound', right: isMuted() ? 'off' : 'on', action: () => { setMuted(!isMuted()); scr.refresh(items()); } },
       { label: 'Export save file', hint: 'Download a backup you can import on any device.', action: () => exportSave(c) },
       { label: 'How to play', action: () => showHelp(c) },
       { label: 'Quit to title', action: () => void c.ui.confirm('Quit to the title screen? Unsaved progress since the last save will be lost.').then((y) => y && c.toTitle()) },
-    ],
+  ];
+  const scr = c.ui.menu({
+    title: 'Paused',
+    body: () => h('div', null, h('div', { class: 'row' }, h('span', null, s.shopName), h('b', null, formatMoney(s.money))), reputationEl(c)),
+    items: items(),
     className: 'wide',
   });
 }
