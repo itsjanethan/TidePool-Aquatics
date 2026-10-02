@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newGame } from '../src/sim/newGame';
 import { Simulation } from '../src/sim/simulation';
-import { checkoutQuote, completeSale, queueCustomers, resolveAdvice, servingCustomer, spawnCustomer } from '../src/sim/customers';
+import { checkoutQuote, completeSale, problemFor, queueCustomers, resolveAdvice, resolveProblem, servingCustomer, spawnCustomer } from '../src/sim/customers';
 
 describe('customers', () => {
   it('a buy_specific customer reserves fish, queues and can be served', () => {
@@ -69,5 +69,28 @@ describe('customers', () => {
     });
     sim.advance(10 * 60);
     expect(arrivals).toBeGreaterThan(4);
+  });
+
+  it('correct problem answers sell a dry good; a grievance returns as a complaint', () => {
+    const s = newGame({ seed: 9 });
+    s.minute = 10 * 60;
+    const sim = new Simulation(s);
+    const c = spawnCustomer(s, sim.customerCtx, { goal: 'problem', problemId: 'chlorine' });
+    const k0 = s.reputation.knowledge;
+    const prob = problemFor(c);
+    resolveProblem(s, sim.customerCtx, c, prob.options.findIndex((o) => o.correct));
+    expect(s.reputation.knowledge).toBeGreaterThan(k0);
+    expect(c.addOns).toContain('conditioner');
+    // A wronged customer comes back angry.
+    const p = s.profiles[c.profileId];
+    p.grievance = true;
+    s.customers = [];
+    const back = spawnCustomer(s, sim.customerCtx, { archetype: p.archetype });
+    if (back.profileId === p.id) expect(problemFor(back).id).toBe('complaint');
+    const angry = spawnCustomer(s, sim.customerCtx, {});
+    angry.goalData.problemId = 'complaint';
+    const money0 = s.money;
+    resolveProblem(s, sim.customerCtx, angry, 0);
+    expect(s.money).toBeLessThan(money0);
   });
 });

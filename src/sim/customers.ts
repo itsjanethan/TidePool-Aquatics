@@ -726,6 +726,7 @@ export function adviceSetupText(c: CustomerState): string {
 export function resolveAdvice(state: GameState, ctx: CustomerContext, c: CustomerState, speciesId: string | null): AdviceResult {
   const setup = { litres: c.goalData.tankLitres ?? 60, heated: !!c.goalData.heated };
   state.stats.adviceGiven += 1;
+  c.thought = null;
   const stock = inStockSpecies(state);
   const bestScore = Math.max(0, ...stock.map((s) => assessSpeciesForSetup(s, setup).score));
   if (!speciesId) {
@@ -796,6 +797,7 @@ export function resolveProblem(state: GameState, ctx: CustomerContext, c: Custom
   const prob = problemFor(c);
   const opt = prob.options[optionIndex];
   state.stats.adviceGiven += 1;
+  c.thought = null;
   if (prob.id === 'complaint') {
     const p = state.profiles[c.profileId];
     if (p) p.grievance = false;

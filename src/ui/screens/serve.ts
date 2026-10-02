@@ -111,8 +111,8 @@ export async function talkToCustomer(c: GameController, cu: CustomerState): Prom
       cu.thought = '?';
       return;
     }
-    sim.advance(3);
     const res = resolveAdvice(s, ctx, cu, pick < stock.length ? stock[pick] : null);
+    sim.advance(3);
     await c.ui.say(cu.name, res.reply);
     return;
   }
@@ -126,8 +126,8 @@ export async function talkToCustomer(c: GameController, cu: CustomerState): Prom
       cu.thought = '?';
       return;
     }
-    sim.advance(3);
     const res = resolveProblem(s, ctx, cu, order[pick]);
+    sim.advance(3);
     await c.ui.say(cu.name, res.reply);
     return;
   }
