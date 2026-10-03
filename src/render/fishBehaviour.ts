@@ -10,9 +10,9 @@ import { getSpecies } from '../data/species';
 import type { SpeciesDef } from '../data/speciesTypes';
 import { isMature } from '../sim/fish';
 import type { FishEntity } from '../sim/types';
-import { ensureFishTexture, quantiseLength } from './art/fishArt';
+import { ensureFishTexture, FISH_FRAMES, quantiseLength } from './art/fishArt';
 
-export type FishMode = 'cruise' | 'feed' | 'hide' | 'rest' | 'gulp' | 'chase' | 'flee' | 'court' | 'graze' | 'sift' | 'dead';
+export type FishMode = 'cruise' | 'feed' | 'hide' | 'rest' | 'gulp' | 'chase' | 'flee' | 'court' | 'graze' | 'sift' | 'pause' | 'investigate' | 'dead';
 
 export interface Pellet {
   x: number;
@@ -42,6 +42,8 @@ export interface TankWorld {
   hides: HideSpot[];
   agents: FishAgent[];
   flow: number;
+  /** Pixels per logical game pixel (the tank view renders at 2x). */
+  scale: number;
   onEat(agent: FishAgent, pellet: Pellet): void;
 }
 
@@ -65,24 +67,30 @@ export class FishAgent {
   partner: FishAgent | null = null;
   gulpStage = 0;
   private turnHold = 0;
+  /** Depth target: 0 back glass .. 1 front glass. */
+  private zTarget = 0.5;
+  /** Visual turn progress -1..1 (left..right), eased separately from heading. */
+  private turn = 1;
   private texKey = '';
 
   constructor(private scene: Phaser.Scene, public fish: FishEntity, world: TankWorld) {
     this.sp = getSpecies(fish.speciesId);
     this.z = rng.next();
-    this.x = rng.range(world.left + 30, world.right - 30);
+    this.zTarget = this.z;
+    this.x = rng.range(world.left + 30 * world.scale, world.right - 30 * world.scale);
     const [d0, d1] = this.sp.behaviour.depth;
     this.y = lerp(world.surface, world.floor, rng.range(d0, d1));
     this.sprite = scene.add.sprite(this.x, this.y, '__DEFAULT');
     this.sprite.setInteractive({ useHandCursor: true });
     this.refreshTexture(world);
     this.heading = rng.chance(0.5) ? 1 : -1;
-    this.sprite.scaleX = this.heading;
+    this.turn = this.heading;
     this.pickTarget(world);
   }
 
   refreshTexture(world: TankWorld): void {
-    const L = quantiseLength(this.fish.sizeCm * world.pxPerCm * 1.15);
+    // Fish are drawn a little larger than true scale so they read well on screen.
+    const L = quantiseLength(this.fish.sizeCm * world.pxPerCm * 1.7);
     const info = ensureFishTexture(this.scene, this.fish.speciesId, this.fish.morphId, this.fish.sex, L);
     if (info.key !== this.texKey) {
       this.texKey = info.key;
@@ -137,33 +145,36 @@ export class FishAgent {
       return;
     }
     this.modeT = rng.range(2.5, 7) / (0.5 + b.restlessness);
+    // Drift to a new depth layer now and then (fish move behind and in front of decor).
+    if (rng.chance(0.35)) this.zTarget = clamp(this.zTarget + rng.range(-0.45, 0.45), 0, 1);
     const r = rng.next();
-    if (f.stress > 60 || (r < b.shyness * 0.35 && world.hides.length)) {
+    const fry = f.sizeCm / f.adultSizeCm < 0.32;
+    if (f.stress > 60 || (r < b.shyness * 0.35 && world.hides.length) || (fry && world.hides.length && rng.chance(0.55))) {
       this.mode = world.hides.length ? 'hide' : 'rest';
       const hs = this.nearestHide(world);
       if (hs) {
         this.tx = hs.x + rng.range(-hs.r, hs.r) * 0.6;
-        this.ty = clamp(hs.y + rng.range(-hs.r, hs.r) * 0.4, world.surface + 10, world.floor - this.height * 0.4);
+        this.ty = clamp(hs.y + rng.range(-hs.r, hs.r) * 0.4, world.surface + 10 * world.scale, world.floor - this.height * 0.4);
       }
       return;
     }
     if (rng.chance(restChance)) {
       this.mode = 'rest';
       const hs = this.nearestHide(world);
-      this.tx = hs && rng.chance(0.6) ? hs.x : this.x + rng.range(-30, 30);
+      this.tx = hs && rng.chance(0.6) ? hs.x : this.x + rng.range(-30, 30) * world.scale;
       this.ty = this.bottomDweller ? world.floor - this.height * 0.4 : this.depthY(world, Math.min(1, b.depth[1] + 0.15));
       return;
     }
     if (b.airGulper && rng.chance(0.08)) {
       this.mode = 'gulp';
       this.gulpStage = 0;
-      this.tx = this.x + rng.range(-20, 20);
+      this.tx = this.x + rng.range(-20, 20) * world.scale;
       this.ty = world.surface + 3;
       this.modeT = 6;
       return;
     }
     if (b.chaseTendency > 0 && rng.chance(b.chaseTendency * 0.6)) {
-      const others = world.agents.filter((a) => a !== this && a.fish.alive && Math.abs(a.x - this.x) < 120);
+      const others = world.agents.filter((a) => a !== this && a.fish.alive && Math.abs(a.x - this.x) < 120 * world.scale);
       if (others.length) {
         this.partner = rng.pick(others);
         this.mode = 'chase';
@@ -184,15 +195,31 @@ export class FishAgent {
     if (b.grazer && rng.chance(0.55)) {
       this.mode = 'graze';
       const hs = world.hides.length && rng.chance(0.6) ? rng.pick(world.hides) : null;
-      this.tx = hs ? hs.x + rng.range(-hs.r, hs.r) * 0.5 : rng.range(world.left + 20, world.right - 20);
+      this.tx = hs ? hs.x + rng.range(-hs.r, hs.r) * 0.5 : rng.range(world.left + 20 * world.scale, world.right - 20 * world.scale);
       this.ty = hs ? hs.y : this.depthY(world, rng.range(0.55, 1));
       this.modeT *= 1.6;
       return;
     }
     if (b.sifter && rng.chance(0.65)) {
       this.mode = 'sift';
-      this.tx = clamp(this.x + rng.range(-70, 70), world.left + 20, world.right - 20);
+      this.tx = clamp(this.x + rng.range(-70, 70) * world.scale, world.left + 20 * world.scale, world.right - 20 * world.scale);
       this.ty = world.floor - this.height * 0.35;
+      return;
+    }
+    // Idle behaviours: hang in the water for a moment, or nose around decor.
+    if (rng.chance(0.14 + (1 - b.restlessness) * 0.12)) {
+      this.mode = 'pause';
+      this.tx = this.x;
+      this.ty = this.y;
+      this.modeT = rng.range(1.2, 3.5);
+      return;
+    }
+    if (world.hides.length && rng.chance(0.14)) {
+      const hs = rng.pick(world.hides);
+      this.mode = 'investigate';
+      this.tx = hs.x + rng.range(-1, 1) * hs.r;
+      this.ty = clamp(hs.y + rng.range(-0.6, 0.3) * hs.r, world.surface + 12 * world.scale, world.floor - this.height * 0.5);
+      this.modeT = rng.range(3, 6);
       return;
     }
     this.mode = 'cruise';
@@ -203,8 +230,8 @@ export class FishAgent {
     if (!this.fish.alive) return;
     this.mode = 'flee';
     this.modeT = 1.2;
-    this.tx = clamp(this.x + Math.sign(this.x - from.x || 1) * 90, world.left + 10, world.right - 10);
-    this.ty = clamp(this.y + rng.range(-30, 30), world.surface + 8, world.floor - 8);
+    this.tx = clamp(this.x + Math.sign(this.x - from.x || 1) * 90 * world.scale, world.left + 10, world.right - 10);
+    this.ty = clamp(this.y + rng.range(-30, 30) * world.scale, world.surface + 8 * world.scale, world.floor - 8 * world.scale);
   }
 
   update(dt: number, world: TankWorld, time: number): void {
@@ -219,13 +246,18 @@ export class FishAgent {
     const hf = clamp(f.health / 100, 0.3, 1);
     const night = !world.lightsOn;
     const activity = night ? (b.nocturnal ? 1.1 : 0.45) : b.nocturnal ? 0.55 : 1;
-    let maxSpeed = b.speed * this.len * hf * activity * (0.8 + 0.35 * Math.sin(time * 0.9 + this.phase));
-    let arrive = 24;
+    // Burst-and-coast swimming: short thrust pulses followed by gliding.
+    const pulse = Math.pow(Math.max(0, Math.sin(time * (0.7 + b.restlessness) + this.phase)), 3);
+    const burst = 0.62 + 0.6 * pulse;
+    let maxSpeed = b.speed * this.len * hf * activity * burst;
+    // Fish slow down while turning around.
+    if (Math.abs(this.turn) < 0.85) maxSpeed *= 0.6;
+    let arrive = 24 * world.scale;
 
     switch (this.mode) {
       case 'dead': {
-        this.vx = lerp(this.vx, Math.sin(time * 0.3 + this.phase) * 3, dt);
-        this.vy = lerp(this.vy, this.y > world.surface + 6 ? -6 : 0, dt);
+        this.vx = lerp(this.vx, Math.sin(time * 0.3 + this.phase) * 3 * world.scale, dt);
+        this.vy = lerp(this.vy, this.y > world.surface + 6 * world.scale ? -6 * world.scale : 0, dt);
         this.x += this.vx * dt;
         this.y += this.vy * dt;
         this.sprite.setFlipY(true);
@@ -254,19 +286,19 @@ export class FishAgent {
         this.tx = best.x;
         this.ty = best.y;
         maxSpeed *= 1.6;
-        arrive = 4;
-        if (Math.hypot(best.x - this.x - this.heading * this.len * 0.35, best.y - this.y) < Math.max(6, this.len * 0.4)) world.onEat(this, best);
+        arrive = 4 * world.scale;
+        if (Math.hypot(best.x - this.x - this.heading * this.len * 0.35, best.y - this.y) < Math.max(6 * world.scale, this.len * 0.4)) world.onEat(this, best);
         break;
       }
       case 'hide':
       case 'rest':
         maxSpeed *= this.mode === 'rest' ? 0.3 : 0.5;
-        arrive = 30;
+        arrive = 30 * world.scale;
         break;
       case 'gulp':
         maxSpeed *= 2;
-        arrive = 6;
-        if (this.gulpStage === 0 && this.y < world.surface + 8) {
+        arrive = 6 * world.scale;
+        if (this.gulpStage === 0 && this.y < world.surface + 8 * world.scale) {
           this.gulpStage = 1;
           this.ty = world.floor - this.height * 0.4;
         }
@@ -277,7 +309,7 @@ export class FishAgent {
           this.ty = this.partner.y;
         }
         maxSpeed *= 2;
-        arrive = 2;
+        arrive = 2 * world.scale;
         break;
       case 'flee':
         maxSpeed *= 2.2;
@@ -285,27 +317,36 @@ export class FishAgent {
       case 'court':
         if (this.partner?.fish.alive) {
           this.tx = this.partner.x - this.partner.heading * this.partner.len * 0.6;
-          this.ty = this.partner.y + Math.sin(time * 6 + this.phase) * 3;
+          this.ty = this.partner.y + Math.sin(time * 6 + this.phase) * 3 * world.scale;
           maxSpeed *= 1.3;
-          arrive = 10;
+          arrive = 10 * world.scale;
         }
         break;
       case 'graze':
         maxSpeed *= 0.35;
-        arrive = 12;
-        if (Math.hypot(this.tx - this.x, this.ty - this.y) < 8) {
-          this.tx += Math.sin(time + this.phase) * 4 * dt;
+        arrive = 12 * world.scale;
+        if (Math.hypot(this.tx - this.x, this.ty - this.y) < 8 * world.scale) {
+          this.tx += Math.sin(time + this.phase) * 4 * world.scale * dt;
         }
+        break;
+      case 'pause':
+        maxSpeed *= 0.12;
+        arrive = 20 * world.scale;
+        this.ty += Math.sin(time * 1.3 + this.phase) * 1.5 * world.scale * dt;
+        break;
+      case 'investigate':
+        maxSpeed *= 0.45;
+        arrive = 18 * world.scale;
         break;
       case 'sift':
         maxSpeed *= 0.7;
-        if (Math.hypot(this.tx - this.x, this.ty - this.y) < 8) {
-          this.tx = clamp(this.x + rng.range(-35, 35), world.left + 15, world.right - 15);
+        if (Math.hypot(this.tx - this.x, this.ty - this.y) < 8 * world.scale) {
+          this.tx = clamp(this.x + rng.range(-35, 35) * world.scale, world.left + 15, world.right - 15);
           if (rng.chance(0.3)) this.modeT = Math.min(this.modeT, 0.8);
         }
         break;
       default:
-        if (Math.hypot(this.tx - this.x, this.ty - this.y) < 14) this.pickTarget(world);
+        if (Math.hypot(this.tx - this.x, this.ty - this.y) < 14 * world.scale) this.pickTarget(world);
     }
 
     // Steering toward target with arrival.
@@ -328,7 +369,7 @@ export class FishAgent {
         sx -= ox / d;
         sy -= oy / d;
       }
-      if (b.schooling > 0 && o.fish.speciesId === f.speciesId && d < 90 && this.mode === 'cruise') {
+      if (b.schooling > 0 && o.fish.speciesId === f.speciesId && d < 90 * world.scale && this.mode === 'cruise') {
         cx += o.x;
         cy += o.y;
         ax += o.vx;
@@ -367,7 +408,7 @@ export class FishAgent {
 
     // Heading and smooth turn (squash through scaleX).
     // Hysteresis so fish do not flicker between headings.
-    const want = this.vx > 4 ? 1 : this.vx < -4 ? -1 : this.heading;
+    const want = this.vx > 4 * world.scale ? 1 : this.vx < -4 * world.scale ? -1 : this.heading;
     if (want !== this.heading) {
       this.turnHold += dt;
       if (this.turnHold > 0.18 || Math.abs(this.vx) > this.len * 1.5) {
@@ -376,15 +417,20 @@ export class FishAgent {
       }
     } else this.turnHold = 0;
     if (this.mode === 'court' && this.partner) this.heading = this.partner.heading;
-    // Quick squash-turn: scale passes through a narrow width for a few frames only.
-    const curSx = this.sprite.scaleX;
-    let nsx = curSx + Math.sign(this.heading - curSx) * Math.min(Math.abs(this.heading - curSx), dt * 9);
-    if (Math.abs(nsx) < 0.25) nsx = this.heading * 0.25;
-    this.sprite.scaleX = nsx;
+    // Eased turn: the body narrows through the turn (seen end-on) then widens.
+    this.turn += Math.sign(this.heading - this.turn) * Math.min(Math.abs(this.heading - this.turn), dt * 5.5);
+    const turnShape = Math.sign(this.turn || this.heading) * Math.max(0.18, Math.sin((Math.abs(this.turn) * Math.PI) / 2));
 
-    // Tail wag speed tracks swim speed.
-    this.wagT += dt * (2.5 + (spd / Math.max(1, this.len)) * 5);
-    this.sprite.setFrame(Math.floor(this.wagT) % 2 === 0 ? '0' : '1');
+    // Depth: drift toward the target layer; nearer fish are slightly larger and clearer.
+    this.z = lerp(this.z, this.zTarget, Math.min(1, dt * 0.25));
+    const depthScale = 0.84 + 0.16 * this.z;
+    this.sprite.scaleX = turnShape * depthScale;
+    this.sprite.scaleY = depthScale;
+
+    // Tail beat follows thrust: fast during bursts, slow while coasting.
+    const beatHz = 0.8 + pulse * 2.4 + (spd / Math.max(1, this.len)) * 1.6 + (this.mode === 'feed' || this.mode === 'chase' || this.mode === 'flee' ? 1.5 : 0);
+    this.wagT += dt * beatHz * FISH_FRAMES;
+    this.sprite.setFrame(String(Math.floor(this.wagT) % FISH_FRAMES));
 
     // Pitch.
     const flat = this.bottomDweller && (this.y > bottom - 2 || this.mode === 'graze');
@@ -402,7 +448,7 @@ export class FishAgent {
     const bl = Math.round(255 * clamp(k + pale * 0.4 + depthDim * 0.6, 0, 1));
     this.sprite.setTint((r << 16) | (g << 8) | bl);
     this.sprite.setFlipY(false);
-    this.sprite.setPosition(Math.round(this.x), Math.round(this.y));
+    this.sprite.setPosition(this.x, this.y);
     this.sprite.setDepth(10 + this.z * 9);
   }
 

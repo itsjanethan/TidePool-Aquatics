@@ -1,7 +1,8 @@
 /** Tank interaction menu and its sub-screens. */
 import type { GameController } from '../../game/GameController';
 import { formatMoney, round } from '../../core/math';
-import { FILTERS, getFilter, HEATERS } from '../../data/catalog';
+import { FILTERS, getDecor, getFilter, HEATERS } from '../../data/catalog';
+import { openTankPlants } from './plants';
 import { getSpecies } from '../../data/species';
 import { assessSpeciesForSetup } from '../../sim/compat';
 import { fishPrice, priceRatio } from '../../sim/customers';
@@ -28,7 +29,8 @@ export function openTankMenu(c: GameController, tankId: string): void {
       { label: 'Water Test', hint: 'Takes 5 minutes.', action: () => openWaterTest(c, tankId) },
       { label: 'Maintenance', action: () => openMaintenance(c, tankId, screen) },
       { label: 'Equipment', action: () => openEquipment(c, tankId, screen) },
-      { label: 'Aquascape', hint: 'Edit plants, rocks, wood and substrate.', action: () => c.openTankView(tankId, 'aquascape') },
+      { label: 'Aquascape', hint: 'Decorate with a live preview: plants, rocks, wood, substrate and background.', action: () => c.openTankView(tankId, 'aquascape') },
+      { label: `Plants (${tank.decor.filter((d) => getDecor(d.defId).kind === 'plant').length})`, hint: 'See how your plants are growing and take cuttings.', action: () => openTankPlants(c, tank) },
       { label: 'Prices', action: () => openPrices(c, tankId) },
       { label: 'Close', action: () => c.ui.remove(screen) },
     ];

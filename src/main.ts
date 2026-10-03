@@ -7,6 +7,7 @@ import { BootScene } from './render/scenes/BootScene';
 import { TitleScene } from './render/scenes/TitleScene';
 import { ShopScene } from './render/scenes/ShopScene';
 import { TankScene } from './render/scenes/TankScene';
+import { CANVAS_H, CANVAS_W } from './render/res';
 
 export const GAME_W = 480;
 export const GAME_H = 320;
@@ -32,8 +33,8 @@ window.addEventListener('resize', layout);
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  width: GAME_W,
-  height: GAME_H,
+  width: CANVAS_W,
+  height: CANVAS_H,
   pixelArt: true,
   roundPixels: true,
   backgroundColor: '#1b1830',

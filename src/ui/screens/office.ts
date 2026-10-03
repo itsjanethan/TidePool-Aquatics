@@ -17,6 +17,24 @@ import type { MenuItem } from '../menu';
 import { openPrices } from './tankMenu';
 import { speciesSummary } from './common';
 import { openSaveSlots } from './pause';
+import { pottedPlantItems } from './plants';
+import { sellStoredDecor } from '../../sim/plants';
+import { getDecor } from '../../data/catalog';
+
+function storedDecorItems(c: GameController, refresh: () => void): MenuItem[] {
+  const s = c.state;
+  const entries = Object.entries(s.storage.decor).filter(([, n]) => n > 0);
+  if (!entries.length) return [];
+  return [
+    { label: 'Stored decor', header: true },
+    ...entries.map(([id, n]) => ({
+      label: `${getDecor(id).name} ×${n}`,
+      right: 'Owned',
+      hint: `Place it from a tank's Aquascape menu, or confirm to sell one second-hand for ${formatMoney(getDecor(id).cost * 0.4)}.`,
+      action: () => { c.perform(sellStoredDecor(s, id)); refresh(); },
+    })),
+  ];
+}
 
 export function openOffice(c: GameController): void {
   const s = c.state;
@@ -196,6 +214,8 @@ export function openStockroom(c: GameController): void {
       hint: `${g.description} Sells for ${formatMoney(g.retail)}.`,
       action: () => { const r = buyDryGood(s, g.id, 5); c.ui.toast(r.message, r.ok ? 'good' : 'warn'); scr.refresh(items()); },
     })),
+    ...pottedPlantItems(c, () => scr.refresh(items())),
+    ...storedDecorItems(c, () => scr.refresh(items())),
     { label: 'Back', action: () => c.ui.remove(scr) },
   ];
   const scr = c.ui.menu({ title: 'Stockroom', items: items(), body: () => h('div', null, `Balance ${formatMoney(s.money)}. Customers may buy dry goods when you suggest them at the till or after good advice.`) });

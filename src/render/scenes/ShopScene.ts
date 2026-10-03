@@ -14,6 +14,7 @@ import { isShopOpen, minuteOfDay, OPEN_HOUR } from '../../sim/time';
 import type { CustomerState } from '../../sim/types';
 import { customerPalette, makeCharacterTexture, type Dir } from '../art/characters';
 import { OverworldTank } from '../overworldTank';
+import { LOGICAL_H, LOGICAL_W, RES } from '../res';
 import { h } from '../../ui/dom';
 import { openTankMenu } from '../../ui/screens/tankMenu';
 import { openOffice } from '../../ui/screens/office';
@@ -51,6 +52,8 @@ export class ShopScene extends Phaser.Scene {
     const c = controller;
     const s = c.state;
     this.grid = c.sim!.grid;
+    // The shop is drawn at logical resolution and zoomed for chunky pixels.
+    this.cameras.main.setZoom(RES).centerOn(LOGICAL_W / 2, LOGICAL_H / 2);
     this.add.image(0, 0, 'floor-layer').setOrigin(0, 0).setDepth(-100);
     for (const p of FLOOR1.props) {
       if (p.kind === 'tank') this.tanks.push(new OverworldTank(this, p, () => controller.state));
