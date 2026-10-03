@@ -5,13 +5,14 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 ## Next up (priority order)
 
 1. **Human playtest and balance pass (v0.2.0).** Watch a first-time player for 3 in-game days and a returning player for 2 weeks. Check day 1 to 3 feel busy but fair, breeding is discovered without help, mid-game money growth feels rewarding (long-run bot only earns £10 to £15/day). Acceptance: documented findings in TESTING.md and tuned numbers in DECISIONS.md.
-2. **Species wave 1 (Milestone 2).** Cherry Shrimp (colony breeding, colour grades), Otocinclus (algae grazer), Kuhli Loach (nocturnal, sand), Betta (solitary males, bubble nest method). Each with breeding data, genetics where relevant, art check in tank view, supplier entry. Acceptance: species tests pass, each visible and breeding in game.
-3. **Disease v1.** Ich and fin rot from sustained stress or bad water; spread within a tank; visible symptoms; treatments sold as dry goods; quarantine advice. Acceptance: unit tests for onset and treatment; visible in tank view.
-4. **Breeding tools.** Breeder box (protects livebearer fry), fry food (faster growth), pairing preview (expected looks from two parents using known genes).
-5. **Events v1.** Heatwave, power cut, rare shipment offer, each a choice. Fire via dev panel and naturally at low rates.
-6. **Plant depth.** Light level per tank, fertiliser dry good, runners and rhizome splits as propagation methods, three more plant species.
-7. **Generalise floors** (prerequisite for Milestone 3).
-8. **Accessibility pass.** Text size option, high-contrast UI, reduced motion in the tank view, key rebinding.
+2. **Visual polish follow-ups.** Egg sprites on glass and plants for egg layers; disease visuals once disease exists; leaf litter and blackwater tannin as an aquascape option; hand-tuned per-species profile tweaks in the gallery (pleco head width, cory dorsal spine); the bot should scoop duckweed in long runs.
+3. **Species wave 1 (Milestone 2).** Cherry Shrimp (colony breeding, colour grades), Otocinclus (algae grazer), Kuhli Loach (nocturnal, sand), Betta (solitary males, bubble nest method). Each with breeding data, genetics where relevant, art check in tank view, supplier entry. Acceptance: species tests pass, each visible and breeding in game.
+4. **Disease v1.** Ich and fin rot from sustained stress or bad water; spread within a tank; visible symptoms; treatments sold as dry goods; quarantine advice. Acceptance: unit tests for onset and treatment; visible in tank view.
+5. **Breeding tools.** Breeder box (protects livebearer fry), fry food (faster growth), pairing preview (expected looks from two parents using known genes).
+6. **Events v1.** Heatwave, power cut, rare shipment offer, each a choice. Fire via dev panel and naturally at low rates.
+7. **Plant depth.** Light level per tank, fertiliser dry good, runners and rhizome splits as propagation methods, three more plant species.
+8. **Generalise floors** (prerequisite for Milestone 3).
+9. **Accessibility pass.** Text size option, high-contrast UI, reduced motion in the tank view, key rebinding.
 
 ## Backlog
 
@@ -59,3 +60,4 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 - 2026-10-03: Demand saturation, trade buyer, "Customers can buy" toggle
 - 2026-10-03: Long-run tests 30/100/365 days with invariants; profile cap (save 1 MB to 186 KB)
 - 2026-10-03: Versioned service worker with precache; offline verified
+- 2026-10-03: Habitat visual pass (v0.3.0): phenotype system and fish painter, visible trait loci, turn frames, organic motion, portraits, morph gallery and dev tools, plant architectures and growth stages, new plants, floating plants (sim and render), hardscape/substrate/background painters, light map, water look, quality settings

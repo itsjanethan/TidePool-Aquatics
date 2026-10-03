@@ -77,6 +77,8 @@ Breeding is driven by species data (`breeding.method`) and needs mature, healthy
 
 Fry are full fish entities with both parents, inherited genes, generation and growth from birth size. Adults hunt small fry each hour; plant cover shields them. Moving fry to their own tank (grow-out) or switching a tank's "Customers can buy" to No (breeding tank) is how the player manages this. The Breeding screen in each tank menu says what is helping and what is stopping each species.
 
+Every fish looks like itself: its genes, sex, age, size, quality, pregnancy and health all show in the tank view (see ART_DIRECTION.md). A breeder can pick promising juveniles by eye.
+
 Genetics: each species has a few Mendelian loci (colour, pattern, fins, albinism) with dominance; the visible look (morph) is derived from the genotype. Supplier fish show only their look. Hidden carried genes are revealed for shop-bred fish and for any fish once it has offspring. Quality and size are polygenic: offspring take the parents' mean with noise and mild regression toward average. Rare mutations (0.4% per allele) create surprises.
 
 Strains: a shop-bred F2 or later fish whose two parents are shop-bred and show the same look can found a named strain. Related fish join it, and fry of two strain parents that show the look stay in the line (e.g. "Jan's Red Delta F4"). Bred fish are worth 10% more; strains add 8% per generation, capped at 40%.
@@ -86,6 +88,12 @@ Strains: a shop-bred F2 or later fish whose two parents are shop-bred and show t
 Plants are living items: each has a size (growth), health and a species growth rate and maximum. They grow with light and nutrients (nitrate) and grow slower as they get big. Stages: Cutting, Small, Medium, Large, Mature, Overgrown (shades the tank). Larger plants give more cover and nitrate uptake.
 
 Propagation: take a small, medium or large cutting (bigger cuttings sell for more but set the parent back further; the parent never drops below a healthy minimum), or trim overgrowth. Cuttings go to the stockroom as potted plants. From there they can be replanted in any tank to grow on, offered to customers at the till (or picked up by browsers from the plant shelf), or sold in bulk to the trade buyer. Home-grown plants cost nothing, so they are pure margin compared with buying stock.
+
+### Floating plants
+
+Duckweed, Amazon Frogbit and Red Root Floater live on the surface as coverage rather than single items. They spread on their own with light and nitrate (duckweed fastest), soak up nitrate, give fry cover and shade the tank, slowing plants and algae below. A light cover looks natural; a carpet starves the plants underneath and hides the tank. Scoop half into the stockroom (to float in another tank or sell to the trade buyer) or scoop most and bin it. Buy new portions from Aquascape.
+
+Plant species propagate differently (cuttings, runner plantlets, rhizome pieces, clumps); the menus use the right words and the data allows species-specific mechanics later.
 
 ## Aquascaping
 

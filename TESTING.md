@@ -23,6 +23,8 @@ npm run check       # all of the above, in order. Must pass before a task is don
 | `breeding.test.ts` | Genetics (dominance, recessive ratios, every morph reachable), livebearer births with parents, cave and plant needs, egg broods and cover, strains and value |
 | `order.test.ts` | Order warnings: uncycled tanks, temperature, projected stocking across lines, goldfish with tiny fish, clean orders have no warnings |
 | `menu.test.ts` | (happy-dom) Menu selection and wrapping, headers, disabled rows, refresh, resting mouse, nested screen stack, dialogue choices, capped key repeat, typing in text boxes |
+| `phenotype.test.ts` | Morphs and traits change looks; albino; male-only tails hidden in females and fry; additive metallic; fry develop; gravid belly paints fuller; siblings differ; painter fills every frame; turn frames narrower; every species paints under 400 ms |
+| `floating.test.ts` | Duckweed spreads to carpet the surface; cover shades plants, soaks up nitrate, adds fry cover; scoop to stockroom, move, sell, bin |
 | `longrun.test.ts` | 30, 100 and 365 day bot runs with breeding tanks; invariants checked every day (see below) |
 
 ### Long-run simulation
@@ -60,6 +62,8 @@ node scripts/shot.mjs http://localhost:5173/ out.png '[{"key":"Enter","wait":400
 
 Steps support `key` (press), `type` (text), `eval` (JS in page; result printed), `wait` (ms) and `shot` (screenshot path). In dev builds or with `?dev=1`, `window.__tidepool` exposes the GameController for scripted checks (for example teleporting the player or reading state).
 
+`scripts/gallery.mjs <species> out.png` screenshots the developer morph gallery (every morph and single-trait variant by sex and life stage, and the 11-frame swim/turn strip). Open `#gallery=<species>` in a browser for the same view; Left/Right switches species.
+
 `scripts/reload-test.mjs` verifies that a save survives a page reload in a persistent browser profile.
 
 Chromium lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` in the agent sandbox; adjust `exe` elsewhere.
@@ -68,7 +72,13 @@ Chromium lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` in the ag
 
 Available in `npm run dev` builds, or in production with `?dev=1` in the URL. Press backtick (or F9) in game. It never appears in normal play, and any use sets `flags.devUsed` in the save.
 
-Money (add, zero), time (hour, day, week, skip to opening), tank (target selector, instant cycle, ammonia spike, nitrate, pH, temperature, filth, algae bloom, filter and heater failure, clean all), fish (spawn any species, age, set health, feed or starve, inspect genetics), customers (spawn by goal, spawn many, patience), progression (reputation, complete goals, unlock flags). Breeding: force pregnancy or spawn (due in one hour), create 6 fry, make tank fish breeding-ready, trigger a mutation. Uses the chosen species when a pair is present.
+Money (add, zero), time (hour, day, week, skip to opening), tank (target selector, instant cycle, ammonia spike, nitrate, pH, temperature, filth, algae bloom, filter and heater failure, clean all), fish (spawn any species, age, set health, feed or starve, inspect genetics), customers (spawn by goal, spawn many, patience), progression (reputation, complete goals, unlock flags). Visual genetics: choose sex and stage (fry, juvenile, adult, gravid) and spawn; spawn a morph sampler (every morph and trait, both sexes); spawn 10 adult siblings from a pair; age fry +10 days; randomise genes; pick a trait locus and allele and apply it to the chosen species in the tank; open the morph gallery. Breeding: force pregnancy or spawn (due in one hour), create 6 fry, make tank fish breeding-ready, trigger a mutation. Uses the chosen species when a pair is present.
+
+### Tank view performance (v0.3.0)
+
+Measured CPU time of `TankRenderer.update` (headless Chromium, software GL, 120L tank with floating plants): 8 fish 2.5 ms, 28 fish 2.3 ms, 78 fish 2.6 ms per frame (max 4 to 8 ms). Painting a fish sheet costs 8 to 40 ms and is budgeted at 10 ms per frame. GPU fill rate is the limit in software GL only.
+
+Long-run after the visual pass: 30 days £1,123; 100 days £2,315; 365 days £6,720, 192 bred, save 212 KB.
 
 ## Manual verification checklist (vertical slice)
 
@@ -87,6 +97,8 @@ Run through this after any change touching gameplay flow:
 11. Office PC: Save game shows "Game saved." and the HUD indicator; reload the page, Continue restores the game. Load, Export and Import work from the PC.
 13. Tank menu > Breeding explains conditions; Livestock > fish shows family and traits (Q / E scroll); Name a strain is offered only for F2+ shop-bred lines.
 14. Aquascape: substrate/background previews restore on Cancel; plants show growth stages; cuttings appear in the stockroom.
+16. Tank view: fish of the same species look different (sex, size, traits); gravid females are fuller; fry are small, pale and translucent; fish turn through yaw frames; corys sift with puffs; plecos cling to the back glass; Z on a selected fish opens its details with a portrait.
+17. Floating plants: buy a portion of duckweed from Aquascape (preview shows on the surface), watch it spread over days, scoop half to the stockroom, float it in another tank, sell the rest.
 15. Order livestock to two tanks in one order; warnings show for an uncycled or full tank and the order can still be placed.
 12. Production build (`npm run build && npx vite preview`) behaves the same.
 

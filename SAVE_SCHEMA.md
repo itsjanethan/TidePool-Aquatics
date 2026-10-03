@@ -63,6 +63,8 @@ A save is a JSON `SaveFile` (`src/sim/save.ts`):
 
 `id, name, sizeId, litres, lengthCm, water{temperature, ph, gh, ammonia, nitrite, nitrate, oxygen, aob, nob, detritus, cloudiness}, filterId, filterCondition, heaterId, heaterSetpoint, heaterBroken, airStone, lightOn, substrateId, backgroundId, ownedSubstrates[], ownedBackgrounds[], decor[{uid, defId, x, layer, flip, health, size}], broods?[{id, speciesId, motherId, fatherId, count, daysLeft, laidDay}], forSale? (false = customers cannot buy), waterType? (absent = freshwater), algae, glassDirt, food, lastFedMinute, viewActive, lastMaintenance{}`
 
+`floating?` maps floating-plant id to surface coverage (0..1, total at most 1). `storage.floating?` maps floating-plant id to stored portions. Both optional within v2.
+
 `decor[].size` is plant growth (1 = normal, up to the plant's `maxSize`; hardscape stays 1).
 
 ## Rules for changing the schema

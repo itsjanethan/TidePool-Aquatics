@@ -45,6 +45,8 @@ export function helpBody(): HTMLElement {
       'Adults eat small fry. Dense plants help; or move fry to their own tank.',
       'Set "Customers can buy" to No on breeding and grow-out tanks.',
       'Shop-bred lines can be named as strains from the F2 generation. Strains are worth more.',
+      'Floating plants like duckweed spread on their own. Scoop them from the Plants menu before they cover the surface.',
+      'Every fish looks like its genes: watch the tank to spot promising young fish.',
     ),
     sec('Saving',
       'Save, load, export and import at the office PC (top right).',

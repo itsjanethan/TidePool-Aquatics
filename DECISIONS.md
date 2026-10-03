@@ -49,3 +49,19 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 40. **The office PC is the save hub.** Saving is only possible there (the pause menu points to it); load, export and import are there too. Autosave runs each morning at opening (09:00, after the overnight update) and is announced by a small HUD indicator rather than a toast.
 41. **Service worker cache name is stamped per build** and old caches are deleted on activate, so deploys can never serve a stale mix of files.
 42. **Customer profiles capped at 80** (oldest without grievances pruned) and archived ledger notes trimmed. A year-long save dropped from about 1 MB to under 200 KB.
+
+## 2026-10-03: Habitat visual fidelity (v0.3.0)
+
+43. **Procedural phenotype painting with cached sheets** for fish (see ARCHITECTURE.md, Fish rendering architecture). Layered sprites were too costly per fish; palette swaps cannot change silhouettes.
+44. **Phenotype is a pure sim module.** Tests can assert that genes change looks, and the same description drives tank sprites, portraits and the gallery.
+45. **Allele data carries visuals** (`visual`, `value`, `label`, `freq`). New loci list the wild/common allele first so saves made before a locus existed default to it. Supplier genotypes draw alleles by `freq` (albino around 1 in 900).
+46. **Male-only loci** for guppy and endler tail and dorsal traits: females and juveniles carry them hidden. **Additive loci** (metallic) show half strength with one copy.
+47. **Trait value is capped at x2.5** combined, on top of morph, quality, strain and size factors.
+48. **Turn frames**: three yaw frames, flip at the midpoint, minimum width = body thickness so a head-on fish is an oval not a sliver.
+49. **Fish sheets are painted under a 10 ms per-frame budget**; fish appear once painted. Up to 160 sheets cached, least-recently-used evicted after 20 s unused.
+50. **Floating plants are coverage, not items.** Columns ranked by smooth noise give patchy growth that spreads; one portion is 5% of a 60 cm surface. Duckweed grows fastest (about 0.6 per day logistic) so it becomes a chore if ignored, as in real tanks.
+51. **Shade affects the sim and the picture from the same number**: floating shade slows rooted plants (up to 80%) and algae (up to 60%) and darkens the light map.
+52. **Planted soil** gives rooted plants a 1.35x growth multiplier. New substrates: fine gravel, river pebbles, planted soil.
+53. **Starter tanks were redecorated** (new games only) to show the range of looks; the "beautiful tank" goal moved from layout 70 to 85 because two starter tanks now score in the 70s.
+54. **Quality settings never reduce fish detail.** They trade particles, caustics, shadows and plant animation rate.
+55. **Z in the tank view opens the selected fish's details** (tank menu when nothing is selected).

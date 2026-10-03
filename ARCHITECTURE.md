@@ -44,10 +44,20 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `sim/genetics.ts` | GeneticsSystem: genotype expression, morph from genes, inheritance, mutation, trait view, strains (eligibility, founding, inheritance) |
 | `sim/trade.ts` | Trade buyer: wholesale prices for surplus fish (fry discounted, demand aware) |
 | `sim/orderCheck.ts` | Order validation: per line and per tank warnings (cycled, capacity, temperature, pH, hardness, water type, compatibility, group size). Advice only, never blocks |
+| `sim/phenotype.ts` | PhenotypeSystem: fish entity (species, morph, genotype, sex, age, size, pregnancy, health, quality, id) to a plain visual description, plus a quantised cache key. Pure; used by the renderer, portraits and the gallery |
+| `sim/floating.ts` | FloatingPlantSystem: per-tank surface coverage per floating species, logistic growth, shade, nitrate uptake, fry cover, scoop/store/sell/buy |
 | `sim/save.ts` | SaveSystem: versioned serialise/deserialise, migrations, IndexedDB/localStorage/memory storage |
 | `sim/newGame.ts` | Starter shop factory and `SAVE_VERSION` |
 | `data/genetics.ts` | Per-species loci (alleles with dominance ranks) and ordered morph rules |
 | `render/res.ts` | `RES` (2), logical 480x320 and canvas 960x640 sizes |
+| `render/art/fishPainter.ts` | Paints an 11-frame fish sheet (8 swim, 3 yaw/turn) or a portrait from a Phenotype into pixel buffers. Pure (no Phaser) |
+| `render/art/fishArt.ts` | Phaser texture cache for fish sheets: phenotype key, LRU eviction, per-frame painting budget |
+| `render/art/plantArt.ts` | Plant architectures (rosette, rhizome, ribbon clumps with runners, stems, moss) built from growth stage and drawn per frame as lit polygons |
+| `render/art/hardscapeArt.ts` | Hardscape textures painted into pixel buffers |
+| `render/art/substrateArt.ts` | Per-tank contoured substrate textures by grain type, and the contour function decor sits on |
+| `render/floatingLayer.ts` | Floating plant mats, roots and shade drawn from coverage |
+| `render/lighting.ts` | LightMap (depth falloff, floating shade, canopy/wood/cave boxes) and `waterLook` (tannin / green tint, light colour) |
+| `render/quality.ts` | Per-browser visual quality (particles, caustics, shadows, plant animation rate) |
 | `render/scenes/BootScene.ts` | Generates procedural textures |
 | `render/scenes/TitleScene.ts` | Demo aquarium behind the title menu |
 | `render/scenes/ShopScene.ts` | Overworld: tiles, props, player grid movement, customers, interaction routing |
@@ -60,6 +70,7 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `ui/menu.ts` | Keyboard/gamepad/mouse menu component |
 | `ui/hud.ts` | HUD (date, clock, money, stars, goal, interaction prompt) |
 | `ui/screens/*` | Title, pause (settings, save slots, export/import), tank menu (livestock, fish detail, breeding, plants, prices), office PC (save hub, orders, stockroom, stats), till/advice flows, tank view overlay, aquascape editor with previews, day report, help, dev panel |
+| `ui/screens/gallery.ts` | Developer morph gallery (`#gallery=<species>`): every morph and single-trait variant by sex and life stage, plus the swim/turn frame strip |
 | `audio/sfx.ts` | Synthesised WebAudio sound effects, per-browser mute |
 | `ui/touch.ts` | On-screen controls for coarse pointers |
 | `game/GameController.ts` | Game loop timing, input routing, pause rules, saves, scene transitions |
@@ -113,6 +124,17 @@ HTML screens sit in `#ui`, sized exactly over the canvas. `--px` is the CSS pixe
 **Change GameState:** follow `SAVE_SCHEMA.md` (bump `SAVE_VERSION`, add a migration, add a test).
 
 **Add a floor:** add a `FloorLayout` in `data/shopLayout.ts`. `Simulation.layout` and `ShopScene` currently assume `FLOOR1`; generalising this is a Milestone 3 task.
+
+## Fish rendering architecture
+
+Decision (2026-10-03): **procedural phenotype painting with cached sheets**, rather than layered Phaser sprites or palette swaps.
+
+- Why not layered sprites: a fish would need 6 to 10 sprite objects (body, pattern layers, fins, eye), multiplied by up to 70 fish, each animated in sync; batching and depth sorting get expensive and turns are hard to fake.
+- Why not palette swaps: they cannot change silhouette (tail shape, fin length, dorsal, wen, telescope eyes, gravid belly, juvenile proportions), which the genetics need.
+- Chosen: `phenotypeOf(fish)` (pure, testable) produces everything visible; `paintFishSheet` composites the layers in software once per distinct look; `fishArt` caches sheets by a quantised key so identical-looking fish share one texture and a growing fish repaints only at a few size steps. One sprite per fish keeps rendering cheap; the painting cost (about 8 to 40 ms per sheet) is spread with a per-frame budget.
+- Adding a species needs data only (body shape, caudal, features, morphs, genetics with allele visuals). Adding a new kind of visual trait means one `VisualMod` field, its phenotype rule and its painter layer.
+
+Two simulation levels still apply: the persistent fish, plants and floating cover live in GameState; the tank view only renders the active tank, rebuilding its light map twice a second and painting textures on demand.
 
 ## Build targets
 

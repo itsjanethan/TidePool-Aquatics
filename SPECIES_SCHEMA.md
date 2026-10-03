@@ -81,9 +81,17 @@ Patterns: none, neon, stripes, spots, mosaic, bars, tailspot, calico, speckle. `
 
 Grazers also reduce algae in the background simulation.
 
+## Visual anatomy and motion
+
+- `body.caudal`: default tail shape (fork, round, fan, delta, veil, sword, double_sword, lyre, twin, spade).
+- `body.features`: adipose, barbels, scutes, sucker, bristles, upturned, lateral.
+- `body.iris`, `body.finClarity`.
+- `motion`: `{ beatHz, glide, turnRate, inertia, hover }` (defaults by body shape).
+- `morph.visual` (`VisualMod`): extra patterns, metallic, wen, telescope, caudal, fin colour; `maleOnly` limits it to adult males.
+
 ## Genetics (optional, `src/data/genetics.ts`)
 
-`GENETICS[speciesId] = { loci: [{id, name, alleles: [{id, name, dom}]}], rules: [{when: {locusId: alleleId}, morph}] }`. Higher `dom` wins; equal ranks are co-dominant by list order. Rules are checked in order and the last rule is the fallback, so put rare combinations first. Every morph in the species should be reachable by some rule (a test checks this). Species without genetics keep randomly picked morphs.
+`GENETICS[speciesId] = { loci: [{id, name, alleles: [{id, name, dom, freq?, visual?, value?, label?}], additive?, maleOnly?}], rules: [{when: {locusId: alleleId}, morph}] }`. List the wild/common allele first. `visual` is a `VisualMod` applied when the allele is expressed; `value` multiplies price; `label` is added to the fish's name (e.g. "Albino"); `freq` weights supplier stock. Higher `dom` wins; equal ranks are co-dominant by list order. Rules are checked in order and the last rule is the fallback, so put rare combinations first. Every morph in the species should be reachable by some rule (a test checks this). Species without genetics keep randomly picked morphs.
 
 ## Checklist for a new species
 

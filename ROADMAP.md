@@ -46,6 +46,20 @@ Priority order followed: stabilise, player experience, deepen simulation, breedi
 - DONE PWA: offline fonts, no external runtime requests, versioned service worker cache with precache and old-cache cleanup
 - DONE Save v2 with migration from v1; optional-field normalisation
 
+## Milestone 1.6: Habitat visual fidelity (DONE 2026-10-03, v0.3.0)
+
+The aquarium view became a core product feature. See ART_DIRECTION.md.
+
+- DONE Phenotype system: every fish painted from its own genes, sex, age, size, pregnancy, health and quality; siblings differ
+- DONE Modular procedural fish painter: anatomy per body shape, 10 tail shapes, fin rays and translucency, 14 pattern layers, metallic glints, albino, golden, telescope eyes, wen, gravid spot, fry and juvenile states
+- DONE Visible trait loci for all ten species (tails, dorsals, hi-fin, sailfin, lyretail, longfin, metallic, albino, tuxedo, wagtail, golden, veiltail, telescope)
+- DONE Turn frames (yaw) instead of mirroring; organic motion (burst and glide, inertia, hovering, school points, sifting nose-down, glass grazing, feeding lunges); per-individual variation
+- DONE Close-up portraits (tank view and fish card); developer morph gallery and visual genetics dev tools
+- DONE Plant architectures with visible growth stages; Rotala, Cryptocoryne, Java Moss; propagation methods in data
+- DONE Floating plants (duckweed, frogbit, red root floater) with coverage simulation, shade, nitrate uptake, fry cover, scoop, move and sell
+- DONE Hardscape and substrate painters, contoured beds, new substrates (fine gravel, river pebbles, planted soil), richer backgrounds, light map, water look, algae film, quality settings
+- DONE Starter tanks redecorated so each has its own character
+
 ## Milestone 2: Content depth and shop life (NEXT)
 
 Reassessed after Milestone 1.5. Staff, Floor 2 and marine stay later; the core loop now benefits most from variety and texture.
@@ -74,6 +88,14 @@ Reassessed after Milestone 1.5. Staff, Floor 2 and marine stay later; the core l
 - Salinity, specific gravity, top-off, RO water, protein skimmers, live rock cycling
 - Marine livestock and marine staff expertise
 - Specialist marine customers
+
+## Habitat branch: paludariums and vivariums (LATER, after Milestone 4)
+
+A later progression branch that widens the shop into specialist animal keeping. Not to start before the fish systems are mature.
+
+- **Paludariums** (unlocked on a later floor): split habitat with an aquatic zone and a land/emergent zone; emergent plants, roots, rocks, waterfalls or misting; humidity as a new simulated value alongside water; land planting; suitable aquatic and semi-aquatic inhabitants.
+- **Vivariums**: fully terrestrial enclosures with humidity, temperature, substrate, terrestrial plants, climbing structures, hides and lighting; terrestrial inhabitants.
+- Architecture prep already in place: habitat rendering reads light colour and water tint from data; plants are architecture-driven; the simulation separates per-tank systems so new environment values can be added as new systems.
 
 ## Milestone 5+ (LATER)
 
