@@ -8,23 +8,27 @@ import { InputManager, type Action } from '../input/input';
 import { Simulation } from '../sim/simulation';
 import { newGame } from '../sim/newGame';
 import { idleLockReason, type LockKind } from '../sim/idle';
-import { createStorage, SaveManager, MemoryStorage, slotLabel } from '../sim/save';
+import { createStorage, isSandboxState, PrefixedStorage, SANDBOX_PREFIX, SaveManager, MemoryStorage, slotLabel } from '../sim/save';
 import { clockString, dateString, GAME_MINUTES_PER_REAL_SECOND } from '../sim/time';
 import type { ActionResult } from '../sim/tank';
 import type { GameState } from '../sim/types';
 import { UIManager } from '../ui/ui';
 import { Hud } from '../ui/hud';
 import { markObjective } from '../sim/progression';
-import { toggleDevPanel } from '../ui/screens/devPanel';
 import { showDayReport } from '../ui/screens/report';
 import { showProposalPrompt } from '../ui/screens/staff';
 import { openHelp, setHelpController, showIntro } from '../ui/screens/help';
 import { play } from '../audio/sfx';
-import { installTouchControls } from '../ui/touch';
+import { installTouchControls, type TouchControls } from '../ui/touch';
+import type { LayoutManager } from '../ui/layoutManager';
+import type { Layout } from '../ui/viewport';
+import { getPrefs, setPrefs } from '../ui/displayPrefs';
 
-export const DEV_ALLOWED: boolean =
-  import.meta.env.DEV ||
-  (typeof location !== 'undefined' && (new URLSearchParams(location.search).has('dev') || location.hash === '#dev'));
+/**
+ * Developer tools are a build-time switch only: no URL, storage flag or
+ * console API can enable them in the public build (see DECISIONS.md).
+ */
+export const DEV_ALLOWED: boolean = __DEV_TOOLS__;
 
 export const SPEEDS = [1, 2, 4];
 
@@ -38,10 +42,19 @@ export class GameController {
   ui!: UIManager;
   input!: InputManager;
   hud!: Hud;
+  /** Normal play saves. */
   saves: SaveManager = new SaveManager(new MemoryStorage());
+  /** Developer Sandbox saves: a separate key namespace, never listed by Continue. */
+  sandboxSaves: SaveManager = new SaveManager(new MemoryStorage(), true);
   sim: Simulation | null = null;
   /** Handler for input when no UI screen is open (set by the active scene). */
   worldInput: WorldInput | null = null;
+  /** On-screen controls (touch devices only). */
+  touch: TouchControls | null = null;
+  /** Responsive page layout (absent in tests). */
+  layout: LayoutManager | null = null;
+  /** What A and F mean in the store right now (set each frame by the store scene). */
+  worldContext: { a?: string; feed?: boolean } = {};
   inGame = false;
   /** Non-blocking overlays (e.g. tank view HUD) can pause time explicitly. */
   extraPause = 0;
@@ -55,19 +68,34 @@ export class GameController {
   /** Resolves once save storage is ready. */
   ready: Promise<void> = Promise.resolve();
 
-  setup(game: Phaser.Game, uiRoot: HTMLElement): void {
+  setup(game: Phaser.Game, uiRoot: HTMLElement, layout?: LayoutManager): void {
     this.game = game;
+    this.layout = layout ?? null;
     this.ui = new UIManager(uiRoot);
     this.input = new InputManager(window);
     this.hud = new Hud(this);
     setHelpController(this);
     this.input.events.on('press', (a) => this.onPress(a));
-    installTouchControls(this.input);
+    this.touch = installTouchControls(this.input);
+    if (this.layout) {
+      const place = (l: Layout) => this.touch?.place(l);
+      this.layout.onChange(place);
+      if (this.layout.layout) place(this.layout.layout);
+    }
     game.events.on(Phaser.Core.Events.STEP, (_t: number, delta: number) => this.step(delta));
     this.ready = createStorage().then((st) => {
       this.saves = new SaveManager(st);
+      this.sandboxSaves = new SaveManager(new PrefixedStorage(st, SANDBOX_PREFIX), true);
     });
-    if (DEV_ALLOWED) (window as unknown as { __tidepool: GameController }).__tidepool = this;
+    if (__DEV_TOOLS__) (window as unknown as { __tidepool: GameController }).__tidepool = this;
+  }
+
+  /**
+   * True while the player is free to walk the store: no blocking screen and
+   * the store overworld has input. B runs here; everywhere else B is Back.
+   */
+  get walking(): boolean {
+    return this.inGame && !!this.worldInput && !this.ui.isBlocking();
   }
 
   /** Idle Mode: business paused, visuals keep running. */
@@ -120,6 +148,15 @@ export class GameController {
     const dt = Math.min(0.1, deltaMs / 1000);
     this.input.poll(performance.now());
     this.ui.update(dt);
+    if (this.touch) {
+      const top = this.ui.top();
+      this.touch.setContext({
+        walking: this.walking,
+        a: this.worldContext.a,
+        feed: this.worldContext.feed,
+        menuOpen: !!top && !top.el.classList.contains('tank-view-ui'),
+      });
+    }
     if (this.sim && !this.paused) {
       const minutes = dt * GAME_MINUTES_PER_REAL_SECOND * this.state.settings.speed;
       this.sim.advance(minutes);
@@ -129,8 +166,8 @@ export class GameController {
   }
 
   private onPress(a: Action): void {
-    if (a === 'dev' && DEV_ALLOWED && this.inGame) {
-      toggleDevPanel(this);
+    if (__DEV_TOOLS__ && a === 'dev' && this.inGame) {
+      void import('../dev/devPanel').then((m) => m.toggleDevPanel(this));
       return;
     }
     if (a === 'help') {
@@ -138,11 +175,22 @@ export class GameController {
       return;
     }
     if (this.ui.handle(a)) return;
+    if (this.inGame && a === 'map') {
+      this.toggleMap();
+      return;
+    }
     if (this.inGame && a === 'speed') {
       this.cycleSpeed();
       return;
     }
     this.worldInput?.(a);
+  }
+
+  /** Store camera: follow the player up close, or show the whole floor. */
+  toggleMap(): void {
+    const next = getPrefs().camera === 'near' ? 'overview' : 'near';
+    setPrefs({ camera: next });
+    this.ui.toast(next === 'overview' ? 'Map view: whole floor' : 'Close view: following you', 'info', 1600);
   }
 
   cycleSpeed(): void {
@@ -200,12 +248,17 @@ export class GameController {
     this.game.scene.start('Title');
   }
 
+  /** The save namespace for the current game (sandbox games never touch normal saves). */
+  get activeSaves(): SaveManager {
+    return this.sim && isSandboxState(this.sim.state) ? this.sandboxSaves : this.saves;
+  }
+
   async save(slot: string): Promise<boolean> {
     if (!this.sim) return false;
     const prev = this.state.lastSave;
     try {
       this.state.lastSave = { slot, minute: this.state.minute, at: Date.now() };
-      await this.saves.save(slot, this.state);
+      await this.activeSaves.save(slot, this.state);
       return true;
     } catch (e) {
       console.error(e);
@@ -231,7 +284,7 @@ export class GameController {
 
   async load(slot: string): Promise<boolean> {
     try {
-      const st = await this.saves.load(slot);
+      const st = await this.activeSaves.load(slot);
       if (!st) {
         this.ui.toast('That save slot is empty.', 'warn');
         return false;

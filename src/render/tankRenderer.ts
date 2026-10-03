@@ -19,10 +19,13 @@ import { fishInTank } from '../sim/fish';
 import type { DecorItem, FishEntity, GameState, TankState } from '../sim/types';
 import { buildPlant, drawPlant, type PlantModel } from './art/plantArt';
 import { ensureHardscapeTexture } from './art/hardscapeArt';
-import { ensureSubstrate, substrateContour, substratePad } from './art/substrateArt';
+import { ensureMulm, ensureSubstrate, substrateContour, substratePad } from './art/substrateArt';
+import { useTexture } from './textureCache';
+import { reducedMotion } from '../ui/displayPrefs';
 import { FloatingLayer } from './floatingLayer';
 import { LightMap, waterLook, type LightBox } from './lighting';
-import { qualitySettings } from './quality';
+import { AdaptiveQuality, qualitySettings } from './quality';
+import { hardscapeTint, mulmAlpha, pearlRate, stepLightLevel, surfaceFilm } from './stateVisuals';
 import { portionCover } from '../sim/floating';
 import { makeTexture } from './art/pixel';
 import { FishAgent, type HideSpot, type Pellet, type TankWorld } from './fishBehaviour';
@@ -62,6 +65,12 @@ interface Bubble {
   grow: number;
 }
 
+interface Pearl {
+  obj: Phaser.GameObjects.Image;
+  vy: number;
+  wob: number;
+}
+
 interface Speck {
   obj: Phaser.GameObjects.Rectangle;
   depth: number;
@@ -91,7 +100,9 @@ export class TankRenderer {
   agents = new Map<string, FishAgent>();
   selectedId: string | null = null;
   private decorViews: DecorView[] = [];
-  private plantGfx: Phaser.GameObjects.Graphics[] = [];
+  /** Plant drawing: [layer][bucket]. Plants are split into buckets redrawn on alternate frames so the cost is even. */
+  private plantGfx: Phaser.GameObjects.Graphics[][] = [];
+  private plantBuckets = 1;
   private bubbles: Bubble[] = [];
   private specks: Speck[] = [];
   private puffs: Array<{ obj: Phaser.GameObjects.Rectangle; vx: number; vy: number; life: number }> = [];
@@ -125,9 +136,21 @@ export class TankRenderer {
   private waterTint: Phaser.GameObjects.Rectangle;
   private frameNo = 0;
   private q = qualitySettings();
+  private adaptive = new AdaptiveQuality();
+  /** 0..1: lights fade on and off over about a second instead of snapping. */
+  private lightLevel = 1;
+  /** Calm motion (setting or device preference), re-read every second. */
+  private calm = false;
+  private calmT = 0;
+  private pearls: Pearl[] = [];
+  private mulmImage: Phaser.GameObjects.Image | null = null;
+  private reflections: Phaser.GameObjects.Sprite[] = [];
+  private hardscapeTintT = 0;
 
   constructor(public scene: Phaser.Scene, private getState: () => GameState, public tankId: string, private opts: TankRendererOptions = {}) {
     const tank = this.tank;
+    this.lightLevel = tank.lightOn ? 1 : 0;
+    this.calm = reducedMotion();
     this.contour = substrateContour(tankId, W, RES);
     this.lightMap = new LightMap(VIEW.left, VIEW.right, VIEW.surface, VIEW.floor, this.q.lightCells);
     this.world = {
@@ -221,6 +244,10 @@ export class TankRenderer {
     else this.bgImage.setTexture(bgKey);
     if (!this.subImage) this.subImage = this.scene.add.image(VIEW.left, VIEW.floor - 6 * RES - substratePad(RES), subKey).setOrigin(0, 0).setDepth(4);
     else this.subImage.setTexture(subKey);
+    useTexture(this.scene, 'substrate', subKey, 6);
+    const mulmKey = ensureMulm(this.scene, this.tankId, W, RES);
+    useTexture(this.scene, 'mulm', mulmKey, 6);
+    if (!this.mulmImage) this.mulmImage = this.scene.add.image(VIEW.left, VIEW.floor - 6 * RES - substratePad(RES), mulmKey).setOrigin(0, 0).setDepth(4.1).setAlpha(0);
   }
 
   /** Shows a substrate/background without buying it. Pass {} to clear. */
@@ -393,8 +420,9 @@ export class TankRenderer {
     this.decorSignature = this.signature();
     for (const d of this.decorViews) d.image?.destroy();
     this.decorViews = [];
-    for (const g of this.plantGfx) g.destroy();
-    this.plantGfx = [0, 1, 2].map((layer) => this.scene.add.graphics().setDepth(layer === 0 ? 3.5 : layer === 1 ? 15 : 25));
+    for (const g of this.plantGfx.flat()) g.destroy();
+    this.plantBuckets = this.q.plantEvery;
+    this.plantGfx = [0, 1, 2].map((layer) => Array.from({ length: this.plantBuckets }, () => this.scene.add.graphics().setDepth(layer === 0 ? 3.5 : layer === 1 ? 15 : 25)));
     const scale = decorScale(t);
     const hides: HideSpot[] = [];
     const boxes: LightBox[] = [];
@@ -424,6 +452,7 @@ export class TankRenderer {
     this.world.hides = hides;
     this.lightBoxes = boxes;
     this.lightT = 0;
+    this.hardscapeTintT = 0;
   }
 
   /** Shows a translucent preview of a decor item; null clears it. */
@@ -542,6 +571,19 @@ export class TankRenderer {
     beginFishFrame();
     this.time += dt;
     const t = this.tank;
+    // Auto quality steps down after a sustained slow stretch (never up).
+    const stepped = this.adaptive.sample(dt * 1000);
+    if (stepped) this.q = qualitySettings(stepped);
+    this.calmT -= dt;
+    if (this.calmT <= 0) {
+      this.calmT = 1;
+      this.calm = reducedMotion();
+    }
+    // Lights ramp over about a second, like a real LED unit.
+    this.lightLevel = stepLightLevel(this.lightLevel, t.lightOn, dt);
+    const lit = this.lightLevel;
+    // Calm motion: slower water and light, smaller plant sway (fish behave the same).
+    const mt = this.calm ? 0.35 : 1;
     if (this.signature() !== this.decorSignature) this.rebuildDecor();
     this.applyLook();
     this.rebuildEquipment();
@@ -592,12 +634,12 @@ export class TankRenderer {
 
     // Soft fish shadows on the substrate (stronger for fish near the bottom).
     this.shadowGfx.clear();
-    if (t.lightOn && this.q.fishShadows) {
+    if (lit > 0.05 && this.q.fishShadows) {
       const waterH = VIEW.floor - VIEW.surface;
       for (const a of this.agents.values()) {
         if (!a.fish.alive) continue;
         const above = clamp((VIEW.floor - a.y) / waterH, 0, 1);
-        const alpha = (0.22 * (1 - above) * (1 - above) + 0.03) * this.lightMap.at(a.x, VIEW.floor - 10 * RES);
+        const alpha = (0.22 * (1 - above) * (1 - above) + 0.03) * this.lightMap.at(a.x, VIEW.floor - 10 * RES) * lit;
         const w = a.len * (0.75 - above * 0.3);
         const sx = a.x + above * 12 * RES;
         this.shadowGfx.fillStyle(0x0a1418, alpha).fillEllipse(sx, this.baseYAt(1, sx) + RES, w, Math.max(2 * RES, w * 0.16));
@@ -613,14 +655,20 @@ export class TankRenderer {
       this.lightT = 0.5;
       this.lightMap.rebuild(t.lightOn, (x) => this.floating.shadeAt(x), this.lightBoxes);
     }
-    this.floating.draw(this.time, this.world.flow, t.lightOn, this.q.rootDetail, this.floatPreview);
+    this.floating.draw(this.time * (this.calm ? 0.5 : 1), this.world.flow * mt, t.lightOn, this.q.rootDetail, this.floatPreview);
 
-    // Plants.
-    if (this.frameNo % this.q.plantEvery === 0) {
-      this.plantGfx.forEach((g) => g.clear());
+    // Plants: one bucket per frame, so each plant redraws every plantEvery
+    // frames and the work is spread evenly (no alternate heavy frames).
+    if (this.plantBuckets !== this.q.plantEvery) this.rebuildDecor();
+    {
+      const b = this.frameNo % this.plantBuckets;
+      for (const layer of this.plantGfx) layer[b].clear();
       const light = (x: number, y: number) => this.lightMap.at(x, y);
+      const opts = { time: this.time * (this.calm ? 0.5 : 1), flow: this.world.flow * mt, surfaceY: VIEW.surface, light };
+      let i = 0;
       for (const d of this.decorViews) {
-        if (d.plant) drawPlant(this.plantGfx[d.layer], d.plant, d.x, d.baseY, { time: this.time, flow: this.world.flow, surfaceY: VIEW.surface, light, layer: d.layer });
+        if (!d.plant) continue;
+        if (i++ % this.plantBuckets === b) drawPlant(this.plantGfx[d.layer][b], d.plant, d.x, d.baseY, { ...opts, layer: d.layer });
       }
     }
 
@@ -655,10 +703,12 @@ export class TankRenderer {
       }
     }
 
+    this.updatePearls(dt, t, lit);
+
     // Suspended particles with parallax drift. How many show depends on the
     // water: a clean, young tank is nearly clear; detritus and cloudiness add more.
     const murk = clamp(0.25 + t.water.detritus / 6 + t.water.cloudiness * 1.5, 0, 1);
-    const visibleSpecks = Math.round(this.specks.length * murk);
+    const visibleSpecks = Math.round(Math.min(this.specks.length, this.q.specks) * murk);
     for (const [i, p] of this.specks.entries()) {
       const o = p.obj;
       o.setVisible(i < visibleSpecks);
@@ -676,22 +726,34 @@ export class TankRenderer {
     this.rays.forEach((r, i) => {
       const shade = this.floating.shadeAt(r.x + 20 * RES);
       r.setTint(look.light);
-      r.setAlpha(t.lightOn ? (0.55 + Math.sin(this.time * 0.6 + i * 1.7) * 0.35) * (1 - shade * 0.9) : 0);
-      r.x += Math.sin(this.time * 0.25 + i) * 0.08 * RES;
+      const sway = this.calm ? 0 : Math.sin(this.time * 0.6 + i * 1.7) * 0.35;
+      r.setAlpha((0.55 + sway) * (1 - shade * 0.9) * lit);
+      if (!this.calm) r.x += Math.sin(this.time * 0.25 + i) * 0.08 * RES;
     });
-    const cOn = (t.lightOn ? 1 : 0.15) * (this.q.caustics ? 1 : 0) * Math.min(1, meanLight * 1.2);
+    const cOn = (0.15 + 0.85 * lit) * (this.q.caustics ? 1 : 0) * Math.min(1, meanLight * 1.2);
+    const ct = this.time * (this.calm ? 0.25 : 1);
     for (const c of this.caustics) c.setTint(look.light);
     this.waterTint.setFillStyle(look.tint, look.tintAlpha);
-    this.caustics[0].tilePositionX = this.time * 7 * RES;
-    this.caustics[0].tilePositionY = this.time * 3 * RES;
-    this.caustics[1].tilePositionX = -this.time * 5 * RES;
-    this.caustics[1].tilePositionY = this.time * 4 * RES;
-    this.caustics[2].tilePositionX = this.time * 4 * RES;
+    this.caustics[0].tilePositionX = ct * 7 * RES;
+    this.caustics[0].tilePositionY = ct * 3 * RES;
+    this.caustics[1].tilePositionX = -ct * 5 * RES;
+    this.caustics[1].tilePositionY = ct * 4 * RES;
+    this.caustics[2].tilePositionX = ct * 4 * RES;
     this.caustics[0].setAlpha(0.3 * cOn * (1 - t.water.cloudiness * 0.7));
     this.caustics[1].setAlpha(0.22 * cOn * (1 - t.water.cloudiness * 0.7));
     this.caustics[2].setAlpha(0.025 * cOn);
 
-    this.drawSurface(t);
+    this.drawSurface(t, lit);
+    this.updateReflections(lit);
+
+    // Mulm settles on the bed with detritus; a gravel vac clears it.
+    this.mulmImage?.setAlpha(mulmAlpha(t.water.detritus));
+    // Hardscape: shade from the light map and a green-brown film as algae grows.
+    this.hardscapeTintT -= dt;
+    if (this.hardscapeTintT <= 0) {
+      this.hardscapeTintT = 0.5;
+      this.tintHardscape(t, lit);
+    }
 
     if (this.heaterGlow) {
       const heating = !t.heaterBroken && t.water.temperature < t.heaterSetpoint - 0.1;
@@ -702,7 +764,7 @@ export class TankRenderer {
     this.overlays.cloud.setFillStyle(0xdfe8e0, clamp(t.water.cloudiness * 0.55, 0, 0.6));
     this.overlays.algae.setAlpha(clamp(t.algae * 0.95, 0, 0.95));
     this.overlays.dirt.setAlpha(clamp(t.glassDirt * 0.9, 0, 0.9));
-    this.overlays.night.setFillStyle(0x0a1430, t.lightOn ? 0 : 0.45);
+    this.overlays.night.setFillStyle(0x0a1430, 0.45 * (1 - lit));
 
     // Selection marker.
     this.selectRing.clear();
@@ -718,21 +780,115 @@ export class TankRenderer {
     }
   }
 
-  private drawSurface(t: TankState): void {
+  private drawSurface(t: TankState, lit: number): void {
     const g = this.surfaceGfx;
     g.clear();
     const y0 = VIEW.surface - 3 * RES;
+    const mix = (on: number, off: number) => off + (on - off) * lit;
     // Air gap above the water.
     g.fillStyle(0x0e1420, 0.55).fillRect(VIEW.left, VIEW.frameTop, W, y0 - VIEW.frameTop);
     const step = 4 * RES;
+    // Calmer water with reduced motion; choppier with more surface agitation.
+    const amp = (this.calm ? 0.3 : 1) * (0.7 + Math.min(0.6, this.world.flow * 0.4));
+    const tt = this.time * (this.calm ? 0.5 : 1);
+    // Surface film: protein/oil scum builds up with detritus when little stirs the surface.
+    const film = surfaceFilm(t.water.detritus, this.world.flow);
     for (let x = VIEW.left; x < VIEW.right; x += step) {
-      const wave = Math.sin(x * 0.012 + this.time * 1.6) * 1.2 * RES + Math.sin(x * 0.005 - this.time * 0.9) * RES;
+      const wave = (Math.sin(x * 0.012 + tt * 1.6) * 1.2 * RES + Math.sin(x * 0.005 - tt * 0.9) * RES) * amp;
       const yy = Math.round(y0 + wave);
-      g.fillStyle(0xd8f4ff, t.lightOn ? 0.55 : 0.2).fillRect(x, yy, step, RES);
-      g.fillStyle(0xffffff, t.lightOn ? 0.18 : 0.06).fillRect(x, yy + RES, step, 2 * RES);
+      g.fillStyle(0xd8f4ff, mix(0.55, 0.2)).fillRect(x, yy, step, RES);
+      g.fillStyle(0xffffff, mix(0.18, 0.06)).fillRect(x, yy + RES, step, 2 * RES);
       // Underside reflection band.
-      g.fillStyle(0x9fd8ee, t.lightOn ? 0.1 : 0.03).fillRect(x, yy + 3 * RES, step, 5 * RES);
-      if ((x / step + Math.floor(this.time * 3)) % 9 === 0) g.fillStyle(0xffffff, t.lightOn ? 0.7 : 0.2).fillRect(x + RES, yy, 2 * RES, RES);
+      g.fillStyle(0x9fd8ee, mix(0.1, 0.03)).fillRect(x, yy + 3 * RES, step, 5 * RES);
+      if ((x / step + Math.floor(tt * 3)) % 9 === 0) g.fillStyle(0xffffff, mix(0.7, 0.2)).fillRect(x + RES, yy, 2 * RES, RES);
+      if (film > 0.02) {
+        // Patchy, slowly drifting, faintly iridescent.
+        const n = Math.sin(x * 0.021 + tt * 0.15) + Math.sin(x * 0.047 - tt * 0.1);
+        if (n > 0.4 - film) {
+          const hue = [0xc8b8e8, 0xb8e0d0, 0xe8d8a8][Math.floor(x / step) % 3];
+          g.fillStyle(hue, film * 0.35 * (0.4 + 0.6 * lit)).fillRect(x, yy + RES, step, RES);
+          g.fillStyle(0xd8d0b0, film * 0.18).fillRect(x, yy + 2 * RES, step, RES);
+        }
+      }
+    }
+  }
+
+  /**
+   * Oxygen pearls: healthy plants under light photosynthesise hard enough to
+   * release streams of tiny bubbles from their leaves. Only plants in good
+   * health pearl, only while the lights are up, and less when the water has
+   * almost no nitrate to feed them.
+   */
+  private updatePearls(dt: number, t: TankState, lit: number): void {
+    const max = this.q.pearls;
+    if (max > 0 && lit > 0.8 && this.pearls.length < max) {
+      for (const d of this.decorViews) {
+        if (!d.plant || this.pearls.length >= max) continue;
+        if (d.item.health <= 0.6) continue;
+        const px = d.x + vr.range(-0.35, 0.35) * d.plant.width;
+        const py = d.baseY - d.plant.height * vr.range(0.3, 0.95);
+        const light = this.lightMap.at(px, py);
+        const rate = pearlRate(d.item.health, t.water.nitrate, light, d.item.size ?? 1, lit);
+        if (!vr.chance(rate * dt)) continue;
+        const depth = d.layer === 0 ? 3.6 : d.layer === 1 ? 15.5 : 25.5;
+        const obj = this.scene.add.image(px, py, 'bubble').setDepth(depth).setScale(vr.range(0.16, 0.28)).setAlpha(d.layer === 0 ? 0.6 : 0.85);
+        this.pearls.push({ obj, vy: -vr.range(10, 18) * RES, wob: vr.range(0, 6) });
+      }
+    }
+    for (let i = this.pearls.length - 1; i >= 0; i--) {
+      const p = this.pearls[i];
+      p.obj.y += p.vy * dt;
+      p.obj.x += Math.sin(this.time * 5 + p.wob) * 3 * RES * dt;
+      if (p.obj.y < VIEW.surface + RES || (lit < 0.3 && vr.chance(dt * 2))) {
+        p.obj.destroy();
+        this.pearls.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * Fish near the top mirror faintly on the underside of the surface (seen
+   * from below, the surface reflects). High quality only; a small pool of
+   * sprites follows the fish closest to the surface.
+   */
+  private updateReflections(lit: number): void {
+    const n = this.q.reflections;
+    while (this.reflections.length > n) this.reflections.pop()!.destroy();
+    if (!n) return;
+    const y0 = VIEW.surface - 3 * RES;
+    const band = 30 * RES;
+    const near = [...this.agents.values()].filter((a) => a.fish.alive && a.y - y0 < band && a.sprite.visible).sort((a, b) => a.y - b.y).slice(0, n);
+    for (let i = 0; i < n; i++) {
+      const a = near[i];
+      let r = this.reflections[i];
+      if (!a) {
+        r?.setVisible(false);
+        continue;
+      }
+      if (!r) {
+        r = this.scene.add.sprite(0, 0, a.sprite.texture.key).setDepth(27.5).setFlipY(true);
+        this.reflections[i] = r;
+      }
+      const d = Math.max(0, a.y - y0);
+      if (r.texture.key !== a.sprite.texture.key) r.setTexture(a.sprite.texture.key);
+      r.setFrame(a.sprite.frame.name);
+      r.setOrigin(a.sprite.originX, a.sprite.originY);
+      r.setFlipX(a.sprite.flipX);
+      r.setScale(a.sprite.scaleX, a.sprite.scaleY * 0.45);
+      r.setRotation(-a.sprite.rotation);
+      r.setPosition(a.x, y0 + 2 * RES + d * 0.25);
+      r.setTint(0xbfe6f0);
+      r.setAlpha((1 - d / band) * 0.4 * (0.3 + 0.7 * lit));
+      r.setVisible(true);
+    }
+  }
+
+  /** Hardscape shade from the light map, plus a film of algae as the tank's algae grows. */
+  private tintHardscape(t: TankState, lit: number): void {
+    for (const d of this.decorViews) {
+      if (!d.image) continue;
+      const light = this.lightMap.at(d.x, d.baseY - d.image.displayHeight * 0.5);
+      d.image.setTint(hardscapeTint(d.layer, light, t.algae, lit));
     }
   }
 
@@ -771,6 +927,10 @@ export class TankRenderer {
     this.floating.destroy();
     for (const p of this.puffs) p.obj.destroy();
     this.puffs = [];
+    for (const p of this.pearls) p.obj.destroy();
+    this.pearls = [];
+    for (const r of this.reflections) r.destroy();
+    this.reflections = [];
   }
 }
 

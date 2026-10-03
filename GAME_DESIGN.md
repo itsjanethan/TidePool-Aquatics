@@ -136,6 +136,7 @@ Seven dimensions: Livestock Quality, Fish Welfare, Customer Service, Cleanliness
 - Demand: selling many of one species saturates demand (browsers less likely to buy it) until it recovers over days.
 - Trade buyer: takes surplus fish (35% of value, fry less) and potted plants (50%) at any time.
 - Tanks marked "Customers can buy: No" are never sold from (breeding and grow-out tanks).
+- Individual fish can be marked "Not for sale" (breeders, favourites): never reserved, sold at the till, sold by staff or sold to the trade buyer, wherever they are moved. Their fry are for sale as usual.
 
 ## Saving
 

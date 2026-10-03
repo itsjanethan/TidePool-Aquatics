@@ -3,16 +3,16 @@
  * art and genetics can be checked at a glance (and by headless screenshots:
  * open the game with #gallery=<speciesId>).
  */
-import type { GameController } from '../../game/GameController';
-import { GENETICS } from '../../data/genetics';
-import { SPECIES, getSpecies } from '../../data/species';
-import { genotypeForMorph } from '../../sim/genetics';
-import { phenotypeFrom, type PhenotypeInput } from '../../sim/phenotype';
-import { Rng } from '../../core/rng';
-import { paintFishPortrait, paintFishSheet, SWIM_FRAMES } from '../../render/art/fishPainter';
-import type { Action } from '../../input/input';
-import type { Screen } from '../ui';
-import { h } from '../dom';
+import type { GameController } from '../game/GameController';
+import { GENETICS } from '../data/genetics';
+import { SPECIES, getSpecies } from '../data/species';
+import { genotypeForMorph } from '../sim/genetics';
+import { phenotypeFrom, type PhenotypeInput } from '../sim/phenotype';
+import { Rng } from '../core/rng';
+import { paintFishPortrait, paintFishSheet, SWIM_FRAMES } from '../render/art/fishPainter';
+import type { Action } from '../input/input';
+import type { Screen } from '../ui/ui';
+import { h } from '../ui/dom';
 
 export interface GalleryCell {
   label: string;

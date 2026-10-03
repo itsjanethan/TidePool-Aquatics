@@ -13,10 +13,24 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 6. **Events v1.** Heatwave, power cut, rare shipment offer, each a choice. Fire via dev panel and naturally at low rates.
 7. **Plant depth.** Light level per tank, fertiliser dry good, runners and rhizome splits as propagation methods, three more plant species.
 8. **Staff depth.** Dialogue pools per personality, training at the PC, morale and breaks, receiving deliveries as a Stock task, a staff room on a floor.
-9. **Marine depth.** Alkalinity and calcium, corals with light needs, cleaner shrimp, quarantine and acclimation for marine deliveries.
-10. **Accessibility pass.** Text size option, high-contrast UI, reduced motion in the tank view, key rebinding.
+9. **Marine depth.** Quarantine and acclimation for marine deliveries, specialist marine customers, marine staff expertise. (Corals, alkalinity and calcium, and invertebrates are the separate later expansion in the Backlog.)
+10. **Accessibility pass.** High-contrast UI, key rebinding (text size and a readable font shipped with the mobile layout; reduced motion shipped with the aquarium visuals pass).
 
 ## Backlog
+
+Later expansions, in this order (roadmap only; see ROADMAP.md, do not start before Milestones 2 to 4):
+
+1. Corals and aquatic invertebrates (freshwater shrimp, snails and crayfish; marine inverts and corals; alkalinity, calcium and magnesium; reef lighting and flow; fragging).
+2. Vivariums, paludariums and related habitats (frogs and other amphibians, spiders, reptiles, land invertebrates; humidity, misting, temperature gradients, UVB, ventilation; feeder insects).
+3. Ant keeping as a dedicated expansion (formicaria, colony growth, brood, foraging, hibernation).
+
+Follow-ups from 0.5:
+
+- Check the mobile layout on real phones (iOS Safari and Android Chrome): browser bars, notches, on-screen keyboard, rotation, multi-touch d-pad plus B, performance of the tank view.
+- Measure the tank view on real devices (phone and desktop GPU) and tune Auto quality's threshold (34 ms median) from those numbers.
+- Pinch to zoom the store camera (map view covers it for now).
+
+Other:
 
 - Review the three high-severity npm audit findings in the build-only `vite-plugin-singlefile -> micromatch -> braces` chain (2026-10-03). Validate a compatible remedy in a separate PR; the suggested force fix downgrades the plugin to 0.9.0.
 
@@ -40,6 +54,12 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 - The single-file build cannot register the service worker (by design); use the static `dist/` build for offline play.
 
 ## Done
+
+- 2026-10-03: Not for sale for individual fish: enforced in `sellable`, `completeSale` and `sellFishToTrade`; protecting releases reservations and updates the order; fish details toggle, badges in livestock lists and the fish card, bulk select with feedback; unprotect always confirms. Tests in `tests/protection.test.ts`.
+- 2026-10-03: Aquarium visuals tied to tank state (pearling, mulm, surface film, hardscape shade and algae, light ramp, surface reflections on High), Auto quality (steps down only), reduced motion setting, staggered plant redraws, bounded per-tank texture caches. Profiling tools and before/after numbers in TESTING.md (headless, CPU-rasterised; no real-device numbers). Tests in `tests/visuals.test.ts`.
+- 2026-10-03: Mobile layout: full-screen responsive game rectangle with safe areas, controls below (portrait) or beside (landscape), UI unit separate from canvas (16 px minimum text, 44 px targets, text size and readable font settings), menus as sheets, store camera following the player with map view, immersive tank view, tap to move, contextual A/B/F labels, store floor detail. Tests in `tests/layout.test.ts`; emulated checks in `scripts/mobile-check.mjs`. Not yet checked on a real phone.
+- 2026-10-03: Hold B to run (2x, store only; on-screen B, gamepad B, keyboard X, Shift kept), contextual touch B label, "Hold B to run" hint, held input cleared on blur/hidden/pagehide, multi-touch d-pad with pointer capture. Tests in `tests/input.test.ts`.
+- 2026-10-03: Developer Sandbox (local only) with presets, separate save namespace and build-time removal of all developer tools from the public build (verified in `npm run check`).
 
 - 2026-10-03: Pages timeout blocker fixed with a per-test 30-second limit; all 120 tests and the full Node 22 Pages-path check/build pass. Added pull-request checks and MAINTAINING.md; deployment remains pending merge and successful Pages jobs.
 

@@ -7,7 +7,7 @@ import { Emitter } from '../core/events';
 export type Action =
   | 'up' | 'down' | 'left' | 'right'
   | 'confirm' | 'back' | 'menu'
-  | 'tab' | 'tabPrev' | 'feed' | 'run' | 'dev' | 'speed' | 'remove' | 'help';
+  | 'tab' | 'tabPrev' | 'feed' | 'run' | 'dev' | 'speed' | 'remove' | 'help' | 'map';
 
 const KEYMAP: Record<string, Action> = {
   ArrowUp: 'up', KeyW: 'up',
@@ -23,11 +23,12 @@ const KEYMAP: Record<string, Action> = {
   KeyT: 'speed',
   Delete: 'remove', KeyR: 'remove',
   KeyH: 'help', F1: 'help',
+  KeyM: 'map',
 };
 
 // Standard gamepad mapping.
 const PAD_BUTTONS: Record<number, Action> = {
-  0: 'confirm', 1: 'back', 2: 'run', 3: 'feed', 4: 'tabPrev', 5: 'tab', 6: 'help', 8: 'speed', 9: 'menu', 11: 'help',
+  0: 'confirm', 1: 'back', 2: 'run', 3: 'feed', 4: 'tabPrev', 5: 'tab', 6: 'help', 8: 'speed', 9: 'menu', 10: 'map', 11: 'help',
   12: 'up', 13: 'down', 14: 'left', 15: 'right',
 };
 
@@ -37,6 +38,8 @@ export const KEY_REPEAT_MIN_MS = 70;
 
 export interface InputEvents {
   press: Action;
+  /** Every held input was released (focus lost, tab hidden, page hidden). */
+  cleared: null;
 }
 
 export class InputManager {
@@ -45,13 +48,42 @@ export class InputManager {
   private padHeld = new Set<Action>();
   private repeatAt = new Map<Action, number>();
   private lastKeyEmit = new Map<Action, number>();
-  lastDevice: 'keyboard' | 'gamepad' | 'pointer' = 'keyboard';
+  lastDevice: 'keyboard' | 'gamepad' | 'pointer' =
+    typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 'pointer' : 'keyboard';
 
   constructor(target: Window = window) {
     target.addEventListener('keydown', (e) => this.onKey(e, true));
     target.addEventListener('keyup', (e) => this.onKey(e, false));
-    target.addEventListener('blur', () => this.held.clear());
+    // Losing focus, hiding the tab or leaving the page releases everything so
+    // nothing stays "stuck" held (a run or a walk that never ends).
+    target.addEventListener('blur', () => this.clearAll());
+    target.addEventListener('pagehide', () => this.clearAll());
+    target.document?.addEventListener('visibilitychange', () => {
+      if (target.document.visibilityState === 'hidden') this.clearAll();
+    });
     target.addEventListener('pointerdown', () => (this.lastDevice = 'pointer'));
+  }
+
+  /**
+   * Releases every held key, touch button and gamepad button. Gamepad buttons
+   * that are still physically down afterwards count as held again on the next
+   * poll, but do not fire a fresh press.
+   */
+  clearAll(): void {
+    this.held.clear();
+    this.virtualHeld.clear();
+    this.padHeld.clear();
+    this.padResync = true;
+    this.events.emit('cleared', null);
+  }
+
+  /**
+   * Run modifier for walking in the store: Shift / gamepad X (the dedicated
+   * run action) or holding B (keyboard X, gamepad B, on-screen B). B only
+   * means "run" where the caller asks for it; everywhere else it stays Back.
+   */
+  runHeld(): boolean {
+    return this.isHeld('run') || this.isHeld('back');
   }
 
   private onKey(e: KeyboardEvent, down: boolean): void {
@@ -79,6 +111,7 @@ export class InputManager {
   }
 
   private virtualHeld = new Set<Action>();
+  private padResync = false;
 
   isHeld(a: Action): boolean {
     return this.held.has(a) || this.padHeld.has(a) || this.virtualHeld.has(a);
@@ -119,6 +152,12 @@ export class InputManager {
       if (ax > 0.5) next.add('right');
       if (ay < -0.5) next.add('up');
       if (ay > 0.5) next.add('down');
+    }
+    if (this.padResync) {
+      // After clearAll: adopt the current pad state silently (no presses).
+      this.padResync = false;
+      this.padHeld = next;
+      return;
     }
     for (const a of next) {
       if (!this.padHeld.has(a)) {

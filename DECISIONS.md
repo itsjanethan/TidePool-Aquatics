@@ -21,7 +21,7 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 15. **Sold fish are deleted from the save** unless they have offspring (kept for lineage). Keeps saves small over long games.
 16. **Customers inside the shop are not saved.** Reloading empties the shop; reserved fish are released. Simpler and avoids half-finished transactions.
 17. **Autosave at 09:00 each day** (after the overnight simulation and daily report) in slot `auto`, plus three manual slots and JSON export/import.
-18. **Developer panel gating:** enabled in dev builds or with `?dev=1`. Any use sets `flags.devUsed`. A URL flag in production is acceptable because it is undiscoverable in normal play and useful for testers.
+18. **Developer panel gating:** enabled in dev builds or with `?dev=1`. Any use sets `flags.devUsed`. A URL flag in production is acceptable because it is undiscoverable in normal play and useful for testers. (Superseded 2026-10-03: developer tools are build-time only, see below.)
 19. **Behind-the-counter tiles are staff only** for customers, so they do not crowd the till side.
 20. **Reputation gains have strong diminishing returns** (`1.2 x (1 - r/100)^2`). Early stars come quickly, the top end is slow, leaving room for long-term progression.
 21. **Overworld tanks hide fish beyond 14 dots.** Purely visual cap.
@@ -87,3 +87,43 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
+
+## 2026-10-03: Not for sale (individual fish)
+
+- **Enforced in the simulation, not the menus.** `sellable()` excludes protected fish (covers browsing, advice sales and stock lists), `completeSale()` keeps any protected fish that reaches a basket and takes its price off the total (covers the player and sales staff at the till), and `sellFishToTrade()` skips them. There is no other automatic selling.
+- **Protecting releases reservations.** The fish comes out of the customer's basket with a short "not for sale?" thought and a small satisfaction dip; a customer at the till with nothing left walks out without counting as a lost customer.
+- **Removing protection always asks.** Single fish and bulk both confirm, and the toast says what changed. Nothing else clears the flag.
+- **An optional field, no save version bump.** `notForSale` is absent on older saves (unprotected), survives moves, saves and export/import, and is never copied to fry. Allowed in Idle Mode, since it is not a transaction.
+- Tank-level "Customers can buy" stays as it was; the two combine (a fish is buyable only if both allow it).
+
+## 2026-10-03: Aquarium visuals pass
+
+- **Every new effect reads the simulation; none is decoration for its own sake.** Mulm on the bed follows detritus (a gravel vac clears it). Surface film needs detritus and a still surface (filter flow, air stone). Oxygen pearls come only from healthy plants (health above 0.6) under light, fewer when there is no nitrate. Hardscape darkens under floating cover and canopies (the light map) and greens with the tank's algae. Lights ramp over about a second when the tank's light switches. Fish near the top mirror on the underside of the surface (High only). The formulas live in `render/stateVisuals.ts` and are unit tested.
+- **Pay for the effects first.** Profiling showed plant redraws (procedural Graphics every frame) were most of the update time in planted and capped tanks. Plants now redraw every 2 frames at Standard and every 3 at Low, in staggered buckets so the work is even across frames. At Standard that more than pays for the new effects.
+- **Auto quality is the new default and only steps down.** It starts at Standard, ignores the first 2.5 seconds of a tank view (texture painting), and after a 3-second window with a median frame over 34 ms drops one level for the session. It never steps up by itself, to avoid oscillation; choosing a level turns it off. Fish detail is never a quality knob.
+- **Reduced motion is a device setting** (Follow device / Reduced / Full). Reduced: calmer surface and caustics, no ray sway, slower and smaller plant and root sway, no CSS animations, the store camera cuts instead of gliding. Fish behaviour is content and stays the same.
+- **Per-tank generated textures are bounded.** Substrate beds and mulm keep the 6 most recent tanks (the current one is never evicted); fish sheets already had an LRU of 160. Visiting every tank no longer keeps every bed in memory.
+- **No photorealism claims.** This is a pixel-art game; the goal is a tank that reads its own state at a glance.
+
+## 2026-10-03: Mobile layout
+
+- **The game fills the screen; cameras decide what to show.** The fixed 3:2 stage scaled to fit made phones show a small strip of game with tiny text. The canvas now fills the game rectangle and each scene fits its camera: the store follows the player up close, the tank view fits the tank, the title tank covers the screen. Resolution-independent UI was the bigger win than any single CSS tweak.
+- **UI size is separate from canvas size.** `--px` is now a UI unit with a floor (18 px body text, 16 px smallest) and a per-device text-size setting. Desktop at the original 960x640 keeps the old scale.
+- **Controls get their own space on phones.** Portrait: a band below the game. Landscape: columns either side. The game is never covered by the d-pad. Screens too small to reserve space fall back to translucent overlay controls. The tank view on touch devices is immersive because it already has its own buttons.
+- **Store camera closeness: 2.25 CSS px per world pixel target on touch, rounded to whole canvas pixels** (2.5 at DPR 2). About 10 tiles across in portrait. Map view shows the whole floor. Desktop at 960x640 is unchanged (whole floor).
+- **Tap to move is on by default for touch and pen, never for mouse**, uses the same walk grid and step logic as the d-pad, and is cancelled by any direction input. It is a per-device setting.
+- **Device settings live in localStorage, not the save.** Text size, font, camera and tap to move describe the screen, not the shop; they carry across saves and new games.
+- **Store detail is painted into the floor layer only** (queue markings, staff-only hatching, contact shadows, drains, notice board). The walk grid comes from tiles and props, so paths and saves are unaffected.
+
+## 2026-10-03: Hold B to run
+
+- **B runs only while walking the store.** Holding B (on-screen, gamepad B, keyboard X) or the existing Shift / gamepad X doubles the player's pace: one tile per 0.085 s instead of 0.17 s. The press still reaches menus first, so B remains Back and Cancel everywhere else; in the overworld a `back` press had no meaning, so nothing is lost. Running changes only the player's step time, never the simulation clock, and movement stays one grid tile at a time (no diagonals).
+- **Held input never sticks.** Blur, pagehide and a hidden tab clear every held source. Touch uses pointer capture per finger so slight thumb drift does not drop a run, and every end path (up, cancel, lost capture, a lift elsewhere) releases.
+- **The hint lives in the prompt line.** "Hold B to run" ("Hold Shift or X to run" on a keyboard) appears when nothing is in front of the player, until they first run on that device. Stored in localStorage as a convenience, not in the save.
+
+## 2026-10-03: Developer Sandbox and build separation
+
+- **Developer tools are a build-time switch.** `__DEV_TOOLS__` is `true` only in Vite `development` and `sandbox` modes. Everything developer-only lives in `src/dev/` and is reached only through `if (__DEV_TOOLS__)` dynamic imports, so the production build drops it. The old `?dev=1` / `#dev` URL flags and the unconditional `window.__tidepool` hook are gone. `scripts/verify-public-build.mjs` is part of `npm run check`.
+- **The sandbox is a fixture, not a cheat mode.** `createSandbox()` builds the game with the real systems (expansions bought, staff hired, decor placed with `addDecor`, fish created with `createFish`), so validation rules still apply; presets refuse the wrong water type. Deterministic seed 4242.
+- **Separate save namespace.** Sandbox games carry `flags.sandbox` and are saved under the `sandbox:` key prefix (`PrefixedStorage`). Each `SaveManager` refuses games from the other namespace and hides them from its list, so Continue can never load a sandbox. Importing a sandbox file into normal play shows a warning and permanently sets `devUsed`.
+- **No hosted developer build.** The repository is public, so source visibility cannot be controlled; what matters is that the hosted public game contains no developer tools. `dist-sandbox/` is git-ignored and never deployed. Remote developer access, if ever needed, must use hosting with server-enforced authentication, not a secret URL or client-side password.

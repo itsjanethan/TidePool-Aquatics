@@ -2,7 +2,8 @@
 import type { GameController } from '../../game/GameController';
 import { AUTOSAVE_TEXT, SPEEDS } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
-import { SLOTS, slotLabel } from '../../sim/save';
+import { adoptSandboxImport, isSandboxState, SLOTS, slotLabel } from '../../sim/save';
+import type { GameState } from '../../sim/types';
 import { clockString, dateString } from '../../sim/time';
 import { h } from '../dom';
 import type { MenuItem } from '../menu';
@@ -10,8 +11,9 @@ import { showHelp } from './help';
 import { APP_VERSION } from '../../version';
 import { copyPlaytestReport } from './playtest';
 import { isMuted, setMuted } from '../../audio/sfx';
-import { getQuality, QUALITY_LEVELS, setQuality } from '../../render/quality';
+import { getQuality, QUALITY_LEVELS, qualityLabel, setQuality } from '../../render/quality';
 import { openGoals, reputationEl } from './office';
+import { cycle, getPrefs, MOTION_MODES, setPrefs, TEXT_SIZES, type TextSize } from '../displayPrefs';
 
 export function openPauseMenu(c: GameController): void {
   const s = c.state;
@@ -45,16 +47,48 @@ export function settingsItems(c: GameController, refresh: () => void): MenuItem[
   };
   return [
     { label: 'Game speed', right: `${s.settings.speed}x`, hint: 'Left / Right to change. T also cycles speed in the shop.', onLeft: () => step(-1), onRight: () => step(1), action: () => step(s.settings.speed === SPEEDS[SPEEDS.length - 1] ? -99 : 1) },
+    ...deviceSettingsItems(refresh),
+  ];
+}
+
+/** Settings that belong to this device, not the save: picture, sound, text, controls. Also on the title screen. */
+export function deviceSettingsItems(refresh: () => void): MenuItem[] {
+  const p = getPrefs();
+  const touch = typeof document !== 'undefined' && document.body.classList.contains('has-touch');
+  const textLabel = (t: TextSize) => t[0].toUpperCase() + t.slice(1);
+  const text = (d: number) => { setPrefs({ textSize: TEXT_SIZES[Math.max(0, Math.min(TEXT_SIZES.length - 1, TEXT_SIZES.indexOf(p.textSize) + d))] }); refresh(); };
+  const font = () => { setPrefs({ font: p.font === 'pixel' ? 'readable' : 'pixel' }); refresh(); };
+  const cam = () => { setPrefs({ camera: p.camera === 'near' ? 'overview' : 'near' }); refresh(); };
+  const tap = () => { setPrefs({ tapToMove: !p.tapToMove }); refresh(); };
+  const motion = (d: number) => { setPrefs({ motion: cycle(MOTION_MODES, p.motion, d) }); refresh(); };
+  const items: MenuItem[] = [
     {
       label: 'Visual quality',
-      right: getQuality()[0].toUpperCase() + getQuality().slice(1),
-      hint: 'Tank view effects (particles, caustics, shadows, plant animation). Fish detail is the same at every setting. Applies next time you open a tank.',
+      right: qualityLabel(),
+      hint: 'Tank view effects (particles, caustics, shadows, pearling, reflections, plant animation rate). Fish detail is the same at every setting. Auto starts at Standard and steps down if the tank view runs slowly.',
       onLeft: () => { setQuality(QUALITY_LEVELS[Math.max(0, QUALITY_LEVELS.indexOf(getQuality()) - 1)]); refresh(); },
-      onRight: () => { setQuality(QUALITY_LEVELS[Math.min(2, QUALITY_LEVELS.indexOf(getQuality()) + 1)]); refresh(); },
-      action: () => { setQuality(QUALITY_LEVELS[(QUALITY_LEVELS.indexOf(getQuality()) + 1) % 3]); refresh(); },
+      onRight: () => { setQuality(QUALITY_LEVELS[Math.min(QUALITY_LEVELS.length - 1, QUALITY_LEVELS.indexOf(getQuality()) + 1)]); refresh(); },
+      action: () => { setQuality(QUALITY_LEVELS[(QUALITY_LEVELS.indexOf(getQuality()) + 1) % QUALITY_LEVELS.length]); refresh(); },
+    },
+    {
+      label: 'Motion',
+      right: p.motion === 'system' ? 'Follow device' : p.motion === 'reduced' ? 'Reduced' : 'Full',
+      hint: 'Reduced: calmer water, light and plants, and the store camera cuts instead of gliding. Follow device uses your system setting.',
+      onLeft: () => motion(-1), onRight: () => motion(1), action: () => motion(1),
     },
     { label: 'Sound', right: isMuted() ? 'Off' : 'On', onLeft: () => { setMuted(!isMuted()); refresh(); }, onRight: () => { setMuted(!isMuted()); refresh(); }, action: () => { setMuted(!isMuted()); refresh(); } },
+    { label: 'Text size', right: textLabel(p.textSize), hint: 'Size of all menus and labels. Remembered on this device.', onLeft: () => text(-1), onRight: () => text(1), action: () => text(p.textSize === 'larger' ? -99 : 1) },
+    { label: 'Font', right: p.font === 'pixel' ? 'Pixel' : 'Readable', hint: 'Readable uses your device font for long text. Remembered on this device.', onLeft: font, onRight: font, action: font },
+    { label: 'Store camera', right: p.camera === 'near' ? 'Close' : 'Whole floor', hint: 'Close follows you; Whole floor shows the full floor. M or the Map button switches in the store.', onLeft: cam, onRight: cam, action: cam },
   ];
+  if (touch) items.push({ label: 'Tap to move', right: p.tapToMove ? 'On' : 'Off', hint: 'Tap the floor to walk there. Tap what you are facing to use it.', onLeft: tap, onRight: tap, action: tap });
+  return items;
+}
+
+/** Device settings from the title screen (no game loaded). */
+export function openDeviceSettings(c: GameController): void {
+  const items = (): MenuItem[] => [...deviceSettingsItems(() => scr.refresh(items())), { label: 'Back', action: () => c.ui.remove(scr) }];
+  const scr = c.ui.menu({ title: 'Settings', body: h('div', { class: 'small' }, 'These settings are kept on this device.'), items: items() });
 }
 
 export function openSettings(c: GameController): void {
@@ -102,7 +136,8 @@ export async function openImport(c: GameController): Promise<void> {
 }
 
 export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fromTitle = false, onDone?: () => void): Promise<void> {
-  const sums = await c.saves.list();
+  const saves = fromTitle ? c.saves : c.activeSaves;
+  const sums = await saves.list();
   const slots = mode === 'save' ? SLOTS.filter((sl) => sl !== 'auto') : SLOTS;
   const scr = c.ui.menu({
     title: mode === 'save' ? 'Save Game' : 'Load Game',
@@ -188,6 +223,17 @@ export function exportSave(c: GameController): void {
   c.ui.toast('Save file downloaded.', 'good');
 }
 
+/** Starts an imported game; a Developer Sandbox save needs an explicit warning first. */
+export async function startImported(c: GameController, st: GameState): Promise<void> {
+  if (isSandboxState(st)) {
+    const ok = await c.ui.confirm('This save was made in a developer build sandbox (everything unlocked, developer tools used). Import it into normal play anyway? It will be permanently marked as developer-used.');
+    if (!ok) return;
+    adoptSandboxImport(st);
+  }
+  c.startGame(st);
+  c.ui.toast('Save imported', 'good');
+}
+
 export function importSaveText(c: GameController): void {
   const ta = h('textarea', { class: 'save-text', id: 'save-import-text', placeholder: 'Paste your save text here' }) as HTMLTextAreaElement;
   const scr = c.ui.menu({
@@ -200,8 +246,7 @@ export function importSaveText(c: GameController): void {
           try {
             const st = c.saves.importString(ta.value.trim());
             c.ui.remove(scr);
-            c.startGame(st);
-            c.ui.toast('Save imported', 'good');
+            void startImported(c, st);
           } catch (e) {
             c.ui.toast(`Import failed: ${(e as Error).message}`, 'bad');
           }
@@ -223,8 +268,7 @@ export function importSave(c: GameController): void {
     if (!file) return;
     try {
       const st = c.saves.importString(await file.text());
-      c.startGame(st);
-      c.ui.toast('Save imported', 'good');
+      void startImported(c, st);
     } catch (e) {
       c.ui.toast(`Import failed: ${(e as Error).message}`, 'bad');
     }

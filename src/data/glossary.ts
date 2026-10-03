@@ -47,7 +47,7 @@ export const HELP_SECTIONS: HelpSection[] = [
 
 export const GLOSSARY: GlossaryEntry[] = [
   // Controls ---------------------------------------------------------------
-  { id: 'controls_move', section: 'controls', title: 'Moving and interacting', body: 'Move with the arrow keys or WASD (d-pad or left stick). Hold Shift to run. Z, Enter or Space interacts or confirms. X or Backspace goes back. Esc opens the menu. Mouse and touch work in every menu.' },
+  { id: 'controls_move', section: 'controls', title: 'Moving and interacting', body: 'Move with the arrow keys or WASD (d-pad or left stick). Hold B to run in the store (Shift or X on a keyboard, B on a gamepad or on screen); running only speeds up you, never the shop clock. Z, Enter or Space interacts or confirms. X or Backspace goes back. Esc opens the menu. Mouse and touch work in every menu.' },
   { id: 'controls_shortcuts', section: 'controls', title: 'Shortcuts', body: 'H opens Help from anywhere. F feeds the tank you face (or the tank you are viewing). T changes game speed. In menus with long details, Q and E scroll the details.' },
   { id: 'controls_tank', section: 'controls', title: 'In the tank view', body: 'E / Q (or arrows) select the next and previous fish. Z opens the selected fish (or the tank menu when none is selected). R opens Aquascape. X deselects, then leaves the tank.' },
 
@@ -96,6 +96,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'hunger', section: 'fish', title: 'Hunger and feeding', body: 'Fish get hungry a few points an hour, faster in warm water. A normal feed is what they will finish; leftovers rot into ammonia.' },
   { id: 'groups', section: 'fish', title: 'Groups and shoals', body: 'Shoaling fish feel safe in numbers. Each species shows its minimum group size.' },
   { id: 'compatibility', section: 'fish', title: 'Compatibility', body: 'Big fish eat small ones, fin nippers chase long-finned fish, coldwater and tropical fish need different temperatures, and freshwater and marine fish can never share water.' },
+  { id: 'not_for_sale', section: 'fish', title: 'Not for sale', body: 'Mark a fish not for sale (fish details, or Livestock > Select fish) to keep it: customers cannot reserve or buy it, staff will not sell it and the trade buyer will not take it. If a customer had it in their basket, it comes out. Feeding, moving and breeding are unaffected, and its fry are for sale as usual.' },
   { id: 'quality', section: 'fish', title: 'Fish quality', body: 'Inherited: colour intensity, fin size and form. Shown as stars. Selective breeding slowly raises it.' },
 
   // Habitat ----------------------------------------------------------------------

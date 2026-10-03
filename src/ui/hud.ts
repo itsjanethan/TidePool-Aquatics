@@ -5,6 +5,7 @@ import { currentObjective } from '../sim/progression';
 import { overallReputation, repStars } from '../sim/reputation';
 import { clockString, dateString, isShopOpen } from '../sim/time';
 import { h } from './dom';
+import { getPrefs } from './displayPrefs';
 
 export class Hud {
   private el: HTMLElement;
@@ -14,6 +15,7 @@ export class Hud {
   private prompt: HTMLElement;
   private saved: HTMLElement;
   private helpBtn: HTMLElement;
+  private mapBtn: HTMLElement;
   private idleBadge: HTMLElement;
   private savedTimer: ReturnType<typeof setTimeout> | null = null;
   private last = '';
@@ -26,6 +28,7 @@ export class Hud {
     this.prompt = h('div', { class: 'hud-prompt' });
     this.saved = h('div', { class: 'hud-saved' });
     this.helpBtn = h('div', { class: 'hud-help', title: 'Help (H)', role: 'button', onclick: (e: Event) => { e.stopPropagation(); c.openHelp(); } }, '?');
+    this.mapBtn = h('div', { class: 'hud-map', title: 'Map: whole floor or close view (M)', role: 'button', onclick: (e: Event) => { e.stopPropagation(); c.toggleMap(); } }, 'Map');
     this.idleBadge = h(
       'div',
       { class: 'hud-idle', title: 'Click to resume business', role: 'button', onclick: (e: Event) => { e.stopPropagation(); c.askResume(); } },
@@ -33,7 +36,7 @@ export class Hud {
       h('small', null, 'Esc menu: Resume Business'),
     );
     this.idleBadge.style.display = 'none';
-    this.el = h('div', { class: 'hud' }, this.left, this.right, this.goal, this.prompt, this.saved, this.helpBtn, this.idleBadge);
+    this.el = h('div', { class: 'hud' }, this.left, this.right, this.goal, this.prompt, this.saved, this.mapBtn, this.helpBtn, this.idleBadge);
     c.ui.hudLayer.appendChild(this.el);
     this.show(false);
   }
@@ -67,12 +70,12 @@ export class Hud {
     const open = isShopOpen(s.minute);
     const stars = repStars(overallReputation(s));
     const obj = currentObjective(s);
-    const key = `${Math.floor(s.minute)}|${s.money}|${stars}|${obj?.id}|${s.settings.speed}|${this.c.paused}|${!!s.idle}`;
+    const key = `${getPrefs().camera}|${Math.floor(s.minute)}|${s.money}|${stars}|${obj?.id}|${s.settings.speed}|${this.c.paused}|${!!s.idle}`;
     if (key === this.last) return;
     this.last = key;
     this.left.innerHTML = '';
     this.left.append(
-      h('div', { class: 'hud-shop' }, s.shopName),
+      h('div', { class: 'hud-shop' }, s.flags.sandbox ? 'DEVELOPER SANDBOX' : s.shopName),
       h('div', null, `${dateString(s.minute)}  `, h('b', null, clockString(s.minute)), ' ', h('span', { class: open ? 'tag tag-open' : 'tag tag-closed' }, open ? 'OPEN' : 'CLOSED')),
     );
     const starStr = '★'.repeat(Math.floor(stars)) + '☆'.repeat(5 - Math.floor(stars)) + (stars % 1 ? ' +' : '');
@@ -82,6 +85,8 @@ export class Hud {
       h('div', null, h('span', { class: 'stars' }, starStr), s.idle ? ' IDLE' : ` ${s.settings.speed}x${this.c.paused ? ' ❚❚' : ''}`),
     );
     this.idleBadge.style.display = s.idle ? '' : 'none';
+    this.mapBtn.classList.toggle('on', getPrefs().camera === 'overview');
+    this.left.classList.toggle('sandbox', !!s.flags.sandbox);
     this.goal.textContent = obj ? `Goal: ${obj.title}` : 'All starter goals complete!';
     this.goal.title = obj?.hint ?? '';
   }

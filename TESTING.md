@@ -30,6 +30,10 @@ npm run check       # all of the above, in order. Must pass before a task is don
 | `idle.test.ts` | Idle Mode freezes clock, fish, water, growth, pregnancies, customers, staff, wages and rng across days and end-of-day; resumes afterwards; every transaction refused with the Idle Mode message; previews do not mutate; saves exclude the flag and loads resume normal play; staff stand still |
 | `floors.test.ts` | Floor registry (unique tank ids, reciprocal stairs, every prop reachable by staff and customers), routes between floors, v2 to v3 save migration, round trip with every floor, expansion requirements and unlocks, a customer walking upstairs and back out of the door |
 | `staff.test.ts` | Applicants and wages, wages charged nightly, diagnostics-based job priority, a worker really cleaning a tank, sales staff serving the till, stock proposals from real stock costing nothing until approved, aquascape proposals predicting the real effect, slow skill growth, dismissal, off-duty hours, taking the stairs to an upstairs job, floor assignment, save/load of staff and suggestions, knowledge vs suggestion quality (seeded), no spending without approval over a working day |
+| `input.test.ts` | (happy-dom) Run pace is exactly twice walking and grid-only; Shift, keyboard X and on-screen B count as run; B still closes menus; blur, pagehide and a hidden tab release keyboard, touch and gamepad holds (a gamepad button still down is re-adopted without a fresh Back press); two-finger d-pad plus B; d-pad slide changes direction; pointercancel, lost capture and a lift outside the controls release; contextual B label (Run / Back); the "Hold B to run" hint retires after the first run |
+| `layout.test.ts` | (happy-dom) Layout at 390x844 and 844x390 (controls below / beside, no overlap), safe areas, immersive and desktop modes, tiny-screen fallback; UI unit keeps text at 18 px and follows text size; backing-pixel cap; store camera closer than the whole floor on phones and whole floor at 960x640; clamped follow; labels follow the camera; tap-to-move paths (4-way, around obstacles, to a prop's interaction tile facing it, every interactable prop on every floor reachable); display preferences defaults, persistence and bad data |
+| `protection.test.ts` | Not for sale: protected fish are never sellable, browsing and advice customers never reserve them, protecting a reserved fish releases it and updates the order, a queueing customer left with nothing walks out (not a lost sale), `completeSale` keeps a protected fish even if one reaches a basket and refunds its price, the trade buyer refuses them; bulk results and repeat calls; protection survives moves, save and export/import, older saves load unprotected; protected fish still breed and their fry are for sale |
+| `visuals.test.ts` | (happy-dom) Quality levels never add work at lower levels; Auto steps down after a sustained slow window, ignores the opening seconds and short hitches, never steps up, only in Auto; bounded texture caches keep recent textures and never drop the one in use; reduced motion follows the setting or the device; each new effect follows tank state (mulm with detritus, film needs dirt and a still surface, only healthy lit fed plants pearl, hardscape shade and algae, light ramp) |
 | `marine_retail.test.ts` | Salinity evaporation and RO top-off, salt-mix water changes, SG display, freshwater/marine separation, salinity damage; retail stock space, an equipment customer visiting the basement and paying, bundle preference, bundle stock and margin, equipment advice (right vs plausible wrong), marine kit gated; every species and morph paints a full sheet |
 
 ### Long-run simulation
@@ -79,7 +83,7 @@ npx vite --port 5173 &
 node scripts/shot.mjs http://localhost:5173/ out.png '[{"key":"Enter","wait":400},{"type":"Tester"},{"key":"Enter"},{"key":"Enter","wait":1200}]'
 ```
 
-Steps support `key` (press), `type` (text), `eval` (JS in page; result printed), `wait` (ms) and `shot` (screenshot path). In dev builds or with `?dev=1`, `window.__tidepool` exposes the GameController for scripted checks (for example teleporting the player or reading state).
+Steps support `key` (press), `type` (text), `eval` (JS in page; result printed), `wait` (ms) and `shot` (screenshot path). In developer builds (`npm run dev` / `npm run sandbox`; never the public build), `window.__tidepool` exposes the GameController for scripted checks (for example teleporting the player or reading state).
 
 `scripts/gallery.mjs <species> out.png` screenshots the developer morph gallery (every morph and single-trait variant by sex and life stage, and the 11-frame swim/turn strip). Open `#gallery=<species>` in a browser for the same view; Left/Right switches species.
 
@@ -89,13 +93,61 @@ Steps support `key` (press), `type` (text), `eval` (JS in page; result printed),
 
 Chromium lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` in the agent sandbox; adjust `exe` elsewhere.
 
+## Mobile checks (emulated)
+
+`node scripts/mobile-check.mjs http://localhost:5173/ <outdir>` (needs `npm run dev`) runs Chromium phone emulation (touch, DPR 2) at 390x844 and 844x390 and reports PASS/FAIL for: game rectangle inside the viewport, controls beside or below the game and not over it, touch targets of 44 px or more, no page scroll, smallest UI text 16 px or more, menu lists pan vertically, tap to move reaching a tank or floor tile, the camera following the player closer than the whole floor, world labels tracking the camera, interrupted touches clearing held input, map view showing the whole floor, rotation relayout, and typing in the New Game form with the layout held while the keyboard is up. It saves screenshots. This is emulation: real-device behaviour (iOS Safari bars, real keyboards, notches, performance) still needs a phone. `scripts/mobile-shot.mjs` takes single emulated screenshots.
+
+## Tank view profiling
+
+Tools (need a developer build, because they drive the game through the developer-only hook): `npm run build:sandbox`, serve `dist-sandbox/` (for example `python3 -m http.server 4175` inside it), then:
+
+- `node scripts/perf-tank.mjs http://localhost:4175/ out.json low,standard,high 8`: desktop 960x640 (DPR 1) and phone 390x844 (DPR 2) on an ordinary tank (A1), a densely planted tank (M6) and a tank at the population cap (Q1, 70 fish). Records open time, frame time, our update time (JS), renderer submit time, heap, texture count and pixels.
+- `node scripts/perf-tour.mjs http://localhost:4175/ 2`: opens every tank twice and reports heap and texture counts (bounded caches).
+- `node scripts/perf-breakdown.mjs Q1 standard http://localhost:4175/`: update time per section and the slowest frames.
+
+**Limits.** These run in headless Chromium with SwiftShader, which rasterises WebGL on the CPU (two cores here). Whole-frame times (100 to 200 ms) are dominated by that software rasteriser and say nothing about a phone or a desktop GPU; every frame counts as "slow" there, so slow-frame counts are not meaningful. Our own CPU costs (update, renderer submit) and memory are meaningful as before/after comparisons on the same machine. p95 and heap are noisy between runs (shared CPU, GC timing). No real-device measurements were made.
+
+### Aquarium visuals pass (2026-10-03), before → after
+
+Same machine, same builds apart from this change, 8-second steady windows.
+
+| Quality | Viewport | Tank (fish) | Update mean ms | Update p95 ms | Render submit ms | Open ms | Textures |
+|---|---|---|---|---|---|---|---|
+| low | desktop | A1 ordinary (7) | 1.07 → 1.01 | 2 → 2.4 | 1.52 → 1.54 | 176 → 177 | 84 → 82 |
+| low | desktop | M6 densely planted (23) | 2.21 → 2.14 | 4.1 → 4.4 | 4.15 → 4.89 | 150 → 171 | 96 → 98 |
+| low | desktop | Q1 population cap (70) | 6.91 → 7.02 | 20.9 → 24.1 | 8.12 → 8.94 | 138 → 161 | 146 → 147 |
+| low | phone | A1 ordinary (7) | 1.12 → 1.05 | 2.2 → 2.2 | 1.46 → 1.47 | 218 → 220 | 82 → 84 |
+| low | phone | M6 densely planted (23) | 2.1 → 1.63 | 4.9 → 3 | 4.03 → 4.27 | 182 → 186 | 100 → 101 |
+| low | phone | Q1 population cap (70) | 4.48 → 3.73 | 8.6 → 10.1 | 7.92 → 8.02 | 174 → 187 | 146 → 148 |
+| standard | desktop | A1 ordinary (7) | 1.52 → 1.06 | 2.6 → 2.8 | 1.76 → 1.62 | 198 → 179 | 80 → 81 |
+| standard | desktop | M6 densely planted (23) | 4.23 → 2.42 | 6.2 → 4.1 | 5.23 → 4.94 | 168 → 145 | 98 → 101 |
+| standard | desktop | Q1 population cap (70) | 10.39 → 6.99 | 22.5 → 25.1 | 8.3 → 8.68 | 176 → 152 | 143 → 148 |
+| standard | phone | A1 ordinary (7) | 1.43 → 1.03 | 2.4 → 2 | 1.57 → 1.61 | 204 → 200 | 82 → 85 |
+| standard | phone | M6 densely planted (23) | 3.67 → 2.3 | 6.6 → 4.5 | 4.52 → 4.62 | 211 → 209 | 99 → 101 |
+| standard | phone | Q1 population cap (70) | 7.09 → 6.08 | 19.6 → 23.2 | 7.9 → 9.01 | 226 → 180 | 145 → 149 |
+| high | desktop | A1 ordinary (7) | 1.41 → 1.47 | 2.6 → 3.4 | 1.53 → 1.64 | 164 → 175 | 82 → 85 |
+| high | desktop | M6 densely planted (23) | 3.84 → 4.18 | 6.5 → 8.3 | 4.65 → 4.9 | 192 → 171 | 96 → 100 |
+| high | desktop | Q1 population cap (70) | 10.2 → 10.03 | 24.2 → 22.1 | 8.21 → 8.4 | 157 → 184 | 143 → 148 |
+| high | phone | A1 ordinary (7) | 1.4 → 1.35 | 2.6 → 2.5 | 1.64 → 1.49 | 220 → 220 | 84 → 85 |
+| high | phone | M6 densely planted (23) | 3.46 → 3.71 | 5.8 → 6.4 | 4.53 → 4.67 | 206 → 220 | 98 → 100 |
+| high | phone | Q1 population cap (70) | 7.44 → 8.61 | 19.4 → 26.8 | 8.42 → 8.49 | 210 → 216 | 145 → 147 |
+
+
+Summary: at Standard (the level Auto starts at), mean update time fell 30 to 43% on the planted and capped tanks (plants now redraw at 30 Hz in staggered buckets) while adding pearling, mulm, surface film, hardscape shading and the light ramp. High adds reflections and more pearls for roughly the old High cost. Renderer submit and open time are unchanged within noise. Tour (24 tanks, twice): substrate textures held 24 before, now capped at 6 (plus 6 mulm); heap stays about 70 MB.
+
+## Developer Sandbox
+
+`npm run sandbox` (or the "Developer Sandbox" item on the title screen of a developer build) starts `createSandbox()` from `src/dev/sandbox.ts`: seed 4242, all floors bought through `buyExpansion`, every tank matured, empty expansion tanks stocked, five presets applied (planted M6, breeding Q2, coldwater U5, marine M1, performance Q1 at 70 fish), four staff hired through `hireApplicant`, £100,000, 8 of every retail item, 30 of every dry good, every decor item and potted plant in the stockroom, and every species in supplier stock. It is byte-identical every time (tested). `tests/devsandbox.test.ts` covers determinism, unlocks, healthy tanks over three simulated days, preset rules, and save separation.
+
+Public build isolation: `npm run check` ends with `scripts/verify-public-build.mjs dist`, which fails if the bundle contains the Developer Panel, sandbox, morph gallery or `__tidepool` console API. `npm run build:artifact` runs it on the single-file build too.
+
 ## Developer panel
 
-Available in `npm run dev` builds, or in production with `?dev=1` in the URL. Press backtick (or F9) in game. It never appears in normal play, and any use sets `flags.devUsed` in the save.
+Available only in developer builds (`npm run dev`, `npm run sandbox`). Press backtick (or F9) in game. It never appears in normal play, and any use sets `flags.devUsed` in the save.
 
 Money (add, zero), time (hour, day, week, skip to opening), tank (target selector, instant cycle, ammonia spike, nitrate, pH, temperature, filth, algae bloom, filter and heater failure, clean all), fish (spawn any species, age, set health, feed or starve, inspect genetics), customers (spawn by goal, spawn many, patience), progression (reputation, complete goals, build the next expansion with requirements met, hire one of each role, stock the retail racks). Visual genetics: choose sex and stage (fry, juvenile, adult, gravid) and spawn; spawn a morph sampler (every morph and trait, both sexes); spawn 10 adult siblings from a pair; age fry +10 days; randomise genes; pick a trait locus and allele and apply it to the chosen species in the tank; open the morph gallery. Breeding: force pregnancy or spawn (due in one hour), create 6 fry, make tank fish breeding-ready, trigger a mutation. Uses the chosen species when a pair is present.
 
-### Tank view performance (v0.3.0)
+### Tank view performance (v0.3.0, historical)
 
 Measured CPU time of `TankRenderer.update` (headless Chromium, software GL, 120L tank with floating plants): 8 fish 2.5 ms, 28 fish 2.3 ms, 78 fish 2.6 ms per frame (max 4 to 8 ms). Painting a fish sheet costs 8 to 40 ms and is budgeted at 10 ms per frame. GPU fill rate is the limit in software GL only.
 

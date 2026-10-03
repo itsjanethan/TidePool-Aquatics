@@ -847,6 +847,17 @@ export interface SaleResult {
 
 export function completeSale(state: GameState, ctx: CustomerContext, c: CustomerState, finalTotal: number): SaleResult {
   if (state.idle) return { total: 0, fishCount: 0, plantCount: 0 };
+  // Defensive: a fish marked not for sale never leaves the shop, even if it
+  // somehow sits in a basket. It stays, the reservation is cleared and its
+  // price comes off the total.
+  for (const l of c.basket) {
+    const kept = l.fishIds.filter((id) => state.fish[id]?.notForSale);
+    if (!kept.length) continue;
+    for (const id of kept) state.fish[id].reservedBy = null;
+    l.fishIds = l.fishIds.filter((id) => !kept.includes(id));
+    finalTotal = Math.max(0, round(finalTotal - l.unitPrice * kept.length, 2));
+  }
+  c.basket = c.basket.filter((l) => l.fishIds.length > 0);
   const quote = checkoutQuote(state, c);
   const avgRatio = c.basket.length ? c.basket.reduce((s, l) => s + priceRatio(state, l.speciesId), 0) / c.basket.length : 1;
   let fishCount = 0;
@@ -925,9 +936,9 @@ export function tankForSale(state: GameState, tankId: string): boolean {
   return state.tanks[tankId]?.forSale !== false;
 }
 
-/** A fish customers could take home: healthy, not fry, not already reserved. */
+/** A fish customers could take home: healthy, not fry, not already reserved, not kept back by the player. */
 export function sellable(f: FishEntity): boolean {
-  return f.alive && !f.reservedBy && f.health > 55 && f.sizeCm / f.adultSizeCm > 0.3;
+  return f.alive && !f.reservedBy && !f.notForSale && f.health > 55 && f.sizeCm / f.adultSizeCm > 0.3;
 }
 
 export function inStockSpecies(state: GameState): string[] {
