@@ -34,6 +34,8 @@ npm run check       # all of the above, in order. Must pass before a task is don
 
 ### Long-run simulation
 
+Maintenance validation on 2026-10-03: Node 22.23.3, clean `npm ci`, `BASE_PATH=/TidePool-Aquatics/ npm run check` passed (17 files, 120 tests, production build; suite duration 87.24 seconds on Windows). Pages run 37124004146 previously failed only because the 30-day test took 5.154 seconds against the default five-second timeout. That test now allows 30 seconds, with unchanged seed, days and assertions. Repository checks validates PRs before a main-branch deployment.
+
 `tests/helpers/bot.ts` plays the shop: feeds, maintains, serves, restocks from suppliers, takes cuttings, keeps three tanks (A1 guppies, A5, B1) as breeding tanks (not for sale) and sells surplus to the trade buyer. Every simulated day the test checks: no negative money spiral, no NaN anywhere in water or fish, no negative stock or storage counts, no duplicate or colliding ids, every live fish in an existing tank, tank populations under the cap, pregnancies and broods referring to existing parents, order queue bounded, fry with valid parents.
 
 Run with output: `npx vitest run tests/longrun.test.ts --silent=false`.

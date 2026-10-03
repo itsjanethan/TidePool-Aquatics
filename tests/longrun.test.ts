@@ -60,7 +60,7 @@ describe('long-run simulation', () => {
     invariants(r.sim.state);
     expect(r.sim.state.money).toBeGreaterThan(0);
     expect(r.sim.state.stats.fishBred).toBeGreaterThan(0);
-  });
+  }, 30_000); // Allow CI runner variation without reducing simulation coverage.
 
   it('100 days', () => {
     const t0 = Date.now();

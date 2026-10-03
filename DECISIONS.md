@@ -82,3 +82,8 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **Retail.** Equipment stock lives in `state.retail` with stock space (40 without the basement, 240 with it). Equipment customers walk to the basement racks, prefer a bundle when it is cheaper than its contents, and pay at the till like everyone else.
 - **Deployment.** GitHub Pages via Actions. The base path is `./` by default (zip, file://, single-file artifact, any subfolder) and `BASE_PATH=/<repo>/` on Pages. Service worker caches are named per scope so two copies of the game on one origin never delete each other's caches. Verified with `scripts/nested-test.mjs`.
 - **No telemetry.** "Copy Playtest Report" builds text locally and copies it; nothing is sent anywhere.
+
+## 2026-10-03: Deployment maintenance
+
+- **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
+- **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
