@@ -72,7 +72,7 @@ export class Hud {
     this.last = key;
     this.left.innerHTML = '';
     this.left.append(
-      h('div', { class: 'hud-shop' }, s.shopName),
+      h('div', { class: 'hud-shop' }, s.flags.sandbox ? 'DEVELOPER SANDBOX' : s.shopName),
       h('div', null, `${dateString(s.minute)}  `, h('b', null, clockString(s.minute)), ' ', h('span', { class: open ? 'tag tag-open' : 'tag tag-closed' }, open ? 'OPEN' : 'CLOSED')),
     );
     const starStr = '★'.repeat(Math.floor(stars)) + '☆'.repeat(5 - Math.floor(stars)) + (stars % 1 ? ' +' : '');
@@ -82,6 +82,7 @@ export class Hud {
       h('div', null, h('span', { class: 'stars' }, starStr), s.idle ? ' IDLE' : ` ${s.settings.speed}x${this.c.paused ? ' ❚❚' : ''}`),
     );
     this.idleBadge.style.display = s.idle ? '' : 'none';
+    this.left.classList.toggle('sandbox', !!s.flags.sandbox);
     this.goal.textContent = obj ? `Goal: ${obj.title}` : 'All starter goals complete!';
     this.goal.title = obj?.hint ?? '';
   }

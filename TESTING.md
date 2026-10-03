@@ -79,7 +79,7 @@ npx vite --port 5173 &
 node scripts/shot.mjs http://localhost:5173/ out.png '[{"key":"Enter","wait":400},{"type":"Tester"},{"key":"Enter"},{"key":"Enter","wait":1200}]'
 ```
 
-Steps support `key` (press), `type` (text), `eval` (JS in page; result printed), `wait` (ms) and `shot` (screenshot path). In dev builds or with `?dev=1`, `window.__tidepool` exposes the GameController for scripted checks (for example teleporting the player or reading state).
+Steps support `key` (press), `type` (text), `eval` (JS in page; result printed), `wait` (ms) and `shot` (screenshot path). In developer builds (`npm run dev` / `npm run sandbox`; never the public build), `window.__tidepool` exposes the GameController for scripted checks (for example teleporting the player or reading state).
 
 `scripts/gallery.mjs <species> out.png` screenshots the developer morph gallery (every morph and single-trait variant by sex and life stage, and the 11-frame swim/turn strip). Open `#gallery=<species>` in a browser for the same view; Left/Right switches species.
 
@@ -89,9 +89,15 @@ Steps support `key` (press), `type` (text), `eval` (JS in page; result printed),
 
 Chromium lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` in the agent sandbox; adjust `exe` elsewhere.
 
+## Developer Sandbox
+
+`npm run sandbox` (or the "Developer Sandbox" item on the title screen of a developer build) starts `createSandbox()` from `src/dev/sandbox.ts`: seed 4242, all floors bought through `buyExpansion`, every tank matured, empty expansion tanks stocked, five presets applied (planted M6, breeding Q2, coldwater U5, marine M1, performance Q1 at 70 fish), four staff hired through `hireApplicant`, £100,000, 8 of every retail item, 30 of every dry good, every decor item and potted plant in the stockroom, and every species in supplier stock. It is byte-identical every time (tested). `tests/devsandbox.test.ts` covers determinism, unlocks, healthy tanks over three simulated days, preset rules, and save separation.
+
+Public build isolation: `npm run check` ends with `scripts/verify-public-build.mjs dist`, which fails if the bundle contains the Developer Panel, sandbox, morph gallery or `__tidepool` console API. `npm run build:artifact` runs it on the single-file build too.
+
 ## Developer panel
 
-Available in `npm run dev` builds, or in production with `?dev=1` in the URL. Press backtick (or F9) in game. It never appears in normal play, and any use sets `flags.devUsed` in the save.
+Available only in developer builds (`npm run dev`, `npm run sandbox`). Press backtick (or F9) in game. It never appears in normal play, and any use sets `flags.devUsed` in the save.
 
 Money (add, zero), time (hour, day, week, skip to opening), tank (target selector, instant cycle, ammonia spike, nitrate, pH, temperature, filth, algae bloom, filter and heater failure, clean all), fish (spawn any species, age, set health, feed or starve, inspect genetics), customers (spawn by goal, spawn many, patience), progression (reputation, complete goals, build the next expansion with requirements met, hire one of each role, stock the retail racks). Visual genetics: choose sex and stage (fry, juvenile, adult, gravid) and spawn; spawn a morph sampler (every morph and trait, both sexes); spawn 10 adult siblings from a pair; age fry +10 days; randomise genes; pick a trait locus and allele and apply it to the chosen species in the tank; open the morph gallery. Breeding: force pregnancy or spawn (due in one hour), create 6 fry, make tank fish breeding-ready, trigger a mutation. Uses the chosen species when a pair is present.
 

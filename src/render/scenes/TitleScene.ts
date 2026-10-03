@@ -43,9 +43,12 @@ export class TitleScene extends Phaser.Scene {
     void controller.ready.then(() => {
       if (!this.sys.isActive()) return;
       void showTitle(controller);
-      // Developer shortcut: #gallery or #gallery=<speciesId> opens the morph gallery.
-      const m = /#gallery(?:=(\w+))?/.exec(location.hash);
-      if (m) void import('../../ui/screens/gallery').then((g) => setTimeout(() => g.openGallery(controller, m[1]), 400));
+      if (__DEV_TOOLS__) {
+        // Developer builds only: #gallery[=species] opens the morph gallery, ?sandbox starts the sandbox.
+        const m = /#gallery(?:=(\w+))?/.exec(location.hash);
+        if (m) void import('../../dev/gallery').then((g) => setTimeout(() => g.openGallery(controller, m[1]), 400));
+        else if (/[?&]sandbox\b/.test(location.search)) void import('../../dev/sandboxScreen').then((sb) => sb.startSandbox(controller));
+      }
     });
   }
 

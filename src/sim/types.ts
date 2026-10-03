@@ -451,7 +451,8 @@ export interface GameState {
     fryEaten?: number;
   };
   settings: { speed: number; tutorialSeen: boolean };
-  flags: { devUsed: boolean; tutorialStep: number };
+  /** `sandbox` marks a Developer Sandbox game (separate save namespace). */
+  flags: { devUsed: boolean; tutorialStep: number; sandbox?: boolean };
   lastCustomerSpawnMinute: number;
   /**
    * Idle Mode (runtime only, never saved): persistent simulation is paused

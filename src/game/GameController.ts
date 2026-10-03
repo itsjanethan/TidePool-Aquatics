@@ -8,23 +8,24 @@ import { InputManager, type Action } from '../input/input';
 import { Simulation } from '../sim/simulation';
 import { newGame } from '../sim/newGame';
 import { idleLockReason, type LockKind } from '../sim/idle';
-import { createStorage, SaveManager, MemoryStorage, slotLabel } from '../sim/save';
+import { createStorage, isSandboxState, PrefixedStorage, SANDBOX_PREFIX, SaveManager, MemoryStorage, slotLabel } from '../sim/save';
 import { clockString, dateString, GAME_MINUTES_PER_REAL_SECOND } from '../sim/time';
 import type { ActionResult } from '../sim/tank';
 import type { GameState } from '../sim/types';
 import { UIManager } from '../ui/ui';
 import { Hud } from '../ui/hud';
 import { markObjective } from '../sim/progression';
-import { toggleDevPanel } from '../ui/screens/devPanel';
 import { showDayReport } from '../ui/screens/report';
 import { showProposalPrompt } from '../ui/screens/staff';
 import { openHelp, setHelpController, showIntro } from '../ui/screens/help';
 import { play } from '../audio/sfx';
 import { installTouchControls } from '../ui/touch';
 
-export const DEV_ALLOWED: boolean =
-  import.meta.env.DEV ||
-  (typeof location !== 'undefined' && (new URLSearchParams(location.search).has('dev') || location.hash === '#dev'));
+/**
+ * Developer tools are a build-time switch only: no URL, storage flag or
+ * console API can enable them in the public build (see DECISIONS.md).
+ */
+export const DEV_ALLOWED: boolean = __DEV_TOOLS__;
 
 export const SPEEDS = [1, 2, 4];
 
@@ -38,7 +39,10 @@ export class GameController {
   ui!: UIManager;
   input!: InputManager;
   hud!: Hud;
+  /** Normal play saves. */
   saves: SaveManager = new SaveManager(new MemoryStorage());
+  /** Developer Sandbox saves: a separate key namespace, never listed by Continue. */
+  sandboxSaves: SaveManager = new SaveManager(new MemoryStorage(), true);
   sim: Simulation | null = null;
   /** Handler for input when no UI screen is open (set by the active scene). */
   worldInput: WorldInput | null = null;
@@ -66,8 +70,9 @@ export class GameController {
     game.events.on(Phaser.Core.Events.STEP, (_t: number, delta: number) => this.step(delta));
     this.ready = createStorage().then((st) => {
       this.saves = new SaveManager(st);
+      this.sandboxSaves = new SaveManager(new PrefixedStorage(st, SANDBOX_PREFIX), true);
     });
-    if (DEV_ALLOWED) (window as unknown as { __tidepool: GameController }).__tidepool = this;
+    if (__DEV_TOOLS__) (window as unknown as { __tidepool: GameController }).__tidepool = this;
   }
 
   /** Idle Mode: business paused, visuals keep running. */
@@ -129,8 +134,8 @@ export class GameController {
   }
 
   private onPress(a: Action): void {
-    if (a === 'dev' && DEV_ALLOWED && this.inGame) {
-      toggleDevPanel(this);
+    if (__DEV_TOOLS__ && a === 'dev' && this.inGame) {
+      void import('../dev/devPanel').then((m) => m.toggleDevPanel(this));
       return;
     }
     if (a === 'help') {
@@ -200,12 +205,17 @@ export class GameController {
     this.game.scene.start('Title');
   }
 
+  /** The save namespace for the current game (sandbox games never touch normal saves). */
+  get activeSaves(): SaveManager {
+    return this.sim && isSandboxState(this.sim.state) ? this.sandboxSaves : this.saves;
+  }
+
   async save(slot: string): Promise<boolean> {
     if (!this.sim) return false;
     const prev = this.state.lastSave;
     try {
       this.state.lastSave = { slot, minute: this.state.minute, at: Date.now() };
-      await this.saves.save(slot, this.state);
+      await this.activeSaves.save(slot, this.state);
       return true;
     } catch (e) {
       console.error(e);
@@ -231,7 +241,7 @@ export class GameController {
 
   async load(slot: string): Promise<boolean> {
     try {
-      const st = await this.saves.load(slot);
+      const st = await this.activeSaves.load(slot);
       if (!st) {
         this.ui.toast('That save slot is empty.', 'warn');
         return false;

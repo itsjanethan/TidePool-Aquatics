@@ -21,7 +21,7 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 15. **Sold fish are deleted from the save** unless they have offspring (kept for lineage). Keeps saves small over long games.
 16. **Customers inside the shop are not saved.** Reloading empties the shop; reserved fish are released. Simpler and avoids half-finished transactions.
 17. **Autosave at 09:00 each day** (after the overnight simulation and daily report) in slot `auto`, plus three manual slots and JSON export/import.
-18. **Developer panel gating:** enabled in dev builds or with `?dev=1`. Any use sets `flags.devUsed`. A URL flag in production is acceptable because it is undiscoverable in normal play and useful for testers.
+18. **Developer panel gating:** enabled in dev builds or with `?dev=1`. Any use sets `flags.devUsed`. A URL flag in production is acceptable because it is undiscoverable in normal play and useful for testers. (Superseded 2026-10-03: developer tools are build-time only, see below.)
 19. **Behind-the-counter tiles are staff only** for customers, so they do not crowd the till side.
 20. **Reputation gains have strong diminishing returns** (`1.2 x (1 - r/100)^2`). Early stars come quickly, the top end is slow, leaving room for long-term progression.
 21. **Overworld tanks hide fish beyond 14 dots.** Purely visual cap.
@@ -87,3 +87,10 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
+
+## 2026-10-03: Developer Sandbox and build separation
+
+- **Developer tools are a build-time switch.** `__DEV_TOOLS__` is `true` only in Vite `development` and `sandbox` modes. Everything developer-only lives in `src/dev/` and is reached only through `if (__DEV_TOOLS__)` dynamic imports, so the production build drops it. The old `?dev=1` / `#dev` URL flags and the unconditional `window.__tidepool` hook are gone. `scripts/verify-public-build.mjs` is part of `npm run check`.
+- **The sandbox is a fixture, not a cheat mode.** `createSandbox()` builds the game with the real systems (expansions bought, staff hired, decor placed with `addDecor`, fish created with `createFish`), so validation rules still apply; presets refuse the wrong water type. Deterministic seed 4242.
+- **Separate save namespace.** Sandbox games carry `flags.sandbox` and are saved under the `sandbox:` key prefix (`PrefixedStorage`). Each `SaveManager` refuses games from the other namespace and hides them from its list, so Continue can never load a sandbox. Importing a sandbox file into normal play shows a warning and permanently sets `devUsed`.
+- **No hosted developer build.** The repository is public, so source visibility cannot be controlled; what matters is that the hosted public game contains no developer tools. `dist-sandbox/` is git-ignored and never deployed. Remote developer access, if ever needed, must use hosting with server-enforced authentication, not a secret URL or client-side password.
