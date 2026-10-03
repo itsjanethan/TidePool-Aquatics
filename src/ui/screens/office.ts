@@ -64,7 +64,7 @@ export function openOffice(c: GameController): void {
       { label: 'Load game', hint: 'Load a slot or the autosave. A loaded game always starts with the business running.', action: () => void openLoad(c) },
       { label: 'Export save', hint: 'Make a backup copy you can import on any device or browser.', action: () => exportSave(c) },
       { label: 'Import save', hint: 'Restore a backup made with Export save.', action: () => void openImport(c) },
-      { label: 'Settings', hint: 'Game speed, visual quality and sound.', action: () => openSettings(c) },
+      { label: 'Settings', hint: 'Game speed, picture, sound, text size and controls.', action: () => openSettings(c) },
       c.idle
         ? { label: 'Resume Business', right: 'Idle Mode on', hint: 'Leave Idle Mode: time, customers, staff and fish care start again.', action: () => { c.exitIdle(); refresh(); } }
         : { label: 'Idle Mode', hint: 'Pause the business and just watch. Nothing is bought, sold, eaten or dirtied while idle.', action: () => { c.enterIdle(); refresh(); } },

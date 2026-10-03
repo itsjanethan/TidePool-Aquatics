@@ -87,7 +87,22 @@ export class TankViewScreen implements Screen {
       }
       if (this.portrait) this.card.appendChild(this.portrait);
       this.card.appendChild(fishCard(this.c.state, f, false));
-    } else this.card.style.display = 'none';
+    } else {
+      // Nothing selected: an overview of the tank. Only shown where the card
+      // has its own space (portrait phones, below the tank); see styles.css.
+      this.card.style.display = '';
+      const s = this.c.state;
+      const t = this.tank;
+      this.card.append(
+        h('div', { class: 'tv-overview' },
+          h('div', { class: 'fish-name' }, `${t.name} · ${t.litres}L`),
+          h('div', null, speciesSummary(s, t.id) || 'No fish'),
+          h('div', { class: 'warn' }, tankStatusLine(s, t)),
+          h('div', { class: 'small' }, 'Tap a fish to see it up close. Next fish steps through them.')),
+      );
+      this.card.classList.add('tv-card-empty');
+    }
+    if (f) this.card.classList.remove('tv-card-empty');
     const label = this.zBtn.lastChild;
     if (label) label.textContent = f ? 'Fish details' : 'Tank menu';
   }

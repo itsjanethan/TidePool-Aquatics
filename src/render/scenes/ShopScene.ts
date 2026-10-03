@@ -19,7 +19,6 @@ import { isShopOpen, minuteOfDay, OPEN_HOUR } from '../../sim/time';
 import type { CustomerState, StaffEntity } from '../../sim/types';
 import { customerPalette, makeCharacterTexture, staffPalette, type Dir } from '../art/characters';
 import { OverworldTank } from '../overworldTank';
-import { LOGICAL_H, LOGICAL_W, RES } from '../res';
 import { h } from '../../ui/dom';
 import { openTankMenu } from '../../ui/screens/tankMenu';
 import { openOffice } from '../../ui/screens/office';
@@ -30,6 +29,9 @@ import { feedTank } from '../../sim/tank';
 import { play } from '../../audio/sfx';
 import { noteRan, runHint } from '../../input/runHint';
 import { stepDuration } from '../walkTiming';
+import { clampCentre, setLabelPos, setLabelTransform, shopZoom, view } from '../view';
+import { dirBetween, faceToward, planTapPath, type Tile } from '../tapPath';
+import { getPrefs } from '../../ui/displayPrefs';
 
 const DV: Record<Dir, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
@@ -66,6 +68,13 @@ export class ShopScene extends Phaser.Scene {
   private night!: Phaser.GameObjects.Rectangle;
   private queueLabel!: HTMLElement;
   private grid: boolean[][] = [];
+  /** Tap to move: remaining tiles and the facing to take at the end. */
+  private path: Tile[] = [];
+  private pathFace: Dir | null = null;
+  private marker!: Phaser.GameObjects.Rectangle;
+  /** Smoothed camera centre in world px (NaN until placed). */
+  private camX = NaN;
+  private camY = NaN;
 
   constructor() {
     super('Shop');
@@ -79,8 +88,11 @@ export class ShopScene extends Phaser.Scene {
     this.layout = getFloorLayout(s.player.floor);
     s.player.floor = this.layout.id;
     this.grid = c.sim!.grid;
-    // The shop is drawn at logical resolution and zoomed for chunky pixels.
-    this.cameras.main.setZoom(RES).centerOn(LOGICAL_W / 2, LOGICAL_H / 2);
+    // The shop is drawn at logical resolution; the camera zooms in for chunky
+    // pixels and follows the player (or shows the whole floor in map view).
+    this.camX = NaN;
+    this.path = [];
+    this.pathFace = null;
     this.add.image(0, 0, floorTextureKey(this.layout)).setOrigin(0, 0).setDepth(-100);
     for (const p of this.layout.props) {
       if (p.kind === 'tank') {
@@ -104,7 +116,10 @@ export class ShopScene extends Phaser.Scene {
     this.facing = s.player.facing;
     this.player = this.add.sprite(0, 0, 'player', `${this.facing}0`).setOrigin(0.5, 1);
     this.placePlayer(s.player.x, s.player.y);
-    this.night = this.add.rectangle(0, 0, 480, 320, 0x0a1430, 0).setOrigin(0, 0).setDepth(9000);
+    this.night = this.add.rectangle(0, 0, this.layout.width * TILE, this.layout.height * TILE, 0x0a1430, 0).setOrigin(0, 0).setDepth(9000);
+    this.marker = this.add.rectangle(0, 0, TILE - 2, TILE - 2).setStrokeStyle(1, 0xffd45a, 0.9).setDepth(8999).setVisible(false);
+    this.updateCamera(0, true);
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => this.onTap(p));
     this.queueLabel = h('div', { class: 'world-label queue-label' });
     c.ui.worldLayer.appendChild(this.queueLabel);
 
@@ -189,30 +204,42 @@ export class ShopScene extends Phaser.Scene {
         s.player.y = Math.round(s.player.y);
       }
     }
+    if (!canMove) this.clearPath();
     if (!this.move && canMove) {
-      const dir = c.input.heldDirection();
+      const held = c.input.heldDirection();
+      if (held) this.clearPath();
+      const next = held ? null : this.path[0];
+      const dir = held ?? (next ? dirBetween({ x: Math.round(s.player.x), y: Math.round(s.player.y) }, next) : null);
       if (dir) {
-        if (dir !== this.facing) {
+        if (dir !== this.facing && held) {
           this.facing = dir;
           this.turnDelay = 0.08;
-        } else if (this.turnDelay > 0) {
+        } else if (this.turnDelay > 0 && held) {
           this.turnDelay -= dt;
         } else {
+          this.facing = dir;
           const [dx, dy] = DV[dir];
           const nx = Math.round(s.player.x) + dx;
           const ny = Math.round(s.player.y) + dy;
           if (this.walkable(nx, ny)) {
             const run = c.input.runHeld();
             if (run) noteRan();
+            if (next) this.path.shift();
             this.move = { fx: s.player.x, fy: s.player.y, tx: nx, ty: ny, t: 0, dur: stepDuration(run) };
-          }
+          } else this.clearPath();
         }
       } else {
         this.turnDelay = 0;
+        if (this.pathFace) {
+          this.facing = this.pathFace;
+          this.pathFace = null;
+        }
+        if (!this.path.length) this.marker.setVisible(false);
       }
     }
     s.player.facing = this.facing;
     this.placePlayer(s.player.x, s.player.y);
+    this.updateCamera(dt, false);
     const frame = this.move ? (Math.floor(this.walkAnim / 0.12) % 2) + 1 : 0;
     this.player.setFrame(`${this.facing}${frame}`);
 
@@ -232,7 +259,10 @@ export class ShopScene extends Phaser.Scene {
     this.queueLabel.textContent = `${q} waiting`;
     if (till) setLabelPos(this.queueLabel, till.x * TILE + 8, till.y * TILE + 4);
 
-    if (canMove && !this.move) controller.hud.setPrompt(this.promptText() ?? runHint(c.input.lastDevice));
+    if (canMove && !this.move) {
+      controller.hud.setPrompt(this.promptText() ?? runHint(c.input.lastDevice));
+      controller.worldContext = this.touchContext();
+    }
     else if (!canMove) controller.hud.setPrompt(null);
   }
 
@@ -377,31 +407,120 @@ export class ShopScene extends Phaser.Scene {
     return this.layout.tiles[ft.y]?.[ft.x] === 'D';
   }
 
-  private promptText(): string | null {
+  private clearPath(): void {
+    if (!this.path.length && !this.pathFace) return;
+    this.path = [];
+    this.pathFace = null;
+    this.marker?.setVisible(false);
+  }
+
+  /**
+   * Fits the camera to the canvas: close to the player (following them) or
+   * the whole floor in map view. Publishes the transform for world labels.
+   */
+  private updateCamera(dt: number, snap: boolean): void {
+    const cam = this.cameras.main;
+    const cw = this.scale.width;
+    const ch = this.scale.height;
+    if (cam.width !== cw || cam.height !== ch) cam.setSize(cw, ch);
+    const worldW = this.layout.width * TILE;
+    const worldH = this.layout.height * TILE;
+    const touch = typeof document !== 'undefined' && document.body.classList.contains('has-touch');
+    const z = shopZoom(getPrefs().camera, worldW, worldH, cw, ch, view.k, touch ? 2.25 : 2);
+    if (cam.zoom !== z) {
+      cam.setZoom(z);
+      snap = true;
+    }
+    const vw = cw / z;
+    const vh = ch / z;
+    const s = controller.state;
+    const tx = clampCentre(s.player.x * TILE + 8, worldW, vw);
+    const ty = clampCentre(s.player.y * TILE + 8, worldH, vh);
+    if (snap || Number.isNaN(this.camX)) {
+      this.camX = tx;
+      this.camY = ty;
+    } else {
+      const k = 1 - Math.exp(-dt * 8);
+      this.camX += (tx - this.camX) * k;
+      this.camY += (ty - this.camY) * k;
+    }
+    // Whole canvas pixels keep pixel art steady while the camera glides.
+    const cx = Math.round(this.camX * z) / z;
+    const cy = Math.round(this.camY * z) / z;
+    cam.centerOn(cx, cy);
+    const css = z / view.k;
+    setLabelTransform(css, (vw / 2 - cx) * css, (vh / 2 - cy) * css);
+  }
+
+  /** Tap to move (touch and pen only): walk to the tapped tile, or tap what you face to use it. */
+  private onTap(p: Phaser.Input.Pointer): void {
+    const c = controller;
+    const ev = p.event as PointerEvent | undefined;
+    const kind = ev?.pointerType ?? (p.wasTouch ? 'touch' : 'mouse');
+    if (kind === 'mouse' || !getPrefs().tapToMove || !c.walking) return;
+    const s = c.state;
+    const tile = { x: Math.floor(p.worldX / TILE), y: Math.floor(p.worldY / TILE) };
+    const here = { x: Math.round(s.player.x), y: Math.round(s.player.y) };
+    const ft = this.facingTile();
+    const prop = propAt(this.layout, tile.x, tile.y);
+    const facingIt = (ft.x === tile.x && ft.y === tile.y) || (!!prop && propAt(this.layout, ft.x, ft.y) === prop);
+    if (!this.move && !this.path.length && facingIt) {
+      this.onAction('confirm');
+      return;
+    }
+    const approach = prop?.interact?.map((t) => ({ ...t, face: faceToward(t, prop.x, prop.y, prop.w, prop.h) }));
+    const plan = planTapPath(this.grid, here, tile, approach);
+    if (!plan) return;
+    this.path = plan.path;
+    this.pathFace = plan.face;
+    const end = plan.path[plan.path.length - 1] ?? here;
+    this.marker.setPosition(end.x * TILE + 8, end.y * TILE + 8).setVisible(plan.path.length > 0);
+  }
+
+  /** What the touch A button means here, and whether F feeds something. */
+  private touchContext(): { a?: string; feed?: boolean } {
     const s = controller.state;
     const cu = this.customerInFront();
-    if (cu) return cu.phase === 'waiting_help' || cu.phase === 'seeking_help' ? `Z: Help ${cu.name}` : `Z: Talk to ${cu.name}`;
+    if (cu) return { a: cu.phase === 'waiting_help' || cu.phase === 'seeking_help' ? 'Help' : 'Talk' };
+    if (this.staffInFront()) return { a: 'Staff' };
+    if (this.atTill()) return { a: 'Serve' };
+    const p = this.propInFront();
+    if (p?.kind === 'tank' && s.tanks[p.id]) return { a: 'Tank', feed: true };
+    if (p?.kind === 'stairs') return { a: p.dir === 'down' ? 'Down' : 'Up' };
+    if (p?.kind === 'desk') return { a: 'PC' };
+    if (p?.kind === 'shelf') return { a: 'Stock' };
+    if (p?.kind === 'rack') return { a: 'Retail' };
+    if (this.atDoor()) return { a: 'Door' };
+    return {};
+  }
+
+  private promptText(): string | null {
+    const s = controller.state;
+    // Keyboard players press Z; touch and gamepad players press A.
+    const k = controller.input.lastDevice === 'keyboard' ? 'Z' : 'A';
+    const cu = this.customerInFront();
+    if (cu) return cu.phase === 'waiting_help' || cu.phase === 'seeking_help' ? `${k}: Help ${cu.name}` : `${k}: Talk to ${cu.name}`;
     const st = this.staffInFront();
-    if (st) return `Z: ${st.name} (${st.task?.label ?? 'staff'})`;
+    if (st) return `${k}: ${st.name} (${st.task?.label ?? 'staff'})`;
     if (this.atTill()) {
       const q = queueCustomers(s).length;
-      return q ? `Z: Serve customer (${q} waiting)` : 'Till: nobody waiting';
+      return q ? `${k}: Serve customer (${q} waiting)` : 'Till: nobody waiting';
     }
     const p = this.propInFront();
-    if (p?.kind === 'stairs' && p.to) return s.unlocks.floors.includes(p.to) ? `Z: ${p.dir === 'down' ? 'Down' : 'Up'} to ${getFloorLayout(p.to).name}` : `${getFloorLayout(p.to).name} (not open yet)`;
+    if (p?.kind === 'stairs' && p.to) return s.unlocks.floors.includes(p.to) ? `${k}: ${p.dir === 'down' ? 'Down' : 'Up'} to ${getFloorLayout(p.to).name}` : `${getFloorLayout(p.to).name} (not open yet)`;
     if (p?.kind === 'tank' && !s.tanks[p.id]) return null;
-    if (p?.kind === 'rack') return s.unlocks.floors.includes('basement') ? 'Z: Equipment retail stock' : null;
+    if (p?.kind === 'rack') return s.unlocks.floors.includes('basement') ? `${k}: Equipment retail stock` : null;
     if (p?.kind === 'tank') {
       const fish = fishInTank(s, p.id);
       const counts = new Map<string, number>();
       for (const f of fish) counts.set(f.speciesId, (counts.get(f.speciesId) ?? 0) + 1);
       const desc = [...counts].map(([id, n]) => `${getSpecies(id).commonName} x${n}`).join(', ') || 'empty';
-      return `Z: ${s.tanks[p.id].name} (${desc})  F: Feed`;
+      return `${k}: ${s.tanks[p.id].name} (${desc})  F: Feed`;
     }
-    if (p?.kind === 'desk') return 'Z: Office PC (orders, stock, end day)';
-    if (p?.kind === 'shelf') return 'Z: Stockroom shelves';
+    if (p?.kind === 'desk') return `${k}: Office PC (orders, stock, end day)`;
+    if (p?.kind === 'shelf') return `${k}: Stockroom shelves`;
     if (p?.kind === 'counter') return 'Serve from behind the counter';
-    if (this.atDoor()) return minuteOfDay(s.minute) < OPEN_HOUR * 60 ? 'Z: Open up early' : isShopOpen(s.minute) ? 'Z: Front door' : 'Z: Lock up and end the day';
+    if (this.atDoor()) return minuteOfDay(s.minute) < OPEN_HOUR * 60 ? `${k}: Open up early` : isShopOpen(s.minute) ? `${k}: Front door` : `${k}: Lock up and end the day`;
     return null;
   }
 
@@ -464,7 +583,3 @@ export class ShopScene extends Phaser.Scene {
 }
 
 /** Positions a DOM world label at game pixel coordinates. */
-export function setLabelPos(el: HTMLElement, x: number, y: number): void {
-  el.style.left = `calc(var(--px) * ${x})`;
-  el.style.top = `calc(var(--px) * ${y})`;
-}

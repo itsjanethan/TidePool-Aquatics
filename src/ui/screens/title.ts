@@ -8,7 +8,7 @@ import { h } from '../dom';
 import { Menu, type MenuItem } from '../menu';
 import type { Screen } from '../ui';
 import { showHelp } from './help';
-import { importSave, importSaveText, openSaveSlots } from './pause';
+import { importSave, importSaveText, openDeviceSettings, openSaveSlots } from './pause';
 
 export const GAME_TITLE = 'Tidepool Aquatics';
 export const GAME_VERSION = APP_VERSION;
@@ -24,7 +24,7 @@ class TitleScreen implements Screen {
       { class: 'title-screen' },
       h('div', { class: 'title-logo' }, h('div', { class: 'logo-main' }, GAME_TITLE), h('div', { class: 'logo-sub' }, 'A little fish shop with big ambitions')),
       h('div', { class: 'panel title-menu' }, this.menu.el, latestText ? h('div', { class: 'panel-footer' }, latestText) : null),
-      h('div', { class: 'title-foot' }, `v${GAME_VERSION}${DEV_ALLOWED ? ' · dev mode (press ` in game)' : ''} · Arrow keys + Z, or click`),
+      h('div', { class: 'title-foot' }, `v${GAME_VERSION}${DEV_ALLOWED ? ' · dev mode (press ` in game)' : ''} · Arrow keys + Z, tap or click`),
     );
   }
   handle(a: Action): boolean {
@@ -43,6 +43,7 @@ export async function showTitle(c: GameController): Promise<void> {
     { label: 'Load Game', action: () => void openSaveSlots(c, 'load', true) },
     { label: 'Import Save File', action: () => importSave(c) },
     { label: 'Import Save Text', hint: 'Paste text from Export Save.', action: () => importSaveText(c) },
+    { label: 'Settings', hint: 'Text size, font, sound, picture and touch controls.', action: () => openDeviceSettings(c) },
     { label: 'How to Play', action: () => showHelp(c) },
   );
   const latestText = latest ? `Last played: ${latest.shopName}, ${latest.dateLabel}, ${formatMoney(latest.money)}` : '';
