@@ -19,7 +19,7 @@ import { findProp, floorOfTank, GROUND } from '../data/floors';
 import { getSpecies, SPECIES } from '../data/species';
 import { getPersonality, PERSONALITIES, STAFF_FIRST, STAFF_LINES } from '../data/staff';
 import { summarizeAquascape } from './aquascape';
-import { assessSpeciesForSetup, stockingRatio } from './compat';
+import { assessSpeciesForSetup } from './compat';
 import {
   checkoutQuote, completeSale, customerFloor, equipmentCovers, equipmentOptions, inStockSpecies, resolveEquipmentAdvice, nearestFreeNeighbour, offerAddOn, problemFor, queueCustomers,
   resolveAdvice, resolveProblem, type CustomerContext,
@@ -27,7 +27,7 @@ import {
 import { demandFor, spend } from './economy';
 import { fishInTank, newId } from './fish';
 import { idleRefusal } from './idle';
-import { lineWarnings, projectedStocking } from './orderCheck';
+import { lineWarnings, outstandingLines, projectedStocking } from './orderCheck';
 import { FIXES, type FixId } from './preview';
 import { getSupplier, placeOrder, suppliersFor } from './supplier';
 
@@ -462,9 +462,10 @@ export function makeStockProposal(state: GameState, rng: Rng, m: StaffEntity): S
     .filter((id) => state.tanks[id].forSale !== false && (state.tanks[id].waterType ?? 'freshwater') === sp.waterType)
     .map((id) => {
       const t = state.tanks[id];
-      const resident = [...new Set(fishInTank(state, id).map((f) => f.speciesId))];
+      const resident = [...new Set([...fishInTank(state, id).map((f) => f.speciesId), ...outstandingLines(state, id).map((l) => l.speciesId)])];
       const res = assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: t.water.temperature, residentSpecies: resident, waterType: t.waterType ?? 'freshwater' });
-      return { id, score: res.score - stockingRatio(t, fishInTank(state, id)) * 0.4 };
+      // Count livestock already on order too, so staff do not pile a second order onto the same tank.
+      return { id, score: res.score - projectedStocking(state, id, []) * 0.4 };
     })
     .sort((a, b) => b.score - a.score);
   if (!tanks.length) return null;

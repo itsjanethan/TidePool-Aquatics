@@ -448,3 +448,10 @@ body.compact.landscape .aquascape-ui.placing .aq-hint { top: auto; bottom: 4px; 
 .aquascape-ui.placing .aq-place-buttons { justify-content: flex-start; }
 /* Immersive tank view in portrait: no floating B (screens there have their own Back / Cancel / Done). */
 body.portrait .touch-controls[data-mode='minimal'] .ta-b { display: none; }
+
+/* Incoming livestock -------------------------------------------------------- */
+.outlook { display: grid; gap: calc(var(--px) * 1); margin-top: calc(var(--px) * 1); }
+.ol-k { color: var(--blue); }
+.incoming-line { color: #e8c890; }
+.tv-incoming { color: #e8c890; white-space: nowrap; }
+.menu-item.incoming .menu-right { color: #e8c890; }

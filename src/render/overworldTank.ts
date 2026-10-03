@@ -2,6 +2,7 @@
  * Small animated aquarium shown in the shop overworld. Shows water clarity,
  * algae, tiny swimming fish and status icons.
  */
+import { incomingCount } from '../sim/incoming';
 import { tankAlert, type AlertIcon } from '../sim/tankDiagnostics';
 import Phaser from 'phaser';
 import { visualRng as vr } from '../core/rng';
@@ -36,6 +37,8 @@ export class OverworldTank {
   image: Phaser.GameObjects.Image;
   gfx: Phaser.GameObjects.Graphics;
   icon: Phaser.GameObjects.Image;
+  /** Shown while livestock is on order for this tank (not yet arrived). */
+  incoming: Phaser.GameObjects.Image;
   private dots: Dot[] = [];
   private t = 0;
   private resync = 0;
@@ -50,6 +53,7 @@ export class OverworldTank {
     this.rect = { x: x + r.x, y: y + r.y, w: r.w, h: r.h };
     this.gfx = scene.add.graphics().setDepth(this.image.depth + 0.1);
     this.icon = scene.add.image(x + (prop.w * TILE) / 2, y - 4, 'icon-alert').setDepth(5000).setVisible(false);
+    this.incoming = scene.add.image(x + 1, y + 1, 'icon-incoming').setOrigin(0, 0).setDepth(5000).setVisible(false);
     this.sync();
   }
 
@@ -85,6 +89,7 @@ export class OverworldTank {
       this.resync = 0.5;
       this.sync();
       this.updateAlert();
+      this.incoming.setVisible(incomingCount(this.getState(), this.prop.id) > 0);
     }
     const tank = this.getState().tanks[this.prop.id];
     const g = this.gfx;
@@ -148,5 +153,6 @@ export class OverworldTank {
     this.image.destroy();
     this.gfx.destroy();
     this.icon.destroy();
+    this.incoming.destroy();
   }
 }

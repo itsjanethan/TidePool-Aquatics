@@ -21,6 +21,8 @@ import { helpItem, helpLink } from './help';
 import { locked } from './locks';
 import type { FishEntity } from '../../sim/types';
 import { h } from '../dom';
+import { incomingCount, incomingSummary } from '../../sim/incoming';
+import { openIncoming } from './incoming';
 import type { MenuItem } from '../menu';
 import type { MenuScreen } from '../ui';
 import { fishCard, fishLabel, tankHeader, waterReportEl } from './common';
@@ -35,6 +37,9 @@ export function openTankMenu(c: GameController, tankId: string): void {
     return [
       ...issueItems(c, tankId, report, screen, 3),
       { label: 'Tank Status', right: STATUS_LABEL[report.status], hint: 'Every issue and the habitat numbers (cover, caves, swimming space) for this tank.', action: () => openTankStatus(c, tankId, screen) },
+      ...(incomingCount(s, tankId)
+        ? [{ label: `On order (${incomingCount(s, tankId)})`, right: 'not arrived', className: 'incoming', hint: `${incomingSummary(s, tankId)}. See what will be here after delivery, or cancel.`, action: () => openIncoming(c, tankId, () => screen.refresh(items())) }]
+        : []),
       { label: 'View Tank', hint: 'Watch your fish up close.', action: () => c.openTankView(tankId) },
       locked(c, 'maintenance', { label: 'Feed', right: `food: ${Math.floor(s.foodUnits)}`, action: () => openFeed(c, tankId, screen) }),
       { label: `Livestock (${n})`, action: () => openLivestock(c, tankId) },

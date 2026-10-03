@@ -7,9 +7,9 @@ import { round } from '../core/math';
 import type { Rng } from '../core/rng';
 import { FOOD_TUB, getDryGood } from '../data/catalog';
 import { getSpecies, SPECIES } from '../data/species';
-import { spend } from './economy';
+import { earn, spend } from './economy';
 import { createFish, newId } from './fish';
-import type { GameState, SupplierOrderLine, SupplierState } from './types';
+import type { GameState, SupplierOrder, SupplierOrderLine, SupplierState } from './types';
 
 export interface SupplierDef {
   id: string;
@@ -149,6 +149,28 @@ export function placeOrder(state: GameState, supplierId: string, lines: Array<Om
   for (const l of priced) st.stock.find((x) => x.speciesId === l.speciesId)!.available -= l.quantity;
   state.orders.push({ id: newId(state, 'o'), supplierId, lines: priced, placedDay: day, arrivalDay: day + def.deliveryDays, total });
   return { ok: true, message: `Order placed: £${total.toFixed(2)}. Arrives ${def.deliveryDays === 1 ? 'tomorrow' : `in ${def.deliveryDays} days`} at opening.` };
+}
+
+/** Refund when cancelling: in full on the day the order was placed, 75% after that. */
+export function cancelRefund(order: SupplierOrder, day: number): number {
+  return round(order.total * (day <= order.placedDay ? 1 : 0.75), 2);
+}
+
+/** Cancels an undelivered order: refunds it and returns the fish to the supplier's list. */
+export function cancelOrder(state: GameState, orderId: string, day: number): OrderResult {
+  if (state.idle) return idleRefusal();
+  const i = state.orders.findIndex((o) => o.id === orderId);
+  if (i < 0) return { ok: false, message: 'That order has already arrived or was cancelled.' };
+  const o = state.orders[i];
+  const refund = cancelRefund(o, day);
+  state.orders.splice(i, 1);
+  const st = state.suppliers[o.supplierId];
+  for (const l of o.lines) {
+    const s = st?.stock.find((x) => x.speciesId === l.speciesId);
+    if (s) s.available += l.quantity;
+  }
+  earn(state, refund, `Cancelled order ${o.id}`);
+  return { ok: true, message: `Order ${o.id} cancelled. Refunded £${refund.toFixed(2)}${refund < o.total ? ' (75%: it had already been dispatched)' : ''}.` };
 }
 
 /** Delivers due orders into their target tanks. Returns summary lines. */
