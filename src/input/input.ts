@@ -58,6 +58,13 @@ export class InputManager {
     // nothing stays "stuck" held (a run or a walk that never ends).
     target.addEventListener('blur', () => this.clearAll());
     target.addEventListener('pagehide', () => this.clearAll());
+    // Rotating the device moves the controls under the fingers: release everything.
+    target.addEventListener('orientationchange', () => this.clearAll());
+    try {
+      target.screen?.orientation?.addEventListener('change', () => this.clearAll());
+    } catch {
+      /* not supported */
+    }
     target.document?.addEventListener('visibilitychange', () => {
       if (target.document.visibilityState === 'hidden') this.clearAll();
     });

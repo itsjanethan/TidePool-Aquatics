@@ -8,6 +8,7 @@ import { TitleScene } from './render/scenes/TitleScene';
 import { ShopScene } from './render/scenes/ShopScene';
 import { TankScene } from './render/scenes/TankScene';
 import { LayoutManager } from './ui/layoutManager';
+import { guardFastTaps } from './ui/tapGuard';
 import { shouldInstallTouch } from './ui/touch';
 import { view } from './render/view';
 
@@ -37,6 +38,8 @@ const game = new Phaser.Game({
 });
 
 controller.setup(game, uiRoot, layout);
+// Quick repeated taps on the game must not zoom the page (see ui/tapGuard.ts).
+guardFastTaps(document.body);
 layout.setGame(game);
 
 // PWA: offline support on the normal static build (not in the single-file build).
