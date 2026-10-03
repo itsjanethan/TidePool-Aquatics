@@ -13,10 +13,24 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 6. **Events v1.** Heatwave, power cut, rare shipment offer, each a choice. Fire via dev panel and naturally at low rates.
 7. **Plant depth.** Light level per tank, fertiliser dry good, runners and rhizome splits as propagation methods, three more plant species.
 8. **Staff depth.** Dialogue pools per personality, training at the PC, morale and breaks, receiving deliveries as a Stock task, a staff room on a floor.
-9. **Marine depth.** Alkalinity and calcium, corals with light needs, cleaner shrimp, quarantine and acclimation for marine deliveries.
+9. **Marine depth.** Quarantine and acclimation for marine deliveries, specialist marine customers, marine staff expertise. (Corals, alkalinity and calcium, and invertebrates are the separate later expansion in the Backlog.)
 10. **Accessibility pass.** High-contrast UI, key rebinding (text size and a readable font shipped with the mobile layout; reduced motion shipped with the aquarium visuals pass).
 
 ## Backlog
+
+Later expansions, in this order (roadmap only; see ROADMAP.md, do not start before Milestones 2 to 4):
+
+1. Corals and aquatic invertebrates (freshwater shrimp, snails and crayfish; marine inverts and corals; alkalinity, calcium and magnesium; reef lighting and flow; fragging).
+2. Vivariums, paludariums and related habitats (frogs and other amphibians, spiders, reptiles, land invertebrates; humidity, misting, temperature gradients, UVB, ventilation; feeder insects).
+3. Ant keeping as a dedicated expansion (formicaria, colony growth, brood, foraging, hibernation).
+
+Follow-ups from 0.5:
+
+- Check the mobile layout on real phones (iOS Safari and Android Chrome): browser bars, notches, on-screen keyboard, rotation, multi-touch d-pad plus B, performance of the tank view.
+- Measure the tank view on real devices (phone and desktop GPU) and tune Auto quality's threshold (34 ms median) from those numbers.
+- Pinch to zoom the store camera (map view covers it for now).
+
+Other:
 
 - Review the three high-severity npm audit findings in the build-only `vite-plugin-singlefile -> micromatch -> braces` chain (2026-10-03). Validate a compatible remedy in a separate PR; the suggested force fix downgrades the plugin to 0.9.0.
 

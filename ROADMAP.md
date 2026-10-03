@@ -71,6 +71,14 @@ The aquarium view became a core product feature. See ART_DIRECTION.md.
 - DONE Shop levels: Coldwater & Temperate floor (medaka, rosy barb, hillstream loach, paradise fish), Advanced Aquatics & Marine (German blue ram, ocellaris clownfish, royal gramma, Banggai cardinal; salinity, RO top-off, salt, live rock, skimmers), Basement warehouse and equipment retail (bundles, stock space, equipment customers); Shop Progression screen
 - DONE GitHub Pages workflow, env-driven base path, nested-path test, Copy Playtest Report, version shown on title, pause and help
 
+## Milestone 0.5: Developer sandbox, mobile, visuals, keeper tools (DONE 2026-10-03, pending merge)
+
+- DONE Developer Sandbox, local only: everything unlocked, presets, separate save namespace; developer tools removed from the public build at build time and verified in `npm run check`
+- DONE Hold B to run in the store; held input cleared on blur, hidden tab and page hide; multi-touch controls
+- DONE Mobile layout: full-screen responsive game, safe areas, controls beside or below the game, 16 px minimum text, 44 px targets, text size and readable font, menus as sheets, store camera that follows the player with a map view, immersive tank view, tap to move
+- DONE Aquarium visuals tied to tank state (pearling, mulm, surface film, hardscape shade and algae, light ramp, reflections), Auto quality, reduced motion, bounded texture caches, profiling tools
+- DONE Individual fish "Not for sale"
+
 ## Milestone 2: Content depth and shop life (NEXT)
 
 Reassessed after Milestone 1.5. Staff, Floor 2 and marine stay later; the core loop now benefits most from variety and texture.
@@ -96,14 +104,44 @@ Reassessed after Milestone 1.5. Staff, Floor 2 and marine stay later; the core l
 
 - Marine v1 shipped in v0.4.0 (salinity as SG, top-off, RO, salt, live rock, skimmer, three marine fish). Next: corals and lighting, alkalinity and calcium, invertebrates, marine staff expertise, specialist marine customers, quarantine and acclimation
 
-## Habitat branch: paludariums and vivariums (LATER, after Milestone 4)
+## Later expansions, in this order (LATER; roadmap only, not started)
 
-A later progression branch that widens the shop into specialist animal keeping. Not to start before the fish systems are mature.
+Three separate expansions, each its own milestone with its own systems, art, customers and tests. They come after the fish systems are mature (Milestones 2 to 4) and in this order, because each builds on the one before. None of this is part of the 0.5 work.
 
-- **Paludariums** (unlocked on a later floor): split habitat with an aquatic zone and a land/emergent zone; emergent plants, roots, rocks, waterfalls or misting; humidity as a new simulated value alongside water; land planting; suitable aquatic and semi-aquatic inhabitants.
-- **Vivariums**: fully terrestrial enclosures with humidity, temperature, substrate, terrestrial plants, climbing structures, hides and lighting; terrestrial inhabitants.
-- Architecture prep already in place: habitat rendering reads light colour and water tint from data; plants are architecture-driven; the simulation separates per-tank systems so new environment values can be added as new systems.
+### 1. Corals and aquatic invertebrates
+
+Builds on Marine depth (Milestone 4) and the freshwater shrimp in Milestone 2.
+
+- Freshwater invertebrates: shrimp colonies (colour grades, moulting, berried females), snails (pest and ornamental, egg rules), crayfish (escape risk, aggression), mussels (filter feeding)
+- Marine invertebrates: cleaner and peppermint shrimp, hermit crabs, snails, urchins, starfish; "reef safe" compatibility with fish
+- Corals: soft corals, LPS and SPS with light needs (intensity and spectrum), flow, placement height, colour that reflects health, bleaching, fragging and selling frags
+- Water systems: alkalinity, calcium and magnesium uptake, dosing and testing; copper and medication sensitivity for invertebrates
+- Equipment: reef lighting, wavemakers, dosing pumps, frag racks
+- Rendering: coral growth forms and polyp motion tied to flow and light; invertebrate behaviour (grazing, scavenging, moulting)
+
+### 2. Vivariums, paludariums and related habitats
+
+A new habitat branch beside the aquariums, unlocked on a later floor. Builds on the invertebrate systems (feeder insects, moulting) and the per-tank environment systems.
+
+- Enclosure types: paludarium (water zone plus land zone), vivarium and terrarium (fully terrestrial), riparium; dimensions and ventilation matter
+- Inhabitants: frogs and other amphibians (dart frogs, tree frogs, newts and axolotls where water-based), spiders and other arachnids (tarantulas), reptiles (geckos and other small lizards), plus land invertebrates (isopods and springtails as clean-up crew)
+- New simulated values: air humidity and misting, temperature gradients and basking spots, UVB, substrate moisture, ventilation and mould risk; water quality still applies to the water zone
+- Care: live food (feeder insects as stock that needs keeping), shedding and moulting, hides and climbing structures, bioactive substrate
+- Plants: emergent and epiphytic plants, mosses and bromeliads; land planting
+- Customers and ethics: specialist keepers, welfare and suitability advice, no venomous or restricted species
+- Architecture already prepared: habitat rendering reads light colour and water tint from data, plants are architecture-driven, per-tank systems can gain new environment values
+
+### 3. Ant keeping (a dedicated expansion, after the habitats branch)
+
+A distinct expansion with its own simulation rather than a tank variant.
+
+- Formicaria: nest modules and outworlds, nest moisture and temperature, connections between modules
+- Colonies: queen, workers and brood stages (eggs, larvae, pupae), colony growth over months, founding colonies
+- Feeding: sugars and protein, foraging behaviour visible in the outworld
+- Seasons: hibernation (diapause) for temperate species
+- Species rules, escape prevention, and selling colonies and setups
+- Rendering: ants as many small agents, with their own performance budget
 
 ## Milestone 5+ (LATER)
 
-Reef systems and corals, shrimp and invertebrates, competitions, breeding rooms, advanced genetics, player-created strains, biotopes, large display tanks, extensive expansion, hundreds of species, customer stories, achievements, long-term goals, desktop/itch.io/Steam/mobile packaging.
+Competitions, breeding rooms, advanced genetics, player-created strains, biotopes, large display tanks, extensive expansion, hundreds of species, customer stories, achievements, long-term goals, desktop/itch.io/Steam/mobile packaging.
