@@ -1,5 +1,7 @@
 /** Shared UI fragments: tank status, water readout, fish cards. */
-import { formatMoney, round } from '../../core/math';
+import { paintFishPortrait } from '../../render/art/fishPainter';
+import { phenotypeOf } from '../../sim/phenotype';
+import { clamp, formatMoney, round } from '../../core/math';
 import { getFilter, getHeater } from '../../data/catalog';
 import { getSpecies } from '../../data/species';
 import { summarizeAquascape } from '../../sim/aquascape';
@@ -155,6 +157,7 @@ export function fishCard(state: GameState, f: FishEntity, detailed = false): HTM
     const st = stressTarget(f, tank, fishInTank(state, tank.id), summarizeAquascape(tank));
     if (st.reasons.length) rows.push(h('div', { class: 'fish-issues' }, 'Bothered by: ', st.reasons.slice(0, 3).map((r) => r.reason).join(', ')));
   }
+  if (detailed) rows.unshift(specimen(f));
   if (detailed) {
     const sec = (t: string) => h('div', { class: 'section-title' }, t);
     const line = (t: string) => h('div', { class: 'small' }, t);
@@ -189,4 +192,16 @@ export function speciesSummary(state: GameState, tankId: string): string {
   const counts = new Map<string, number>();
   for (const f of fishInTank(state, tankId)) counts.set(f.speciesId, (counts.get(f.speciesId) ?? 0) + 1);
   return [...counts].map(([id, n]) => `${getSpecies(id).commonName} x${n}`).join(', ') || 'Empty';
+}
+
+/** A large painted portrait of this individual (same painter as the tank sprites). */
+export function specimen(f: FishEntity): HTMLElement {
+  const img = paintFishPortrait(phenotypeOf(f), Math.round(150 * clamp(f.sizeCm / f.adultSizeCm, 0.4, 1.05)));
+  const cv = document.createElement('canvas');
+  cv.width = img.width;
+  cv.height = img.height;
+  cv.getContext('2d')?.putImageData(new ImageData(img.data, img.width, img.height), 0, 0);
+  cv.className = 'specimen-canvas';
+  if (!f.alive) cv.style.transform = 'scaleY(-1)';
+  return h('div', { class: 'specimen' }, cv);
 }

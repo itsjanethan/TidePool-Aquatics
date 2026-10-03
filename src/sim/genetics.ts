@@ -4,7 +4,7 @@
  */
 import { clamp } from '../core/math';
 import type { Rng } from '../core/rng';
-import { GENETICS, type LocusDef } from '../data/genetics';
+import { GENETICS, type AlleleDef, type LocusDef } from '../data/genetics';
 import { getSpecies } from '../data/species';
 import type { FishEntity, FishGenes, GameState, Strain } from './types';
 
@@ -30,12 +30,77 @@ export function morphFromGenes(speciesId: string, loci: Record<string, [string, 
   for (const rule of g.rules) {
     const ok = Object.entries(rule.when).every(([lid, allele]) => {
       const locus = g.loci.find((l) => l.id === lid);
-      const pair = loci[lid];
-      return !!locus && !!pair && expressed(locus, pair) === allele;
+      return !!locus && expressed(locus, pairFor(locus, loci)) === allele;
     });
     if (ok) return rule.morph;
   }
   return g.rules[g.rules.length - 1].morph;
+}
+
+/** One allele drawn by supplier-population frequency. */
+function drawAllele(l: LocusDef, rng: Rng): string {
+  const total = l.alleles.reduce((t, a) => t + (a.freq ?? 1), 0);
+  let r = rng.next() * total;
+  for (const a of l.alleles) {
+    r -= a.freq ?? 1;
+    if (r <= 0) return a.id;
+  }
+  return l.alleles[l.alleles.length - 1].id;
+}
+
+/** Allele pair for a locus, defaulting to the common (first) allele for loci added after a fish was saved. */
+export function pairFor(l: LocusDef, loci: Record<string, [string, string]>): [string, string] {
+  return loci[l.id] ?? [l.alleles[0].id, l.alleles[0].id];
+}
+
+export interface ExpressedTrait {
+  locus: LocusDef;
+  allele: AlleleDef;
+  /** 1 = full effect; 0.5 for one copy of an additive (incompletely dominant) allele. */
+  weight: number;
+}
+
+/** Visible allele effects of a genotype, in locus order. */
+export function expressedTraits(speciesId: string, loci: Record<string, [string, string]>): ExpressedTrait[] {
+  const g = GENETICS[speciesId];
+  if (!g) return [];
+  const out: ExpressedTrait[] = [];
+  for (const l of g.loci) {
+    const pair = pairFor(l, loci);
+    if (l.additive) {
+      // Count copies of each non-baseline allele.
+      for (const a of l.alleles) {
+        if (a.dom === 0 || !a.visual) continue;
+        const n = (pair[0] === a.id ? 1 : 0) + (pair[1] === a.id ? 1 : 0);
+        if (n) out.push({ locus: l, allele: a, weight: n / 2 });
+      }
+      continue;
+    }
+    const ex = expressed(l, pair);
+    const allele = l.alleles.find((a) => a.id === ex);
+    if (allele) out.push({ locus: l, allele, weight: 1 });
+  }
+  return out;
+}
+
+/** Traits a particular fish actually shows (male-only traits hidden in females and juveniles). */
+export function shownTraits(f: FishEntity): ExpressedTrait[] {
+  const showsMale = f.sex === 'male' && f.ageDays >= getSpecies(f.speciesId).maturityDays;
+  return expressedTraits(f.speciesId, f.genes.loci).filter((t) => !t.locus.maleOnly || showsMale);
+}
+
+/** Words describing visible extra traits, e.g. ["Albino", "Double Sword"]. */
+export function traitLabels(f: FishEntity): string[] {
+  return shownTraits(f)
+    .filter((t) => t.allele.label && t.weight >= 0.5)
+    .map((t) => (t.weight < 1 ? `Half ${t.allele.label}` : t.allele.label!));
+}
+
+/** Price multiplier from visible traits (capped so stacked traits stay sane). */
+export function traitValue(f: FishEntity): number {
+  let v = 1;
+  for (const t of shownTraits(f)) v *= 1 + ((t.allele.value ?? 1) - 1) * t.weight;
+  return Math.min(2.5, v);
 }
 
 /** A random genotype that expresses `morphId` (rejection sampling over allele draws). */
@@ -43,12 +108,9 @@ export function genotypeForMorph(speciesId: string, morphId: string, rng: Rng): 
   const g = GENETICS[speciesId];
   if (!g) return {};
   let last: Record<string, [string, string]> = {};
-  for (let attempt = 0; attempt < 400; attempt++) {
+  for (let attempt = 0; attempt < 3000; attempt++) {
     const loci: Record<string, [string, string]> = {};
-    for (const l of g.loci) {
-      const ids = l.alleles.map((a) => a.id);
-      loci[l.id] = [rng.pick(ids), rng.pick(ids)];
-    }
+    for (const l of g.loci) loci[l.id] = [drawAllele(l, rng), drawAllele(l, rng)];
     last = loci;
     if (morphFromGenes(speciesId, loci) === morphId) return loci;
   }
@@ -67,8 +129,8 @@ export function inherit(speciesId: string, mother: FishGenes, father: FishGenes,
   let mutated = false;
   if (g) {
     for (const l of g.loci) {
-      const m = mother.loci[l.id] ?? [l.alleles[0].id, l.alleles[0].id];
-      const f = father.loci[l.id] ?? [l.alleles[0].id, l.alleles[0].id];
+      const m = pairFor(l, mother.loci);
+      const f = pairFor(l, father.loci);
       let a = rng.pick(m);
       let b = rng.pick(f);
       if (rng.chance(MUTATION_CHANCE)) {
@@ -105,8 +167,7 @@ export function traitView(f: FishEntity): TraitView[] {
   if (!g) return [];
   const known = genotypeKnown(f);
   return g.loci.map((l) => {
-    const pair = f.genes.loci[l.id];
-    if (!pair) return { name: l.name, shown: '?', carries: null };
+    const pair = pairFor(l, f.genes.loci);
     const ex = expressed(l, pair);
     const other = pair[0] === ex ? pair[1] : pair[0];
     const nm = (id: string) => l.alleles.find((a) => a.id === id)?.name ?? id;

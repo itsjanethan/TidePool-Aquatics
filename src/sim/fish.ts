@@ -7,7 +7,7 @@ import type { Rng } from '../core/rng';
 import { getSpecies } from '../data/species';
 import type { ColourMorph, SpeciesDef } from '../data/speciesTypes';
 import type { FishEntity, FishGenes, FishOrigin, GameState, Sex, TankState } from './types';
-import { genotypeForMorph, morphFromGenes } from './genetics';
+import { genotypeForMorph, morphFromGenes, traitLabels, traitValue } from './genetics';
 
 export interface CreateFishOptions {
   speciesId: string;
@@ -144,13 +144,15 @@ export function fishValue(f: FishEntity): number {
   // that grows with the line's generations (capped so values cannot run away).
   const bredFactor = f.origin === 'bred' ? 1.1 : 1;
   const strainFactor = f.strainName ? 1 + Math.min(0.4, 0.08 * f.generation) : 1;
-  return sp.retailPrice * morph.priceMultiplier * sizeFactor * qualityFactor * healthFactor * bredFactor * strainFactor;
+  return sp.retailPrice * morph.priceMultiplier * traitValue(f) * sizeFactor * qualityFactor * healthFactor * bredFactor * strainFactor;
 }
 
 export function displayName(f: FishEntity): string {
   const sp = getSpecies(f.speciesId);
   const morph = getMorph(sp, f.morphId);
-  return f.name ?? `${morph.name} ${sp.commonName}`;
+  if (f.name) return f.name;
+  const traits = traitLabels(f);
+  return `${traits.length ? `${traits.join(' ')} ` : ''}${morph.name} ${sp.commonName}`;
 }
 
 export interface FishEnv {

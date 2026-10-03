@@ -19,6 +19,7 @@ import type { DecorItem, FishEntity, GameState, TankState } from '../sim/types';
 import { buildPlant, drawPlant, ensureHardscapeTexture, type PlantModel } from './art/decorArt';
 import { makeTexture, mix, px, shade } from './art/pixel';
 import { FishAgent, type HideSpot, type Pellet, type TankWorld } from './fishBehaviour';
+import { beginFishFrame } from './art/fishArt';
 import { CANVAS_H, CANVAS_W, RES } from './res';
 
 /** Tank view layout in canvas pixels. */
@@ -121,6 +122,8 @@ export class TankRenderer {
       agents: [],
       flow: 0.5,
       scale: RES,
+      schools: new Map(),
+      lightAt: (x, y) => this.lightAt(x, y),
       onEat: (agent, pellet) => this.eat(agent, pellet),
     };
     ensureSharedTextures(scene);
@@ -461,7 +464,14 @@ export class TankRenderer {
   // -------------------------------------------------------------------------
   // Frame update
 
+  /** 0..1 light at a canvas point: falls off with depth; shaded under plant canopies. */
+  lightAt(_x: number, y: number): number {
+    const depth = clamp((y - VIEW.surface) / (VIEW.floor - VIEW.surface), 0, 1);
+    return 1 - depth * 0.3;
+  }
+
   update(dt: number): void {
+    beginFishFrame();
     this.time += dt;
     const t = this.tank;
     if (this.signature() !== this.decorSignature) this.rebuildDecor();
@@ -492,7 +502,6 @@ export class TankRenderer {
     this.syncFood();
 
     for (const a of this.agents.values()) {
-      if (Math.random() < dt * 0.5) a.refreshTexture(this.world);
       a.update(dt, this.world, this.time);
     }
 

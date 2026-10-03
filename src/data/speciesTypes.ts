@@ -32,7 +32,65 @@ export type PatternType =
   | 'bars'
   | 'tailspot'
   | 'calico'
-  | 'speckle';
+  | 'speckle'
+  /** Snakeskin reticulation over the body (cobra guppies). */
+  | 'cobra'
+  /** Dark rear half of the body (tuxedo). */
+  | 'tuxedo'
+  /** Black fins (wagtail). */
+  | 'wag'
+  /** Body colour graded toward the accent at the rear (sunset). */
+  | 'gradient'
+  /** Thin iridescent lateral line. */
+  | 'lateral'
+  /** Large dark blotches (bronze cory flank, dalmatian). */
+  | 'blotch';
+
+/** Caudal (tail) fin shapes the renderer can draw. */
+export type CaudalShape = 'fork' | 'round' | 'fan' | 'delta' | 'veil' | 'sword' | 'double_sword' | 'lyre' | 'twin' | 'spade';
+
+/** A pattern drawn on the fish. Multiple layers stack in order. */
+export interface PatternLayer {
+  type: PatternType;
+  colour: string;
+  /** Where it applies (default body). */
+  region?: 'body' | 'fins' | 'tail' | 'all';
+  /** 0..1 opacity / strength (default 1). */
+  strength?: number;
+}
+
+/**
+ * Visual effect of an expressed allele or a morph. Everything optional;
+ * the renderer combines species defaults, morph, alleles and individual
+ * variation into a Phenotype (src/sim/phenotype.ts).
+ */
+export interface VisualMod {
+  albino?: boolean;
+  /** 0..1 metallic scale sheen. */
+  metallic?: number;
+  /** 0..1 extra dark pigment. */
+  melanism?: number;
+  caudal?: CaudalShape;
+  /** Multiplier on tail length/height. */
+  caudalSize?: number;
+  /** Multiplier on dorsal fin height; 'sail' style via dorsalSail. */
+  dorsalSize?: number;
+  dorsalSail?: boolean;
+  /** Multiplier on all other fins (long-fin varieties). */
+  finSize?: number;
+  /** Extra pattern layers. */
+  patterns?: PatternLayer[];
+  /** Replace the fin colour. */
+  finColour?: string;
+  /** Head growth (oranda wen). */
+  wen?: boolean;
+  /** Telescope eyes. */
+  telescope?: boolean;
+  /** Iris colour. */
+  iris?: string;
+  /** Only shown by mature males (e.g. guppy body colour). */
+  maleOnly?: boolean;
+}
 
 export interface ColourMorph {
   id: string;
@@ -48,6 +106,8 @@ export interface ColourMorph {
   weight: number;
   priceMultiplier: number;
   finStyleOverride?: FinStyle;
+  /** Extra visual traits always shown by this morph. */
+  visual?: VisualMod;
 }
 
 export interface SpeciesBehaviour {
@@ -75,6 +135,19 @@ export interface SpeciesBehaviour {
   chaseTendency: number;
   /** Fin nipping toward long-finned fish. */
   finNipper: boolean;
+}
+
+export interface SpeciesMotion {
+  /** Tail beats per second when cruising. */
+  beatHz: number;
+  /** 0..1 how much the fish glides between bursts (0 = steady paddling). */
+  glide: number;
+  /** 0..1 how quickly the fish turns around. */
+  turnRate: number;
+  /** 0..1 sluggishness of acceleration (goldfish heavy, danio light). */
+  inertia: number;
+  /** 0..1 tendency to hover in place with fins sculling. */
+  hover: number;
 }
 
 export interface SpeciesDef {
@@ -135,7 +208,25 @@ export interface SpeciesDef {
   nativeRegion: string;
   /** 1 beginner .. 5 expert. */
   difficulty: number;
-  body: { shape: BodyShape; fins: FinStyle; heightRatio: number };
+  body: {
+    shape: BodyShape;
+    fins: FinStyle;
+    heightRatio: number;
+    /** Default tail shape (otherwise derived from fins). */
+    caudal?: CaudalShape;
+    /**
+     * Anatomy details the renderer draws: adipose (small fin behind dorsal),
+     * barbels, scutes (armour plates), sucker (pleco mouth), bristles
+     * (male odontodes), upturned (mouth), lateral (lateral line), gonopodium.
+     */
+    features?: string[];
+    /** Iris colour (default warm gold). */
+    iris?: string;
+    /** 0..1 how see-through fins are (default 0.25). */
+    finClarity?: number;
+  };
+  /** Swimming style for the tank view; defaults derive from body shape and behaviour. */
+  motion?: SpeciesMotion;
   behaviour: SpeciesBehaviour;
   description: string;
   /** Short husbandry tip shown in advice dialogue. */
