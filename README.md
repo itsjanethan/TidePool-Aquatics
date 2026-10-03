@@ -14,7 +14,19 @@ npm run build        # static site in dist/
 npm run build:single # one self-contained HTML file in dist-single/
 ```
 
-Open the production build with `?dev=1` (or `#dev`) to enable the developer panel. `npm run build:artifact` makes the hosted single-file version.
+`npm run build:artifact` makes the hosted single-file version.
+
+### Developer tools and the Developer Sandbox (local only)
+
+```bash
+npm run dev          # developer build: press ` (or F9) in game for the Developer Panel
+npm run sandbox      # opens straight into the Developer Sandbox (http://localhost:5173/?sandbox)
+npm run build:sandbox  # optional local build in dist-sandbox/ (never deployed, git-ignored)
+```
+
+The Developer Sandbox is a fixed-seed game with every implemented floor, expansion, species, plant, ornament, equipment and retail item available, healthy mature freshwater and marine tanks, four staff, £100,000 and full stock. Its tools screen (Developer Panel > Sandbox tools) jumps between floors and tanks, applies presets (planted, breeding, coldwater, marine, performance test at the population cap), advances time and resets. Sandbox saves live in their own namespace and never appear under Continue; importing one into normal play warns first and marks it developer-used.
+
+Developer tools exist only in development and sandbox modes. The public production build (`npm run build`, GitHub Pages, the single-file build) compiles them out: no URL flag, storage flag or console API can turn them on, and `npm run check` fails if `scripts/verify-public-build.mjs` finds developer code in `dist/`. The source is public, so this keeps the hosted game free of developer tools; it does not make the sandbox secret. Do not publish `dist-sandbox/`; if remote developer access is ever needed, host it behind real authentication enforced by the server.
 
 Current version: **0.4.0** (shown on the title screen, the pause menu and Help).
 

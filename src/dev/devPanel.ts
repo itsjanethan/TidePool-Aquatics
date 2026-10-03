@@ -1,29 +1,29 @@
 /**
- * Developer panel. Only reachable when DEV_ALLOWED (dev build or ?dev=1).
- * Every action marks the save as dev-touched.
+ * Developer panel. Only compiled into developer builds (`__DEV_TOOLS__`);
+ * the public production build contains none of src/dev. Every action marks
+ * the save as dev-touched.
  */
-import { EXPANSIONS } from '../../data/expansions';
-import { buyExpansion } from '../../sim/expansion';
-import { hireApplicant, refreshApplicants } from '../../sim/staff';
-import { RETAIL_ITEMS } from '../../data/retail';
-import type { GameController } from '../../game/GameController';
-import { DEV_ALLOWED } from '../../game/GameController';
-import { formatMoney } from '../../core/math';
-import { SPECIES } from '../../data/species';
-import { spawnCustomer } from '../../sim/customers';
-import { createFish, fishInTank, isMature } from '../../sim/fish';
-import { birthFry } from '../../sim/breeding';
-import { genotypeForMorph, morphFromGenes } from '../../sim/genetics';
+import { EXPANSIONS } from '../data/expansions';
+import { buyExpansion } from '../sim/expansion';
+import { hireApplicant, refreshApplicants } from '../sim/staff';
+import { RETAIL_ITEMS } from '../data/retail';
+import type { GameController } from '../game/GameController';
+import { formatMoney } from '../core/math';
+import { SPECIES } from '../data/species';
+import { spawnCustomer } from '../sim/customers';
+import { createFish, fishInTank, isMature } from '../sim/fish';
+import { birthFry } from '../sim/breeding';
+import { genotypeForMorph, morphFromGenes } from '../sim/genetics';
 import { galleryCells, openGallery } from './gallery';
-import { GENETICS } from '../../data/genetics';
-import { getSpecies } from '../../data/species';
-import type { FishEntity } from '../../sim/types';
-import { OBJECTIVES } from '../../sim/progression';
-import { REP_DIMENSIONS } from '../../sim/reputation';
-import type { CustomerGoal } from '../../sim/types';
-import { h } from '../dom';
-import type { MenuItem } from '../menu';
-import type { MenuScreen } from '../ui';
+import { GENETICS } from '../data/genetics';
+import { getSpecies } from '../data/species';
+import type { FishEntity } from '../sim/types';
+import { OBJECTIVES } from '../sim/progression';
+import { REP_DIMENSIONS } from '../sim/reputation';
+import type { CustomerGoal } from '../sim/types';
+import { h } from '../ui/dom';
+import type { MenuItem } from '../ui/menu';
+import type { MenuScreen } from '../ui/ui';
 
 let open: MenuScreen | null = null;
 let tankIdx = 0;
@@ -43,7 +43,6 @@ const STAGES = [
 const GOALS: CustomerGoal[] = ['browse', 'buy_specific', 'advice_stocking', 'problem', 'buy_equipment'];
 
 export function toggleDevPanel(c: GameController): void {
-  if (!DEV_ALLOWED) return;
   if (open) {
     c.ui.remove(open);
     open = null;
@@ -103,6 +102,7 @@ export function toggleDevPanel(c: GameController): void {
   };
   const noPair = () => c.ui.toast('[dev] Need a mature male and female in the target tank.', 'warn');
   const items = (): MenuItem[] => [
+    ...(s.flags.sandbox ? [{ label: 'Sandbox tools (floors, tanks, presets, reset)', action: () => void import('./sandboxScreen').then((m) => m.openSandboxTools(c)) } as MenuItem] : []),
     { label: 'Money', header: true },
     act('+£100', () => (s.money += 100)),
     act('+£1,000', () => (s.money += 1000)),

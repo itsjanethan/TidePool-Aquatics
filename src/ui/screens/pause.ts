@@ -2,7 +2,8 @@
 import type { GameController } from '../../game/GameController';
 import { AUTOSAVE_TEXT, SPEEDS } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
-import { SLOTS, slotLabel } from '../../sim/save';
+import { adoptSandboxImport, isSandboxState, SLOTS, slotLabel } from '../../sim/save';
+import type { GameState } from '../../sim/types';
 import { clockString, dateString } from '../../sim/time';
 import { h } from '../dom';
 import type { MenuItem } from '../menu';
@@ -102,7 +103,8 @@ export async function openImport(c: GameController): Promise<void> {
 }
 
 export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fromTitle = false, onDone?: () => void): Promise<void> {
-  const sums = await c.saves.list();
+  const saves = fromTitle ? c.saves : c.activeSaves;
+  const sums = await saves.list();
   const slots = mode === 'save' ? SLOTS.filter((sl) => sl !== 'auto') : SLOTS;
   const scr = c.ui.menu({
     title: mode === 'save' ? 'Save Game' : 'Load Game',
@@ -188,6 +190,17 @@ export function exportSave(c: GameController): void {
   c.ui.toast('Save file downloaded.', 'good');
 }
 
+/** Starts an imported game; a Developer Sandbox save needs an explicit warning first. */
+export async function startImported(c: GameController, st: GameState): Promise<void> {
+  if (isSandboxState(st)) {
+    const ok = await c.ui.confirm('This save was made in a developer build sandbox (everything unlocked, developer tools used). Import it into normal play anyway? It will be permanently marked as developer-used.');
+    if (!ok) return;
+    adoptSandboxImport(st);
+  }
+  c.startGame(st);
+  c.ui.toast('Save imported', 'good');
+}
+
 export function importSaveText(c: GameController): void {
   const ta = h('textarea', { class: 'save-text', id: 'save-import-text', placeholder: 'Paste your save text here' }) as HTMLTextAreaElement;
   const scr = c.ui.menu({
@@ -200,8 +213,7 @@ export function importSaveText(c: GameController): void {
           try {
             const st = c.saves.importString(ta.value.trim());
             c.ui.remove(scr);
-            c.startGame(st);
-            c.ui.toast('Save imported', 'good');
+            void startImported(c, st);
           } catch (e) {
             c.ui.toast(`Import failed: ${(e as Error).message}`, 'bad');
           }
@@ -223,8 +235,7 @@ export function importSave(c: GameController): void {
     if (!file) return;
     try {
       const st = c.saves.importString(await file.text());
-      c.startGame(st);
-      c.ui.toast('Save imported', 'good');
+      void startImported(c, st);
     } catch (e) {
       c.ui.toast(`Import failed: ${(e as Error).message}`, 'bad');
     }

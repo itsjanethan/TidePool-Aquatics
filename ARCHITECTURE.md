@@ -9,6 +9,7 @@ render/    Phaser scenes and renderers. Read GameState; never own gameplay state
 ui/        HTML/CSS screens over the canvas (menus, dialogue, HUD).
 input/     Keyboard + gamepad mapped to abstract actions.
 game/      GameController: glue between scenes, UI, input, simulation and saves.
+dev/       Developer-only tools and fixtures. Never imported statically by public code; compiled out of production builds.
 ```
 
 Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never import from `render`, `ui` or `game`. `render` and `ui` may import `sim` functions to read and mutate state through sim APIs (actions live in sim, e.g. `feedTank`, `completeSale`).
@@ -89,7 +90,8 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `ui/screens/help.ts` | How to Play, Help sections, glossary entries, `helpLink` (mouse) and `helpItem` (keyboard) |
 | `ui/screens/staff.ts` | Staff hub, applicants, employee detail, suggestions list and the in-person Approve / Review / Not now prompt |
 | `ui/screens/progression.ts`, `retail.ts`, `playtest.ts`, `locks.ts` | Shop Progression, equipment retail, Copy Playtest Report, Idle Mode menu locks |
-| `ui/screens/gallery.ts` | Developer morph gallery (`#gallery=<species>`): every morph and single-trait variant by sex and life stage, plus the swim/turn frame strip |
+| `dev/*` | Developer-only code, compiled out of public builds: `devPanel.ts` (Developer Panel), `gallery.ts` (morph gallery), `sandbox.ts` (deterministic Developer Sandbox fixture and presets), `sandboxScreen.ts` (sandbox navigation and tools). Reach it only via `if (__DEV_TOOLS__) import(...)` |
+| `ui/screens/gallery.ts` (moved to `dev/gallery.ts`) | Developer morph gallery (`#gallery=<species>`): every morph and single-trait variant by sex and life stage, plus the swim/turn frame strip |
 | `audio/sfx.ts` | Synthesised WebAudio sound effects, per-browser mute |
 | `ui/touch.ts` | On-screen controls for coarse pointers |
 | `game/GameController.ts` | Game loop timing, input routing, pause rules, saves, scene transitions |

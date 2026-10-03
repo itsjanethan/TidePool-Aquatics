@@ -41,6 +41,8 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 
 ## Done
 
+- 2026-10-03: Developer Sandbox (local only) with presets, separate save namespace and build-time removal of all developer tools from the public build (verified in `npm run check`).
+
 - 2026-10-03: Pages timeout blocker fixed with a per-test 30-second limit; all 120 tests and the full Node 22 Pages-path check/build pass. Added pull-request checks and MAINTAINING.md; deployment remains pending merge and successful Pages jobs.
 
 - 2026-10-03: v0.4.0. Tank diagnostics and previews, habitat numbers, help and glossary, staff (hiring, roles, proposals), Idle Mode, floor registry with stairs and save v3, three expansions with eight new species, marine v1, equipment retail, Shop Progression, GitHub Pages workflow, playtest report. Tests: diagnostics, idle, floors, staff, marine and retail, long runs with staff and every floor

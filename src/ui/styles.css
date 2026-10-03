@@ -314,3 +314,4 @@ input:focus { border-color: var(--accent); }
 .tv-idle { color: #f0d870; font-weight: 700; letter-spacing: 0.05em; }
 .tank-view-ui.tv-is-idle .tv-lockable .tv-btn { opacity: 0.45; }
 .tv-lockable { display: contents; }
+.hud-left.sandbox .hud-shop { color: #ff8a5a; letter-spacing: 0.06em; }

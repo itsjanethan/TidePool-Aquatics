@@ -36,6 +36,7 @@ export async function showTitle(c: GameController): Promise<void> {
   c.ui.clear();
   const latest = await c.saves.latest();
   const items: MenuItem[] = [];
+  if (__DEV_TOOLS__) items.push({ label: 'Developer Sandbox', hint: 'Developer build only: everything unlocked, separate saves.', action: () => void import('../../dev/sandboxScreen').then((m) => m.startSandbox(c)) });
   if (latest) items.push({ label: 'Continue', hint: `${latest.shopName} · ${latest.dateLabel}`, action: () => void c.load(latest.slot) });
   items.push(
     { label: 'New Game', action: () => showNewGame(c) },

@@ -240,10 +240,53 @@ export async function createStorage(): Promise<SaveStorage> {
   return new MemoryStorage();
 }
 
+/** Prefixes every key, so separate save namespaces can share one storage backend. */
+export class PrefixedStorage implements SaveStorage {
+  readonly kind: string;
+  constructor(private inner: SaveStorage, private prefix: string) {
+    this.kind = `${inner.kind}+${prefix}`;
+  }
+  get(k: string) {
+    return this.inner.get(this.prefix + k);
+  }
+  set(k: string, v: string) {
+    return this.inner.set(this.prefix + k, v);
+  }
+  remove(k: string) {
+    return this.inner.remove(this.prefix + k);
+  }
+}
+
+/** Key prefix of the Developer Sandbox save namespace. */
+export const SANDBOX_PREFIX = 'sandbox:';
+
+/** A save that came from the Developer Sandbox. */
+export function isSandboxState(state: GameState): boolean {
+  return !!state.flags?.sandbox;
+}
+
+/**
+ * Turns an imported sandbox save into a normal game the player chose to
+ * keep: it stops being a sandbox and is permanently marked developer-used.
+ */
+export function adoptSandboxImport(state: GameState): GameState {
+  state.flags.sandbox = false;
+  state.flags.devUsed = true;
+  return state;
+}
+
 export class SaveManager {
-  constructor(public storage: SaveStorage) {}
+  /** `sandbox` managers only hold Developer Sandbox games; normal managers never do. */
+  constructor(public storage: SaveStorage, readonly sandbox = false) {}
+
+  private checkNamespace(state: GameState): void {
+    if (isSandboxState(state) !== this.sandbox) {
+      throw new Error(this.sandbox ? 'Only sandbox games can be saved here.' : 'Sandbox games are saved separately from normal play.');
+    }
+  }
 
   async save(slot: string, state: GameState): Promise<SaveSummary> {
+    this.checkNamespace(state);
     const file = serialize(state, slot);
     await this.storage.set(`save:${slot}`, JSON.stringify(file));
     return file.summary;
@@ -252,7 +295,9 @@ export class SaveManager {
   async load(slot: string): Promise<GameState | null> {
     const raw = await this.storage.get(`save:${slot}`);
     if (!raw) return null;
-    return deserialize(JSON.parse(raw));
+    const st = deserialize(JSON.parse(raw));
+    this.checkNamespace(st);
+    return st;
   }
 
   async summary(slot: string): Promise<SaveSummary | null> {
@@ -260,6 +305,8 @@ export class SaveManager {
       const raw = await this.storage.get(`save:${slot}`);
       if (!raw) return null;
       const file = JSON.parse(raw) as SaveFile;
+      // Never offer a sandbox game from the normal list (or the reverse).
+      if (!!(file.state as GameState | undefined)?.flags?.sandbox !== this.sandbox) return null;
       return file.summary ?? null;
     } catch {
       return null;
