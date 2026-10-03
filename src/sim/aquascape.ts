@@ -39,17 +39,21 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
     const def = getDecor(d.defId);
     kinds.add(def.kind);
     def.provides.forEach((p) => provides.add(p));
-    const h = def.kind === 'plant' ? d.health : 1;
-    cover += def.cover * h * sizeScale;
+    const isPlant = def.kind === 'plant';
+    const size = isPlant ? (d.size ?? 1) : 1;
+    const h = isPlant ? d.health : 1;
+    cover += def.cover * h * sizeScale * Math.min(size, 1.3);
     if (def.cave) caves += 1;
-    if (def.kind === 'plant') {
+    if (isPlant) {
       plants += 1;
       plantHealthSum += d.health;
-      uptake += def.nutrientUptake * d.health;
+      uptake += def.nutrientUptake * d.health * size;
     }
     ph += def.phEffect;
-    footprint += (def.width / 448) * (def.height / 200);
-    beautySum += def.beauty * h;
+    footprint += (def.width / 448) * (def.height / 200) * (isPlant ? size * size : 1);
+    // Plants look best near mature size; tiny cuttings and overgrown jungles score less.
+    const sizeLook = !isPlant ? 1 : size > 1.25 ? Math.max(0.3, 1 - (size - 1.25) * 1.6) : Math.min(1, 0.45 + size * 0.55);
+    beautySum += def.beauty * h * sizeLook;
   }
 
   const sub = getSubstrate(tank.substrateId);

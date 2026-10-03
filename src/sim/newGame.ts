@@ -3,6 +3,7 @@
  */
 import { Rng } from '../core/rng';
 import { FLOOR1 } from '../data/shopLayout';
+import { getDecor } from '../data/catalog';
 import { emptyLedger } from './economy';
 import { createFish } from './fish';
 import { initObjectives } from './progression';
@@ -10,7 +11,7 @@ import { refreshSupplierStock, SUPPLIERS } from './supplier';
 import { createTank } from './tank';
 import type { DecorItem, GameState, TankState } from './types';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 export const START_MINUTE = 8 * 60 + 40; // Day 1, 08:40
 
 interface StarterTank {
@@ -56,6 +57,7 @@ export function newGame(opts: { seed?: number; playerName?: string; shopName?: s
     dryGoods: { conditioner: 6, test_kit: 2, flake_food: 4, bacteria: 2 },
     prices: {},
     fish: {},
+    storage: { decor: {}, plants: [] },
     tanks: {},
     tankOrder: [],
     customers: [],
@@ -83,7 +85,9 @@ export function newGame(opts: { seed?: number; playerName?: string; shopName?: s
       substrateId: st.substrate,
       backgroundId: st.background,
     });
-    t.decor = st.decor.map(([defId, x, layer], i): DecorItem => ({ uid: `d_${st.id}_${i}`, defId, x, layer, flip: x > 0.5, health: 0.9 }));
+    t.decor = st.decor.map(([defId, x, layer], i): DecorItem => ({ uid: `d_${st.id}_${i}`, defId, x, layer, flip: x > 0.5, health: 0.9, size: getDecor(defId).kind === 'plant' ? rng.range(0.85, 1.15) : 1 }));
+    t.ownedSubstrates = [st.substrate];
+    t.ownedBackgrounds = [st.background];
     t.water.temperature = st.heater ? (st.setpoint ?? 25) : 19.5;
     if (st.mature) {
       t.water.aob = rng.range(0.75, 0.9);

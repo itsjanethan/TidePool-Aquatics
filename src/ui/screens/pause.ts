@@ -2,7 +2,8 @@
 import type { GameController } from '../../game/GameController';
 import { SPEEDS } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
-import { SLOTS } from '../../sim/save';
+import { SLOTS, slotLabel } from '../../sim/save';
+import { clockString, dateString } from '../../sim/time';
 import { h } from '../dom';
 import type { MenuItem } from '../menu';
 import { showHelp } from './help';
@@ -13,29 +14,29 @@ export function openPauseMenu(c: GameController): void {
   const s = c.state;
   const items = (): MenuItem[] => [
       { label: 'Resume', action: () => c.ui.remove(scr) },
-      { label: 'Save game', action: () => openSaveSlots(c, 'save') },
+      { label: 'Save game', right: 'at office PC', hint: 'Walk to the office PC (top right) to save. The game also autosaves every morning at 09:00.', disabled: true },
       { label: 'Load game', action: () => openSaveSlots(c, 'load') },
       { label: 'Goals', action: () => openGoals(c) },
       { label: 'Game speed', right: `${s.settings.speed}x`, onLeft: () => { s.settings.speed = SPEEDS[Math.max(0, SPEEDS.indexOf(s.settings.speed) - 1)]; scr.refresh(items()); }, onRight: () => { s.settings.speed = SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(s.settings.speed) + 1)]; scr.refresh(items()); } },
       { label: 'Sound', right: isMuted() ? 'off' : 'on', action: () => { setMuted(!isMuted()); scr.refresh(items()); } },
       { label: 'Export save file', hint: 'Download a backup you can import on any device.', action: () => exportSave(c) },
       { label: 'How to play', action: () => showHelp(c) },
-      { label: 'Quit to title', action: () => void c.ui.confirm('Quit to the title screen? Unsaved progress since the last save will be lost.').then((y) => y && c.toTitle()) },
+      { label: 'Quit to title', action: () => void c.ui.confirm(`Quit to the title screen? ${c.lastSaveText()} Anything since then will be lost.`).then((y) => y && c.toTitle()) },
   ];
   const scr = c.ui.menu({
     title: 'Paused',
-    body: () => h('div', null, h('div', { class: 'row' }, h('span', null, s.shopName), h('b', null, formatMoney(s.money))), reputationEl(c)),
+    body: () => h('div', null, h('div', { class: 'row' }, h('span', null, s.shopName), h('b', null, formatMoney(s.money))), h('div', { class: 'small save-status' }, c.lastSaveText()), reputationEl(c)),
     items: items(),
     className: 'wide',
   });
 }
 
-export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fromTitle = false): Promise<void> {
+export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fromTitle = false, onDone?: () => void): Promise<void> {
   const sums = await c.saves.list();
   const slots = mode === 'save' ? SLOTS.filter((sl) => sl !== 'auto') : SLOTS;
   const scr = c.ui.menu({
     title: mode === 'save' ? 'Save Game' : 'Load Game',
-    body: h('div', { class: 'small' }, `Saves are stored in this browser (${c.saves.storage.kind}). Export a file for a backup.`),
+    body: h('div', { class: 'small' }, `${fromTitle ? '' : `${c.lastSaveText()} `}Saves are stored in this browser. Use Export for a backup copy.`),
     items: [
       ...slots.map((sl) => {
         const sum = sums.find((x) => x.slot === sl);
@@ -48,8 +49,10 @@ export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fr
           action: async () => {
             if (mode === 'save') {
               if (sum && !(await c.ui.confirm('Overwrite this save?'))) return;
-              if (await c.save(sl)) c.ui.toast('Game saved', 'good');
+              const ok = await c.save(sl);
               c.ui.remove(scr);
+              if (ok) await c.ui.say(null, `Game saved to ${slotLabel(sl)} (${dateString(c.state.minute)}, ${clockString(c.state.minute)}).`);
+              onDone?.();
             } else {
               c.ui.remove(scr);
               await c.load(sl);

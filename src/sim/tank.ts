@@ -7,7 +7,8 @@ import { AIR_PUMP, getDecor, getFilter, getHeater, getTankSize, getSubstrate, ge
 import { getSpecies } from '../data/species';
 import { summarizeAquascape } from './aquascape';
 import { stressTarget } from './compat';
-import { spend, earn } from './economy';
+import { spend } from './economy';
+import { MAX_DECOR, removeToStorage, tickPlants } from './plants';
 import { appetite, eat, fishInTank, fishValue, killFish, newId, tickFish } from './fish';
 import { AMMONIA_PER_FOOD_EATEN, freshWater, tickWater, waterChange } from './water';
 import type { FishEntity, GameState, TankState } from './types';
@@ -43,8 +44,10 @@ export function createTank(id: string, name: string, sizeId: string, opts: Parti
     lastFedMinute: 0,
     viewActive: false,
     lastMaintenance: {},
+    ownedSubstrates: [],
+    ownedBackgrounds: [],
     ...opts,
-  };
+  } as TankState;
 }
 
 /** Food units that would satisfy every fish in the tank right now. */
@@ -106,15 +109,8 @@ export function tickTank(state: GameState, tank: TankState, dtHours: number, ctx
     dtHours,
   );
 
-  // Plants: eaten by plant-unsafe fish, otherwise slowly recover.
-  const plantEaters = alive.filter((f) => !getSpecies(f.speciesId).plantSafe).length;
-  for (const d of tank.decor) {
-    if (getDecor(d.defId).kind !== 'plant') continue;
-    const tough = d.defId === 'anubias' || d.defId === 'java_fern';
-    const loss = plantEaters * (tough ? 0.002 : 0.012) * dtHours;
-    const gain = 0.004 * dtHours * (tank.water.nitrate > 2 ? 1 : 0.3);
-    d.health = clamp(d.health + gain - loss, 0.05, 1);
-  }
+  // Plants grow, get eaten by plant-unsafe fish, and recover.
+  tickPlants(state, tank, dtHours);
 
   for (const f of alive) {
     const st = stressTarget(f, tank, alive, scape);
@@ -281,28 +277,33 @@ export function setHeater(tank: TankState, temp: number): void {
 
 export function addDecor(state: GameState, tank: TankState, defId: string, x: number, layer: 0 | 1 | 2): ActionResult {
   const def = getDecor(defId);
-  if (tank.decor.length >= 14) return fail('This tank is full of decor.');
+  if (tank.decor.length >= MAX_DECOR) return fail('This tank is full of decor.');
   if (!spend(state, def.cost, `${def.name} for ${tank.name}`)) return fail('Not enough money.');
-  tank.decor.push({ uid: newId(state, 'd'), defId, x: clamp01(x), layer, flip: x > 0.5, health: 1 });
+  // New plants arrive as young nursery plants and grow into the tank.
+  tank.decor.push({ uid: newId(state, 'd'), defId, x: clamp01(x), layer, flip: x > 0.5, health: 1, size: def.kind === 'plant' ? 0.6 : 1 });
   for (const f of fishInTank(state, tank.id)) f.shock = Math.min(60, f.shock + 3);
   return ok(`Placed ${def.name}.`, 5);
 }
 
+/** Removing decor keeps it: it goes to the stockroom (see plants.ts). */
 export function removeDecorItem(state: GameState, tank: TankState, uid: string): ActionResult {
-  const i = tank.decor.findIndex((d) => d.uid === uid);
-  if (i < 0) return fail('Nothing to remove.');
-  const def = getDecor(tank.decor[i].defId);
-  tank.decor.splice(i, 1);
-  const refund = round(def.cost * 0.4, 2);
-  earn(state, refund, `Resold ${def.name}`);
-  state.stats.totalSales -= refund; // refunds are not sales
-  return ok(`Removed ${def.name} (recovered £${refund.toFixed(2)}).`, 3);
+  return removeToStorage(state, tank, uid);
+}
+
+export function ownsSubstrate(tank: TankState, id: string): boolean {
+  return id === tank.substrateId || id === 'bare' || getSubstrate(id).cost === 0 || (tank.ownedSubstrates ?? []).includes(id);
+}
+
+export function ownsBackground(tank: TankState, id: string): boolean {
+  return id === tank.backgroundId || getBackground(id).cost === 0 || (tank.ownedBackgrounds ?? []).includes(id);
 }
 
 export function setSubstrate(state: GameState, tank: TankState, id: string): ActionResult {
   const s = getSubstrate(id);
   if (tank.substrateId === id) return fail('Already using that substrate.');
-  if (!spend(state, s.cost, `${s.name} for ${tank.name}`)) return fail('Not enough money.');
+  const owned = ownsSubstrate(tank, id);
+  if (!owned && !spend(state, s.cost, `${s.name} for ${tank.name}`)) return fail('Not enough money.');
+  tank.ownedSubstrates = [...new Set([...(tank.ownedSubstrates ?? []), tank.substrateId, id])];
   tank.substrateId = id;
   tank.water.cloudiness = clamp01(tank.water.cloudiness + 0.35);
   for (const f of fishInTank(state, tank.id)) f.shock = Math.min(60, f.shock + 15);
@@ -312,7 +313,9 @@ export function setSubstrate(state: GameState, tank: TankState, id: string): Act
 export function setBackground(state: GameState, tank: TankState, id: string): ActionResult {
   const b = getBackground(id);
   if (tank.backgroundId === id) return fail('Already using that background.');
-  if (!spend(state, b.cost, `${b.name} for ${tank.name}`)) return fail('Not enough money.');
+  const owned = ownsBackground(tank, id);
+  if (!owned && !spend(state, b.cost, `${b.name} for ${tank.name}`)) return fail('Not enough money.');
+  tank.ownedBackgrounds = [...new Set([...(tank.ownedBackgrounds ?? []), tank.backgroundId, id])];
   tank.backgroundId = id;
   return ok(`Applied ${b.name}.`, 10);
 }

@@ -34,8 +34,22 @@ export interface SaveFile {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const MIGRATIONS: Record<number, (s: any) => any> = {
-  // 1: (s) => ({ ...s, newField: default }),
+  // v1 -> v2: plant growth sizes, shop storage, owned substrates/backgrounds.
+  1: (s) => {
+    s.storage ??= { decor: {}, plants: [] };
+    for (const t of Object.values(s.tanks ?? {}) as Array<Record<string, any>>) {
+      for (const d of t.decor ?? []) d.size ??= 1;
+      t.ownedSubstrates ??= [t.substrateId];
+      t.ownedBackgrounds ??= [t.backgroundId];
+    }
+    return s;
+  },
 };
+
+/** Human label for a save slot id. */
+export function slotLabel(slot: string): string {
+  return slot === 'auto' ? 'Autosave' : slot.startsWith('slot') ? `Slot ${slot.slice(4)}` : slot;
+}
 
 export function serialize(state: GameState, slot: string): SaveFile {
   const clone: GameState = JSON.parse(JSON.stringify(state));

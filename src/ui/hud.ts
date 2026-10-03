@@ -53,7 +53,7 @@ export class Hud {
       h('div', { class: 'hud-shop' }, s.shopName),
       h('div', null, `${dateString(s.minute)}  `, h('b', null, clockString(s.minute)), ' ', h('span', { class: open ? 'tag tag-open' : 'tag tag-closed' }, open ? 'OPEN' : 'CLOSED')),
     );
-    const starStr = '★'.repeat(Math.floor(stars)) + (stars % 1 ? '½' : '') + '☆'.repeat(5 - Math.ceil(stars));
+    const starStr = '★'.repeat(Math.floor(stars)) + '☆'.repeat(5 - Math.floor(stars)) + (stars % 1 ? ' +' : '');
     this.right.innerHTML = '';
     this.right.append(
       h('div', { class: `hud-money ${s.money < 0 ? 'neg' : ''}` }, formatMoney(s.money)),

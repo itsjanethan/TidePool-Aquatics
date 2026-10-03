@@ -20,10 +20,10 @@ export class TitleScene extends Phaser.Scene {
     t.algae = 0;
     t.glassDirt = 0;
     t.decor.push(
-      { uid: 'demo1', defId: 'vallisneria', x: 0.05, layer: 0, flip: false, health: 1 },
-      { uid: 'demo2', defId: 'vallisneria', x: 0.95, layer: 0, flip: false, health: 1 },
-      { uid: 'demo3', defId: 'hornwort', x: 0.55, layer: 0, flip: false, health: 1 },
-      { uid: 'demo4', defId: 'river_stone', x: 0.5, layer: 2, flip: false, health: 1 },
+      { uid: 'demo1', defId: 'vallisneria', x: 0.05, layer: 0, flip: false, health: 1, size: 1.2 },
+      { uid: 'demo2', defId: 'vallisneria', x: 0.95, layer: 0, flip: false, health: 1, size: 1.1 },
+      { uid: 'demo3', defId: 'hornwort', x: 0.55, layer: 0, flip: false, health: 1, size: 1 },
+      { uid: 'demo4', defId: 'river_stone', x: 0.5, layer: 2, flip: false, health: 1, size: 1 },
     );
     // A colourful mix of the starter fish for the title tank.
     for (const f of Object.values(this.demo.fish)) {

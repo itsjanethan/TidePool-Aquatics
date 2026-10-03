@@ -82,6 +82,23 @@ export interface DecorItem {
   layer: 0 | 1 | 2;
   flip: boolean;
   health: number; // plants 0..1
+  /** Plants: growth size (1 = mature). Hardscape: always 1. */
+  size: number;
+}
+
+/** A loose plant in the shop (cutting or uprooted plant), for planting or sale. */
+export interface PottedPlant {
+  uid: string;
+  defId: string;
+  size: number;
+  health: number;
+  reservedBy: string | null;
+}
+
+export interface ShopStorage {
+  /** Hardscape items in the stockroom by decor id. */
+  decor: Record<string, number>;
+  plants: PottedPlant[];
 }
 
 export interface TankState {
@@ -111,6 +128,9 @@ export interface TankState {
   viewActive: boolean;
   /** Last day each maintenance task was done (for UI hints). */
   lastMaintenance: Record<string, number>;
+  /** Substrates and backgrounds bought for this tank (switching back is free). */
+  ownedSubstrates: string[];
+  ownedBackgrounds: string[];
 }
 
 export type CustomerGoal = 'browse' | 'buy_specific' | 'advice_stocking' | 'problem';
@@ -167,6 +187,8 @@ export interface CustomerState {
   patienceLeft: number;
   basket: BasketLine[];
   addOns: string[];
+  /** Potted plants this customer is buying. */
+  plantUids: string[];
   satisfaction: number; // 0..100
   thought: string | null;
   thoughtUntil: number;
@@ -260,6 +282,7 @@ export interface GameState {
   dryGoods: Record<string, number>;
   prices: Record<string, number>;
   fish: Record<string, FishEntity>;
+  storage: ShopStorage;
   tanks: Record<string, TankState>;
   tankOrder: string[];
   customers: CustomerState[];
@@ -281,8 +304,11 @@ export interface GameState {
     fishDied: number;
     adviceGiven: number;
     goodAdvice: number;
+    plantsSold?: number;
   };
   settings: { speed: number; tutorialSeen: boolean };
   flags: { devUsed: boolean; tutorialStep: number };
   lastCustomerSpawnMinute: number;
+  /** Most recent save of this game (added in save v1, optional). */
+  lastSave?: { slot: string; minute: number; at: number };
 }

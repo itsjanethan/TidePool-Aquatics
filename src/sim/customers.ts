@@ -6,7 +6,8 @@
 import { clamp, round } from '../core/math';
 import type { Rng } from '../core/rng';
 import { ARCHETYPES, FIRST_NAMES, PROBLEMS, THOUGHTS, type ArchetypeDef, type ProblemDef } from '../data/customers';
-import { getDryGood } from '../data/catalog';
+import { getDecor, getDryGood } from '../data/catalog';
+import { availablePlants, plantValue } from './plants';
 import { getSpecies, SPECIES } from '../data/species';
 import type { FloorLayout } from '../data/shopLayout';
 import { summarizeAquascape } from './aquascape';
@@ -151,6 +152,7 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
     patienceLeft: 35 + traits.patience * 70,
     basket: [],
     addOns: [],
+    plantUids: [],
     satisfaction: 60 + profile.loyalty * 0.15,
     thought: null,
     thoughtUntil: 0,
@@ -184,6 +186,8 @@ function planAfterEntering(state: GameState, ctx: CustomerContext, c: CustomerSt
     const pool = [...state.tankOrder];
     c.browseQueue = [];
     for (let i = 0; i < n && pool.length; i++) c.browseQueue.push(pool.splice(rng.int(0, pool.length - 1), 1)[0]);
+    // Potted plants for sale sit on the shelves; some browsers look there too.
+    if (availablePlants(state).length && rng.chance(0.45)) c.browseQueue.splice(rng.int(0, c.browseQueue.length), 0, PLANT_SHELF);
     c.phase = 'browsing';
   }
   nextBrowseTarget(state, ctx, c);
@@ -219,14 +223,14 @@ function nextBrowseTarget(state: GameState, ctx: CustomerContext, c: CustomerSta
   c.currentTankId = null;
   // Done browsing.
   if (c.goal === 'advice_stocking' || c.goal === 'problem') {
-    if (c.basket.length || c.addOns.length) goToQueue(state, ctx, c);
+    if (hasPurchases(c)) goToQueue(state, ctx, c);
     else if (c.phase !== 'leaving') {
       c.phase = 'seeking_help';
       c.path = [];
     }
     return;
   }
-  if (c.basket.length || c.addOns.length) goToQueue(state, ctx, c);
+  if (hasPurchases(c)) goToQueue(state, ctx, c);
   else leave(state, ctx, c, c.goal === 'buy_specific' ? 'out of stock' : 'nothing caught their eye');
 }
 
@@ -262,7 +266,63 @@ function think(state: GameState, c: CustomerState, text: string, minutes = 6): v
   c.thoughtUntil = state.minute + minutes;
 }
 
+export const PLANT_SHELF = 'shelf1';
+
+function hasPurchases(c: CustomerState): boolean {
+  return c.basket.length > 0 || c.addOns.length > 0 || (c.plantUids?.length ?? 0) > 0;
+}
+
+/** Customer looks over the potted plants on the shelf. */
+function evaluatePlants(state: GameState, ctx: CustomerContext, c: CustomerState): void {
+  const plants = availablePlants(state).sort((a, b) => b.size * b.health - a.size * a.health);
+  if (!plants.length) return;
+  const spent = checkoutQuote(state, c).total;
+  let budget = c.traits.budget - spent;
+  const chance = c.archetype === 'beginner' || c.archetype === 'hobbyist' ? 0.6 : 0.4;
+  if (!ctx.rng.chance(chance)) return;
+  const want = ctx.rng.int(1, c.traits.budget > 40 ? 3 : 2);
+  for (const p of plants) {
+    if ((c.plantUids?.length ?? 0) >= want) break;
+    const price = plantPrice(state, p);
+    if (price > budget) continue;
+    reservePlant(c, p.uid, state);
+    budget -= price;
+  }
+  if (c.plantUids.length) think(state, c, ctx.rng.pick(['Nice plants!', 'Ooh, a fern.', 'Lovely and healthy.']));
+}
+
+function reservePlant(c: CustomerState, uid: string, state: GameState): void {
+  const p = state.storage.plants.find((x) => x.uid === uid);
+  if (!p || p.reservedBy) return;
+  p.reservedBy = c.id;
+  (c.plantUids ??= []).push(uid);
+}
+
+/** Sale price of a potted plant (player can scale all plant prices). */
+export function plantPrice(state: GameState, p: { defId: string; size: number; health: number }): number {
+  return round(plantValue(p) * (state.prices[PLANT_PRICE_KEY] ?? 1), 2);
+}
+export const PLANT_PRICE_KEY = '_plants';
+
+/** Adds the best affordable potted plant to the basket. Returns true if accepted. */
+export function offerPlant(state: GameState, c: CustomerState, rng: Rng): boolean {
+  const spent = checkoutQuote(state, c).total;
+  const p = availablePlants(state).filter((x) => plantPrice(state, x) <= c.traits.budget - spent + 2).sort((a, b) => b.size - a.size)[0];
+  if (!p) return false;
+  if (!rng.chance(clamp(0.35 + (1 - c.traits.experience) * 0.3, 0.1, 0.85))) {
+    c.satisfaction -= 2;
+    return false;
+  }
+  reservePlant(c, p.uid, state);
+  return true;
+}
+
 function releaseReservations(state: GameState, c: CustomerState): void {
+  for (const uid of c.plantUids ?? []) {
+    const p = state.storage.plants.find((x) => x.uid === uid);
+    if (p && p.reservedBy === c.id) p.reservedBy = null;
+  }
+  c.plantUids = [];
   for (const line of c.basket) {
     for (const id of line.fishIds) {
       const f = state.fish[id];
@@ -444,7 +504,8 @@ export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: n
         }
         c.waitMinutes -= dtMin;
         if (c.waitMinutes <= 0) {
-          if (c.currentTankId) evaluateTank(state, ctx, c, c.currentTankId);
+          if (c.currentTankId === PLANT_SHELF) evaluatePlants(state, ctx, c);
+          else if (c.currentTankId && state.tanks[c.currentTankId]) evaluateTank(state, ctx, c, c.currentTankId);
           nextBrowseTarget(state, ctx, c);
         }
         break;
@@ -582,6 +643,18 @@ export function checkoutQuote(state: GameState, c: CustomerState): { lines: Quot
     const total = round(fish.reduce((s, f) => s + fishPrice(state, f), 0), 2);
     lines.push({ label: getSpecies(l.speciesId).commonName, qty: fish.length, unit: round(total / fish.length, 2), total });
   }
+  const plantGroups = new Map<string, number[]>();
+  for (const uid of c.plantUids ?? []) {
+    const p = state.storage.plants.find((x) => x.uid === uid);
+    if (!p) continue;
+    const arr = plantGroups.get(p.defId) ?? [];
+    arr.push(plantPrice(state, p));
+    plantGroups.set(p.defId, arr);
+  }
+  for (const [defId, prices] of plantGroups) {
+    const total = round(prices.reduce((a, b) => a + b, 0), 2);
+    lines.push({ label: `${getDecor(defId).name} (plant)`, qty: prices.length, unit: round(total / prices.length, 2), total });
+  }
   for (const id of c.addOns) {
     const g = getDryGood(id);
     lines.push({ label: g.name, qty: 1, unit: g.retail, total: g.retail });
@@ -613,6 +686,7 @@ export function acceptChance(c: CustomerState, offer: number, asked: number): nu
 export interface SaleResult {
   total: number;
   fishCount: number;
+  plantCount: number;
 }
 
 export function completeSale(state: GameState, ctx: CustomerContext, c: CustomerState, finalTotal: number): SaleResult {
@@ -635,6 +709,10 @@ export function completeSale(state: GameState, ctx: CustomerContext, c: Customer
     }
   }
   for (const id of c.addOns) state.dryGoods[id] = Math.max(0, (state.dryGoods[id] ?? 0) - 1);
+  const plantCount = (c.plantUids ?? []).length;
+  state.storage.plants = state.storage.plants.filter((p) => !(c.plantUids ?? []).includes(p.uid));
+  state.stats.plantsSold = (state.stats.plantsSold ?? 0) + plantCount;
+  c.plantUids = [];
   c.basket = [];
   c.addOns = [];
   earn(state, finalTotal, `Sale to ${c.name}`);
@@ -653,7 +731,7 @@ export function completeSale(state: GameState, ctx: CustomerContext, c: Customer
   if (waited < 40) nudgeRep(state, 'service', 0.4);
   think(state, c, ctx.rng.pick(THOUGHTS.happy), 8);
   leave(state, ctx, c, 'served');
-  return { total: finalTotal, fishCount };
+  return { total: finalTotal, fishCount, plantCount };
 }
 
 export function refuseSale(state: GameState, ctx: CustomerContext, c: CustomerState): void {
@@ -753,8 +831,17 @@ export function resolveAdvice(state: GameState, ctx: CustomerContext, c: Custome
       leave(state, ctx, c, 'over budget');
       return { reply: `${sp.commonName} sound perfect, but they are over my budget today. Thanks though!`, success: true };
     }
+    // Someone setting up a tank often wants a plant too.
+    let extra = '';
+    if (ctx.rng.chance(0.45)) {
+      const p = availablePlants(state).sort((a, b) => b.size - a.size)[0];
+      if (p && plantPrice(state, p) < c.traits.budget * 0.5) {
+        reservePlant(c, p.uid, state);
+        extra = ` And a ${getDecor(p.defId).name} for the tank.`;
+      }
+    }
     goToQueue(state, ctx, c);
-    return { reply: `${sp.commonName}! ${sp.careTip} I will take ${n}. See you at the till!`, success: true };
+    return { reply: `${sp.commonName}! ${sp.careTip} I will take ${n}.${extra} See you at the till!`, success: true };
   }
   if (res.score < 0.5 && ctx.rng.chance(c.traits.experience + 0.15)) {
     nudgeRep(state, 'knowledge', -2);

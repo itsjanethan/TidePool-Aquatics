@@ -16,6 +16,7 @@ import { h, meter } from '../dom';
 import type { MenuItem } from '../menu';
 import { openPrices } from './tankMenu';
 import { speciesSummary } from './common';
+import { openSaveSlots } from './pause';
 
 export function openOffice(c: GameController): void {
   const s = c.state;
@@ -25,8 +26,10 @@ export function openOffice(c: GameController): void {
       h('div', null,
         h('div', { class: 'row' }, h('span', null, 'Balance'), h('b', null, formatMoney(s.money))),
         h('div', { class: 'row' }, h('span', null, 'Daily running costs'), h('span', null, formatMoney(dailyRunningCosts(s).total))),
-        h('div', { class: 'row' }, h('span', null, 'Pending deliveries'), h('span', null, String(s.orders.length)))),
+        h('div', { class: 'row' }, h('span', null, 'Pending deliveries'), h('span', null, String(s.orders.length))),
+        h('div', { class: 'small save-status' }, c.lastSaveText())),
     items: [
+      { label: 'Save game', hint: 'Save to one of three slots. The game also autosaves every morning at 09:00.', action: () => void openSaveSlots(c, 'save', false, () => scr.renderBody()) },
       { label: 'Order livestock', hint: 'Buy fish from suppliers. Delivered at opening time.', action: () => openSuppliers(c) },
       { label: 'Stockroom', hint: 'Fish food and dry goods to sell.', action: () => openStockroom(c) },
       { label: 'Prices', action: () => openPrices(c, null) },
@@ -54,51 +57,54 @@ export function openSuppliers(c: GameController): void {
   const scr = c.ui.menu({ title: 'Suppliers', items });
 }
 
+interface CartLine {
+  speciesId: string;
+  quantity: number;
+  tankId: string;
+}
+
+/** Cart-style order screen: each line has its own quantity and destination tank. */
 function openOrder(c: GameController, supplierId: string): void {
   const s = c.state;
   const sup = getSupplier(supplierId);
   const stock = s.suppliers[supplierId]?.stock ?? [];
-  const qty: Record<string, number> = {};
-  let tankIdx = Math.max(0, s.tankOrder.indexOf('C2'));
-  const tankId = () => s.tankOrder[tankIdx];
-  const total = () => round(stock.reduce((t, st) => t + (qty[st.speciesId] ?? 0) * st.unitCost, 0), 2);
+  const cart: CartLine[] = [];
+  const unitCost = (sid: string) => stock.find((x) => x.speciesId === sid)?.unitCost ?? 0;
+  const inCart = (sid: string, except?: CartLine) => cart.filter((l) => l.speciesId === sid && l !== except).reduce((n, l) => n + l.quantity, 0);
+  const total = () => round(cart.reduce((t, l) => t + l.quantity * unitCost(l.speciesId), 0), 2);
   const items = (): MenuItem[] => {
-    const t = s.tanks[tankId()];
-    const resident = [...new Set(fishInTank(s, t.id).map((f) => f.speciesId))];
-    const list: MenuItem[] = [
-      {
-        label: `Deliver to: ${t.name}`,
-        right: `${t.litres}L`,
-        hint: `${speciesSummary(s, t.id)} · ${t.water.temperature.toFixed(0)}°C${t.heaterId ? '' : ' unheated'}`,
-        onLeft: () => { tankIdx = (tankIdx - 1 + s.tankOrder.length) % s.tankOrder.length; scr.refresh(items()); },
-        onRight: () => { tankIdx = (tankIdx + 1) % s.tankOrder.length; scr.refresh(items()); },
-      },
-      { label: 'Livestock', header: true },
-    ];
+    const list: MenuItem[] = [{ label: cart.length ? `Your order (${cart.length} line${cart.length > 1 ? 's' : ''})` : 'Your order is empty', header: true }];
+    for (const line of cart) {
+      const sp = getSpecies(line.speciesId);
+      list.push({
+        label: `${line.quantity} x ${sp.commonName} to ${s.tanks[line.tankId].name}`,
+        right: formatMoney(line.quantity * unitCost(line.speciesId)),
+        hint: 'Confirm to change the quantity or destination, or remove this line.',
+        action: () => editLine(c, supplierId, line, cart, () => scr.refresh(items())),
+      });
+    }
+    list.push({ label: 'Add livestock', header: true });
     for (const st of stock) {
       const sp = getSpecies(st.speciesId);
-      const q = qty[st.speciesId] ?? 0;
-      const res = assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: t.water.temperature, residentSpecies: [...resident, ...Object.keys(qty).filter((k) => qty[k] > 0)] });
-      const adj = (d: number) => {
-        qty[st.speciesId] = Math.max(0, Math.min(st.available, q + d));
-        scr.refresh(items());
-      };
+      const left = st.available - inCart(st.speciesId);
       list.push({
-        label: `${sp.commonName}${res.score < 0.75 ? ' ⚠' : ''}`,
-        right: `${q} x ${formatMoney(st.unitCost)}`,
-        hint: `${st.available} available · retail ~${formatMoney(sp.retailPrice)} · ${res.issues[0] ?? `${sp.section}, groups of ${sp.minGroupSize}+`}`,
-        disabled: st.available <= 0,
-        onLeft: () => adj(-1),
-        onRight: () => adj(1),
-        action: () => adj(sp.minGroupSize > 1 ? sp.minGroupSize : 1),
+        label: sp.commonName,
+        right: `${left} left · ${formatMoney(st.unitCost)}`,
+        hint: `${sp.section}, adult ${sp.adultSizeCm}cm, groups of ${sp.minGroupSize}+, needs ${sp.minTankLitres}L+. Retail around ${formatMoney(sp.retailPrice)}.`,
+        disabled: left <= 0,
+        action: () => {
+          const home = s.tankOrder.find((id) => fishInTank(s, id).some((f) => f.speciesId === sp.id)) ?? s.tankOrder[s.tankOrder.length - 1];
+          const line: CartLine = { speciesId: sp.id, quantity: Math.min(left, Math.max(1, sp.minGroupSize)), tankId: home };
+          editLine(c, supplierId, line, cart, () => scr.refresh(items()), true);
+        },
       });
     }
     list.push({
       label: `Place order (${formatMoney(total())})`,
-      disabled: total() <= 0,
+      disabled: !cart.length,
+      hint: `Charged now. Delivered ${sup.deliveryDays === 1 ? 'tomorrow' : `in ${sup.deliveryDays} days`} at opening time, straight into each line's tank.`,
       action: () => {
-        const lines = Object.entries(qty).filter(([, n]) => n > 0).map(([speciesId, quantity]) => ({ speciesId, quantity, tankId: tankId() }));
-        const r = placeOrder(s, supplierId, lines, dayOf(s.minute));
+        const r = placeOrder(s, supplierId, cart, dayOf(s.minute));
         c.ui.toast(r.message, r.ok ? 'good' : 'warn');
         if (r.ok) {
           markObjective(s, 'order_stock');
@@ -111,9 +117,70 @@ function openOrder(c: GameController, supplierId: string): void {
   };
   const scr = c.ui.menu({
     title: sup.name,
-    body: () => h('div', null, `${sup.blurb} Balance ${formatMoney(s.money)}. Left/right sets quantity. Delivery in ${sup.deliveryDays} day(s) at opening time.`),
+    body: () => h('div', null, `${sup.blurb} Balance ${formatMoney(s.money)}. Order total ${formatMoney(total())}.`),
     items: items(),
     className: 'tall wide',
+  });
+}
+
+function editLine(c: GameController, supplierId: string, line: CartLine, cart: CartLine[], done: () => void, isNew = false): void {
+  const s = c.state;
+  const st = s.suppliers[supplierId].stock.find((x) => x.speciesId === line.speciesId)!;
+  const sp = getSpecies(line.speciesId);
+  const draft = { ...line };
+  const maxQty = () => st.available - cart.filter((l) => l.speciesId === line.speciesId && l !== line).reduce((n, l) => n + l.quantity, 0);
+  const assess = () => {
+    const t = s.tanks[draft.tankId];
+    const resident = [...new Set(fishInTank(s, t.id).map((f) => f.speciesId))];
+    const incoming = cart.filter((l) => l !== line && l.tankId === t.id).map((l) => l.speciesId);
+    return assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: t.water.temperature, residentSpecies: [...resident, ...incoming] });
+  };
+  const items = (): MenuItem[] => {
+    const t = s.tanks[draft.tankId];
+    const res = assess();
+    const step = (d: number) => {
+      draft.quantity = Math.max(1, Math.min(maxQty(), draft.quantity + d));
+      scr.refresh(items());
+    };
+    const cycle = (d: number) => {
+      const i = s.tankOrder.indexOf(draft.tankId);
+      draft.tankId = s.tankOrder[(i + d + s.tankOrder.length) % s.tankOrder.length];
+      scr.refresh(items());
+    };
+    const list: MenuItem[] = [
+      { label: 'Quantity', right: `${draft.quantity} x ${formatMoney(st.unitCost)}`, hint: `Up to ${maxQty()} available.`, onLeft: () => step(-1), onRight: () => step(1) },
+      {
+        label: `Deliver to ${t.name}${res.score < 0.75 ? ' ⚠' : ''}`,
+        right: `${t.litres}L ${t.water.temperature.toFixed(0)}°C`,
+        hint: res.issues[0] ?? `Looks suitable. Currently: ${speciesSummary(s, t.id)}.`,
+        onLeft: () => cycle(-1),
+        onRight: () => cycle(1),
+      },
+      {
+        label: isNew ? 'Add to order' : 'Update line',
+        right: formatMoney(draft.quantity * st.unitCost),
+        action: () => {
+          Object.assign(line, draft);
+          if (isNew) cart.push(line);
+          c.ui.remove(scr);
+          done();
+        },
+      },
+    ];
+    if (!isNew) list.push({ label: 'Remove line', action: () => { cart.splice(cart.indexOf(line), 1); c.ui.remove(scr); done(); } });
+    list.push({ label: 'Cancel', action: () => c.ui.remove(scr) });
+    return list;
+  };
+  const scr = c.ui.menu({
+    title: `${sp.commonName}`,
+    body: () => {
+      const res = assess();
+      return h('div', null,
+        h('div', { class: 'small' }, `${sp.description} Needs ${sp.temperature.min}-${sp.temperature.max}°C, ${sp.minTankLitres}L+, groups of ${sp.minGroupSize}+.`),
+        res.issues.length ? h('div', { class: 'warn small' }, res.issues.join(' ')) : h('div', { class: 'good small' }, 'Suitable for the chosen tank.'));
+    },
+    items: items(),
+    className: 'wide',
   });
 }
 

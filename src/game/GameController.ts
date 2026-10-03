@@ -7,8 +7,8 @@ import Phaser from 'phaser';
 import { InputManager, type Action } from '../input/input';
 import { Simulation } from '../sim/simulation';
 import { newGame } from '../sim/newGame';
-import { createStorage, SaveManager, MemoryStorage } from '../sim/save';
-import { GAME_MINUTES_PER_REAL_SECOND } from '../sim/time';
+import { createStorage, SaveManager, MemoryStorage, slotLabel } from '../sim/save';
+import { clockString, dateString, GAME_MINUTES_PER_REAL_SECOND } from '../sim/time';
 import type { ActionResult } from '../sim/tank';
 import type { GameState } from '../sim/types';
 import { UIManager } from '../ui/ui';
@@ -147,18 +147,30 @@ export class GameController {
 
   async save(slot: string): Promise<boolean> {
     if (!this.sim) return false;
+    const prev = this.state.lastSave;
     try {
+      this.state.lastSave = { slot, minute: this.state.minute, at: Date.now() };
       await this.saves.save(slot, this.state);
       return true;
     } catch (e) {
       console.error(e);
+      this.state.lastSave = prev;
       this.ui.toast('Saving failed. Try exporting your save instead.', 'bad');
       return false;
     }
   }
 
   async autosave(): Promise<void> {
-    if (await this.save('auto')) this.ui.toast('Autosaved', 'info', 1500);
+    if (await this.save('auto')) this.ui.toast(`Game autosaved (${dateString(this.state.minute)}, ${clockString(this.state.minute)})`, 'good', 3500);
+  }
+
+  /** Plain-language description of the last save, for menus. */
+  lastSaveText(): string {
+    const ls = this.sim ? this.state.lastSave : undefined;
+    if (!ls) return 'Not saved yet. Save at the office PC. The game also autosaves every morning at 09:00.';
+    const mins = Math.round((Date.now() - ls.at) / 60000);
+    const ago = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} h ago`;
+    return `Last saved: ${slotLabel(ls.slot)}, ${dateString(ls.minute)} ${clockString(ls.minute)} (${ago}).`;
   }
 
   async load(slot: string): Promise<boolean> {

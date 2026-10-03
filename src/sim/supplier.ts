@@ -95,10 +95,12 @@ export function placeOrder(state: GameState, supplierId: string, lines: Array<Om
   const st = state.suppliers[supplierId];
   if (!st) return { ok: false, message: 'Supplier unavailable.' };
   const priced: SupplierOrderLine[] = [];
+  const wanted = new Map<string, number>();
+  for (const l of lines) if (l.quantity > 0) wanted.set(l.speciesId, (wanted.get(l.speciesId) ?? 0) + l.quantity);
   for (const l of lines) {
     if (l.quantity <= 0) continue;
     const s = st.stock.find((x) => x.speciesId === l.speciesId);
-    if (!s || s.available < l.quantity) return { ok: false, message: `Not enough ${getSpecies(l.speciesId).commonName} in stock.` };
+    if (!s || s.available < (wanted.get(l.speciesId) ?? 0)) return { ok: false, message: `Not enough ${getSpecies(l.speciesId).commonName} in stock.` };
     if (!state.tanks[l.tankId]) return { ok: false, message: 'Pick a tank for every line.' };
     priced.push({ ...l, unitCost: s.unitCost });
   }

@@ -5,10 +5,11 @@ import { ARCHETYPES } from '../../data/customers';
 import { getDryGood } from '../../data/catalog';
 import { getSpecies } from '../../data/species';
 import {
-  acceptChance, adviceSetupText, checkoutQuote, completeSale, counterOffer, inStockSpecies, offerAddOn, problemFor,
+  acceptChance, adviceSetupText, offerPlant, checkoutQuote, completeSale, counterOffer, inStockSpecies, offerAddOn, problemFor,
   refuseSale, resolveAdvice, resolveProblem, servingCustomer,
 } from '../../sim/customers';
 import { nudgeRep } from '../../sim/reputation';
+import { availablePlants } from '../../sim/plants';
 import type { CustomerState } from '../../sim/types';
 import { play } from '../../audio/sfx';
 import { minuteOfDay } from '../../sim/time';
@@ -29,6 +30,7 @@ export async function serveAtTill(c: GameController): Promise<void> {
   }
   const ctx = sim.customerCtx;
   let intro = true;
+  let plantOffered = false;
   for (;;) {
     const q = checkoutQuote(s, cu);
     if (!q.lines.length) {
@@ -44,6 +46,8 @@ export async function serveAtTill(c: GameController): Promise<void> {
     const addOnIds = ['conditioner', 'test_kit', 'flake_food'].filter((id) => (s.dryGoods[id] ?? 0) > 0 && !cu.addOns.includes(id));
     const suggest = addOnIds[0];
     if (suggest) choices.push(`Suggest ${getDryGood(suggest).name} (${formatMoney(getDryGood(suggest).retail)})`);
+    const canPlant = !plantOffered && availablePlants(s).length > 0;
+    if (canPlant) choices.push('Suggest a potted plant');
     choices.push('Refuse the sale');
     const pick = await c.ui.ask(cu.name, text, choices);
     if (pick < 0) return; // stepped away, customer keeps waiting
@@ -74,6 +78,12 @@ export async function serveAtTill(c: GameController): Promise<void> {
       return finish(c, cu, q.total, 'Thank you!');
     }
     if (label.startsWith('Give 10%')) return finish(c, cu, round(q.total * 0.9, 2), 'Oh, how kind! Thank you!');
+    if (label === 'Suggest a potted plant') {
+      plantOffered = true;
+      const yes = offerPlant(s, cu, sim.rng);
+      await c.ui.say(cu.name, yes ? 'Oh, that would look lovely in my tank. Go on then.' : 'Not today, thanks.');
+      continue;
+    }
     if (label.startsWith('Suggest') && suggest) {
       const yes = offerAddOn(s, cu, suggest, sim.rng);
       await c.ui.say(cu.name, yes ? `Good idea, I'll add a ${getDryGood(suggest).name}.` : "No thanks, I've got some at home.");
@@ -91,7 +101,8 @@ async function finish(c: GameController, cu: CustomerState, total: number, line:
   const res = completeSale(c.state, c.sim!.customerCtx, cu, total);
   play('cash');
   c.sim!.advance(1);
-  c.ui.toast(`Sold ${res.fishCount ? `${res.fishCount} fish` : 'goods'} for ${formatMoney(total)}`, 'good');
+  const what = [res.fishCount ? `${res.fishCount} fish` : '', res.plantCount ? `${res.plantCount} plant${res.plantCount > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ') || 'goods';
+  c.ui.toast(`Sold ${what} for ${formatMoney(total)}`, 'good');
   await c.ui.say(cu.name, line);
 }
 

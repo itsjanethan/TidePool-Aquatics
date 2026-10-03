@@ -28,14 +28,20 @@ export interface DecorDef {
   /** Art key used by renderer. */
   art: string;
   description: string;
+  /** Plants: growth in size units per in-game day under good conditions. */
+  growthRate?: number;
+  /** Plants: size cap (1 = mature, above about 1.3 counts as overgrown). */
+  maxSize?: number;
+  /** Plants: resists being eaten by plant-unsafe fish. */
+  tough?: boolean;
 }
 
 export const DECOR: DecorDef[] = [
-  { id: 'java_fern', name: 'Java Fern', kind: 'plant', cost: 6, cover: 0.12, cave: false, width: 34, height: 56, nutrientUptake: 0.6, phEffect: 0, beauty: 0.55, provides: ['plants'], art: 'fern', description: 'Tough, slow-growing fern. Fish cannot kill it.' },
-  { id: 'amazon_sword', name: 'Amazon Sword', kind: 'plant', cost: 8, cover: 0.16, cave: false, width: 46, height: 80, nutrientUptake: 1.2, phEffect: 0, beauty: 0.65, provides: ['plants'], art: 'sword', description: 'Broad-leaved centrepiece plant. Hungry for nutrients.' },
-  { id: 'vallisneria', name: 'Vallisneria', kind: 'plant', cost: 5, cover: 0.14, cave: false, width: 40, height: 120, nutrientUptake: 1.0, phEffect: 0, beauty: 0.5, provides: ['plants', 'tall_plants'], art: 'vallis', description: 'Tall ribbon grass for backgrounds.' },
-  { id: 'hornwort', name: 'Hornwort', kind: 'plant', cost: 3, cover: 0.18, cave: false, width: 30, height: 90, nutrientUptake: 1.5, phEffect: 0, beauty: 0.4, provides: ['plants', 'fry_cover'], art: 'hornwort', description: 'Fast, bushy stem plant. Excellent fry cover.' },
-  { id: 'anubias', name: 'Anubias', kind: 'plant', cost: 9, cover: 0.08, cave: false, width: 30, height: 30, nutrientUptake: 0.4, phEffect: 0, beauty: 0.6, provides: ['plants'], art: 'anubias', description: 'Low, dark-leaved plant. Goldfish leave it alone.' },
+  { id: 'java_fern', name: 'Java Fern', kind: 'plant', cost: 6, cover: 0.12, cave: false, width: 34, height: 56, nutrientUptake: 0.6, phEffect: 0, beauty: 0.55, provides: ['plants'], art: 'fern', description: 'Tough, slow-growing fern. Fish cannot kill it.', growthRate: 0.035, maxSize: 1.6, tough: true },
+  { id: 'amazon_sword', name: 'Amazon Sword', kind: 'plant', cost: 8, cover: 0.16, cave: false, width: 46, height: 80, nutrientUptake: 1.2, phEffect: 0, beauty: 0.65, provides: ['plants'], art: 'sword', description: 'Broad-leaved centrepiece plant. Hungry for nutrients.', growthRate: 0.06, maxSize: 1.7 },
+  { id: 'vallisneria', name: 'Vallisneria', kind: 'plant', cost: 5, cover: 0.14, cave: false, width: 40, height: 120, nutrientUptake: 1.0, phEffect: 0, beauty: 0.5, provides: ['plants', 'tall_plants'], art: 'vallis', description: 'Tall ribbon grass for backgrounds. Spreads quickly.', growthRate: 0.09, maxSize: 1.8 },
+  { id: 'hornwort', name: 'Hornwort', kind: 'plant', cost: 3, cover: 0.18, cave: false, width: 30, height: 90, nutrientUptake: 1.5, phEffect: 0, beauty: 0.4, provides: ['plants', 'fry_cover'], art: 'hornwort', description: 'Fast, bushy stem plant. Excellent fry cover.', growthRate: 0.13, maxSize: 1.9 },
+  { id: 'anubias', name: 'Anubias', kind: 'plant', cost: 9, cover: 0.08, cave: false, width: 30, height: 30, nutrientUptake: 0.4, phEffect: 0, beauty: 0.6, provides: ['plants'], art: 'anubias', description: 'Low, dark-leaved plant. Goldfish leave it alone.', growthRate: 0.025, maxSize: 1.5, tough: true },
   { id: 'river_stone', name: 'River Stones', kind: 'rock', cost: 4, cover: 0.04, cave: false, width: 40, height: 18, nutrientUptake: 0, phEffect: 0, beauty: 0.3, provides: ['rocks'], art: 'stones', description: 'Smooth, inert pebbles.' },
   { id: 'slate_stack', name: 'Slate Stack', kind: 'rock', cost: 10, cover: 0.1, cave: true, width: 52, height: 34, nutrientUptake: 0, phEffect: 0, beauty: 0.45, provides: ['rocks', 'cave'], art: 'slate', description: 'Layered slate with a crevice.' },
   { id: 'limestone', name: 'Holey Limestone', kind: 'rock', cost: 12, cover: 0.08, cave: true, width: 46, height: 40, nutrientUptake: 0, phEffect: 0.25, beauty: 0.4, provides: ['rocks', 'cave'], art: 'limestone', description: 'Raises pH and hardness. Livebearers like it.' },
