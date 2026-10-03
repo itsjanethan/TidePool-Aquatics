@@ -47,7 +47,7 @@ export const HELP_SECTIONS: HelpSection[] = [
 
 export const GLOSSARY: GlossaryEntry[] = [
   // Controls ---------------------------------------------------------------
-  { id: 'controls_move', section: 'controls', title: 'Moving and interacting', body: 'Move with the arrow keys or WASD (d-pad or left stick). Hold Shift to run. Z, Enter or Space interacts or confirms. X or Backspace goes back. Esc opens the menu. Mouse and touch work in every menu.' },
+  { id: 'controls_move', section: 'controls', title: 'Moving and interacting', body: 'Move with the arrow keys or WASD (d-pad or left stick). Hold B to run in the store (Shift or X on a keyboard, B on a gamepad or on screen); running only speeds up you, never the shop clock. Z, Enter or Space interacts or confirms. X or Backspace goes back. Esc opens the menu. Mouse and touch work in every menu.' },
   { id: 'controls_shortcuts', section: 'controls', title: 'Shortcuts', body: 'H opens Help from anywhere. F feeds the tank you face (or the tank you are viewing). T changes game speed. In menus with long details, Q and E scroll the details.' },
   { id: 'controls_tank', section: 'controls', title: 'In the tank view', body: 'E / Q (or arrows) select the next and previous fish. Z opens the selected fish (or the tank menu when none is selected). R opens Aquascape. X deselects, then leaves the tank.' },
 

@@ -19,7 +19,7 @@ import { showDayReport } from '../ui/screens/report';
 import { showProposalPrompt } from '../ui/screens/staff';
 import { openHelp, setHelpController, showIntro } from '../ui/screens/help';
 import { play } from '../audio/sfx';
-import { installTouchControls } from '../ui/touch';
+import { installTouchControls, type TouchControls } from '../ui/touch';
 
 /**
  * Developer tools are a build-time switch only: no URL, storage flag or
@@ -46,6 +46,8 @@ export class GameController {
   sim: Simulation | null = null;
   /** Handler for input when no UI screen is open (set by the active scene). */
   worldInput: WorldInput | null = null;
+  /** On-screen controls (touch devices only). */
+  touch: TouchControls | null = null;
   inGame = false;
   /** Non-blocking overlays (e.g. tank view HUD) can pause time explicitly. */
   extraPause = 0;
@@ -66,13 +68,21 @@ export class GameController {
     this.hud = new Hud(this);
     setHelpController(this);
     this.input.events.on('press', (a) => this.onPress(a));
-    installTouchControls(this.input);
+    this.touch = installTouchControls(this.input);
     game.events.on(Phaser.Core.Events.STEP, (_t: number, delta: number) => this.step(delta));
     this.ready = createStorage().then((st) => {
       this.saves = new SaveManager(st);
       this.sandboxSaves = new SaveManager(new PrefixedStorage(st, SANDBOX_PREFIX), true);
     });
     if (__DEV_TOOLS__) (window as unknown as { __tidepool: GameController }).__tidepool = this;
+  }
+
+  /**
+   * True while the player is free to walk the store: no blocking screen and
+   * the store overworld has input. B runs here; everywhere else B is Back.
+   */
+  get walking(): boolean {
+    return this.inGame && !!this.worldInput && !this.ui.isBlocking();
   }
 
   /** Idle Mode: business paused, visuals keep running. */
@@ -125,6 +135,7 @@ export class GameController {
     const dt = Math.min(0.1, deltaMs / 1000);
     this.input.poll(performance.now());
     this.ui.update(dt);
+    this.touch?.setContext({ walking: this.walking });
     if (this.sim && !this.paused) {
       const minutes = dt * GAME_MINUTES_PER_REAL_SECOND * this.state.settings.speed;
       this.sim.advance(minutes);

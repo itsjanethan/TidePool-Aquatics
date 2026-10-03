@@ -41,6 +41,7 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 
 ## Done
 
+- 2026-10-03: Hold B to run (2x, store only; on-screen B, gamepad B, keyboard X, Shift kept), contextual touch B label, "Hold B to run" hint, held input cleared on blur/hidden/pagehide, multi-touch d-pad with pointer capture. Tests in `tests/input.test.ts`.
 - 2026-10-03: Developer Sandbox (local only) with presets, separate save namespace and build-time removal of all developer tools from the public build (verified in `npm run check`).
 
 - 2026-10-03: Pages timeout blocker fixed with a per-test 30-second limit; all 120 tests and the full Node 22 Pages-path check/build pass. Added pull-request checks and MAINTAINING.md; deployment remains pending merge and successful Pages jobs.

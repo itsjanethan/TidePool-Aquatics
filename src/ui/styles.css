@@ -238,18 +238,28 @@ input:focus { border-color: var(--accent); }
 .tv-waiting { color: var(--bad); font-weight: 600; white-space: nowrap; }
 
 /* Touch controls ---------------------------------------------------------- */
-.touch-controls { position: fixed; inset: auto 0 0 0; height: 0; z-index: 50; pointer-events: none; }
+.touch-controls { position: fixed; inset: auto 0 0 0; height: 0; z-index: 50; pointer-events: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.touch-pad {
+  position: fixed; left: max(8px, env(safe-area-inset-left)); bottom: max(10px, env(safe-area-inset-bottom));
+  width: 170px; height: 170px; pointer-events: auto; touch-action: none;
+}
 .touch-btn {
   position: fixed; pointer-events: auto; width: 54px; height: 54px; border-radius: 12px; border: 2px solid rgba(255, 255, 255, 0.5);
   background: rgba(20, 18, 40, 0.45); color: #fff; font-size: 20px; touch-action: none; -webkit-tap-highlight-color: transparent;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; padding: 0;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
+.touch-pad .touch-btn { position: absolute; pointer-events: none; }
 .touch-btn.down { background: rgba(255, 212, 90, 0.6); }
-.tp-up { left: 70px; bottom: 128px; } .tp-down { left: 70px; bottom: 16px; }
-.tp-left { left: 14px; bottom: 72px; } .tp-right { left: 126px; bottom: 72px; }
-.ta-a { right: 18px; bottom: 80px; border-radius: 50%; width: 62px; height: 62px; }
-.ta-b { right: 92px; bottom: 34px; border-radius: 50%; }
-.ta-menu { right: 18px; bottom: 16px; width: 44px; height: 44px; font-size: 16px; }
-.ta-feed { right: 100px; bottom: 112px; width: 44px; height: 44px; font-size: 16px; }
+.tb-sub { font-size: 11px; margin-top: 2px; opacity: 0.85; }
+.tb-sub:empty { display: none; }
+.tp-up { left: 58px; top: 0; } .tp-down { left: 58px; bottom: 0; }
+.tp-left { left: 0; top: 58px; } .tp-right { right: 0; top: 58px; }
+.ta-a { right: max(18px, env(safe-area-inset-right)); bottom: 80px; border-radius: 50%; width: 62px; height: 62px; }
+.ta-b { right: calc(max(18px, env(safe-area-inset-right)) + 74px); bottom: 34px; border-radius: 50%; width: 58px; height: 58px; }
+.touch-controls.walking .ta-b { border-color: rgba(255, 212, 90, 0.8); }
+.ta-menu { right: max(18px, env(safe-area-inset-right)); bottom: 16px; width: 44px; height: 44px; font-size: 16px; }
+.ta-feed { right: calc(max(18px, env(safe-area-inset-right)) + 82px); bottom: 112px; width: 44px; height: 44px; font-size: 16px; }
 .save-text {
   width: 100%; height: calc(var(--px) * 70); margin-top: calc(var(--px) * 3); font: inherit; font-size: 0.7em; color: var(--ink);
   background: #0e1226; border: calc(var(--px) * 1) solid var(--edge-in); resize: none; user-select: text;
