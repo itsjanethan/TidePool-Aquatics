@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import '@fontsource/jersey-10/latin-400.css';
+import '@fontsource/tiny5/latin-400.css';
 import './ui/styles.css';
 import { controller } from './game/GameController';
 import { BootScene } from './render/scenes/BootScene';

@@ -7,7 +7,7 @@ export interface MenuItem {
   label: string;
   /** Secondary right-aligned text (price, value). */
   right?: string;
-  /** Small description shown under the label when selected. */
+  /** Description shown in the menu's hint line while this item is selected. */
   hint?: string;
   disabled?: boolean;
   action?: () => void;
@@ -24,51 +24,75 @@ export interface MenuOptions {
   onChange?: (index: number) => void;
 }
 
+/**
+ * Last real pointer position. Rows only take the selection from the mouse when
+ * the pointer has actually moved, never when the list scrolls or re-renders
+ * under a resting cursor (that caused the selection to jump while using keys).
+ */
+let lastPointer = { x: -1, y: -1 };
+function pointerMoved(e: MouseEvent): boolean {
+  if (e.clientX === lastPointer.x && e.clientY === lastPointer.y) return false;
+  lastPointer = { x: e.clientX, y: e.clientY };
+  return true;
+}
+
 export class Menu {
+  /** Wrapper: scrolling list plus a fixed hint line. */
   el: HTMLElement;
+  private list: HTMLElement;
+  private hintEl: HTMLElement;
   index = 0;
   private items: MenuItem[] = [];
   private rows: HTMLElement[] = [];
+
   constructor(items: MenuItem[], private opts: MenuOptions = {}) {
-    this.el = h('div', { class: 'menu', role: 'menu' });
-    if (opts.columns) this.el.style.gridTemplateColumns = `repeat(${opts.columns}, 1fr)`;
-    if (opts.columns) this.el.classList.add('menu-grid');
+    this.list = h('div', { class: 'menu-list', role: 'menu' });
+    if (opts.columns) {
+      this.list.style.gridTemplateColumns = `repeat(${opts.columns}, 1fr)`;
+      this.list.classList.add('menu-grid');
+    }
+    this.hintEl = h('div', { class: 'menu-hint-line' });
+    this.el = h('div', { class: 'menu' }, this.list, this.hintEl);
     this.setItems(items, opts.startIndex);
   }
 
   setItems(items: MenuItem[], keepIndex?: number): void {
+    const scrollTop = this.list.scrollTop;
     this.items = items;
-    this.el.innerHTML = '';
+    this.list.innerHTML = '';
     this.rows = items.map((it, i) => {
       const row = h(
         'div',
         {
           class: `menu-item ${it.disabled ? 'disabled' : ''} ${it.header ? 'menu-header' : ''} ${it.className ?? ''}`,
           role: it.header ? 'presentation' : 'menuitem',
-          onmouseenter: () => !it.header && this.select(i),
+          onmousemove: (e: Event) => {
+            if (!it.header && pointerMoved(e as MouseEvent) && this.index !== i) this.select(i, false);
+          },
           onclick: (e: Event) => {
             e.stopPropagation();
             if (it.header) return;
-            this.select(i);
+            this.select(i, false);
             this.activate();
           },
         },
         h('span', { class: 'menu-label' }, it.label),
         it.onLeft || it.onRight
           ? h('span', { class: 'menu-arrows' },
-              h('button', { class: 'mini-btn', onclick: (e: Event) => { e.stopPropagation(); this.select(i); it.onLeft?.(); } }, '◀'),
+              h('button', { class: 'mini-btn', tabindex: '-1', onclick: (e: Event) => { e.stopPropagation(); this.select(i, false); it.onLeft?.(); } }, '◀'),
               h('span', { class: 'menu-right' }, it.right ?? ''),
-              h('button', { class: 'mini-btn', onclick: (e: Event) => { e.stopPropagation(); this.select(i); it.onRight?.(); } }, '▶'))
+              h('button', { class: 'mini-btn', tabindex: '-1', onclick: (e: Event) => { e.stopPropagation(); this.select(i, false); it.onRight?.(); } }, '▶'))
           : it.right !== undefined ? h('span', { class: 'menu-right' }, it.right) : null,
-        it.hint ? h('div', { class: 'menu-hint' }, it.hint) : null,
       );
-      this.el.appendChild(row);
+      this.list.appendChild(row);
       return row;
     });
+    this.list.scrollTop = scrollTop;
+    this.hintEl.style.display = items.some((it) => it.hint) ? '' : 'none';
     let idx = keepIndex ?? this.index;
     idx = Math.max(0, Math.min(items.length - 1, idx));
     if (items[idx]?.header) idx = this.nextSelectable(idx, 1);
-    this.select(idx, false);
+    this.select(idx, true, false);
   }
 
   private selectable(i: number): boolean {
@@ -85,14 +109,24 @@ export class Menu {
     return from;
   }
 
-  select(i: number, scroll = true): void {
+  /** Scrolls only the menu's own list (never the page) to keep a row visible. */
+  private keepVisible(row: HTMLElement): void {
+    const list = this.list;
+    const top = row.offsetTop - list.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = Math.max(0, top - row.offsetHeight);
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight + row.offsetHeight * 0.5;
+  }
+
+  select(i: number, scroll = true, notify = true): void {
     if (!this.selectable(i)) return;
     this.rows[this.index]?.classList.remove('selected');
     this.index = i;
     const row = this.rows[i];
     row?.classList.add('selected');
-    if (scroll && row) row.scrollIntoView({ block: 'nearest' });
-    this.opts.onChange?.(i);
+    if (scroll && row) this.keepVisible(row);
+    this.hintEl.textContent = this.items[i]?.hint ?? '';
+    if (notify) this.opts.onChange?.(i);
   }
 
   current(): MenuItem | undefined {
@@ -127,8 +161,7 @@ export class Menu {
         if (it?.onLeft) {
           play('move');
           it.onLeft();
-        }
-        else if (cols > 1) this.select(Math.max(0, this.index - 1));
+        } else if (cols > 1) this.select(Math.max(0, this.index - 1));
         else return false;
         return true;
       }
@@ -137,8 +170,7 @@ export class Menu {
         if (it?.onRight) {
           play('move');
           it.onRight();
-        }
-        else if (cols > 1) this.select(Math.min(this.items.length - 1, this.index + 1));
+        } else if (cols > 1) this.select(Math.min(this.items.length - 1, this.index + 1));
         else return false;
         return true;
       }
