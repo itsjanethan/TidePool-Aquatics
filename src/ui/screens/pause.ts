@@ -8,6 +8,7 @@ import { h } from '../dom';
 import type { MenuItem } from '../menu';
 import { showHelp } from './help';
 import { isMuted, setMuted } from '../../audio/sfx';
+import { getQuality, QUALITY_LEVELS, setQuality } from '../../render/quality';
 import { openGoals, reputationEl } from './office';
 
 export function openPauseMenu(c: GameController): void {
@@ -37,6 +38,14 @@ export function settingsItems(c: GameController, refresh: () => void): MenuItem[
   };
   return [
     { label: 'Game speed', right: `${s.settings.speed}x`, hint: 'Left / Right to change. T also cycles speed in the shop.', onLeft: () => step(-1), onRight: () => step(1), action: () => step(s.settings.speed === SPEEDS[SPEEDS.length - 1] ? -99 : 1) },
+    {
+      label: 'Visual quality',
+      right: getQuality()[0].toUpperCase() + getQuality().slice(1),
+      hint: 'Tank view effects (particles, caustics, shadows, plant animation). Fish detail is the same at every setting. Applies next time you open a tank.',
+      onLeft: () => { setQuality(QUALITY_LEVELS[Math.max(0, QUALITY_LEVELS.indexOf(getQuality()) - 1)]); refresh(); },
+      onRight: () => { setQuality(QUALITY_LEVELS[Math.min(2, QUALITY_LEVELS.indexOf(getQuality()) + 1)]); refresh(); },
+      action: () => { setQuality(QUALITY_LEVELS[(QUALITY_LEVELS.indexOf(getQuality()) + 1) % 3]); refresh(); },
+    },
     { label: 'Sound', right: isMuted() ? 'Off' : 'On', onLeft: () => { setMuted(!isMuted()); refresh(); }, onRight: () => { setMuted(!isMuted()); refresh(); }, action: () => { setMuted(!isMuted()); refresh(); } },
   ];
 }

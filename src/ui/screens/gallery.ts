@@ -9,7 +9,7 @@ import { SPECIES, getSpecies } from '../../data/species';
 import { genotypeForMorph } from '../../sim/genetics';
 import { phenotypeFrom, type PhenotypeInput } from '../../sim/phenotype';
 import { Rng } from '../../core/rng';
-import { paintFishPortrait } from '../../render/art/fishPainter';
+import { paintFishPortrait, paintFishSheet, SWIM_FRAMES } from '../../render/art/fishPainter';
 import type { Action } from '../../input/input';
 import type { Screen } from '../ui';
 import { h } from '../dom';
@@ -86,6 +86,19 @@ export class GalleryScreen implements Screen {
     this.body.innerHTML = '';
     this.body.appendChild(h('div', { class: 'gallery-head' }, `${sp.commonName} morph gallery  (Left/Right species, X close)`));
     const length = 170;
+    // Animation strip: the 8 swim frames and 3 turn (yaw) frames of the first adult male.
+    const first = galleryCells(sp.id)[0][0].input;
+    const sheet = paintFishSheet(phenotypeFrom(first), length);
+    const strip = h('div', { class: 'gallery-row' });
+    sheet.frames.forEach((data, i) => {
+      const cv = document.createElement('canvas');
+      cv.width = sheet.width;
+      cv.height = sheet.height;
+      cv.getContext('2d')!.putImageData(new ImageData(data, sheet.width, sheet.height), 0, 0);
+      cv.style.width = `${sheet.width * 0.4}px`;
+      strip.appendChild(h('div', { class: 'gallery-cell' }, cv, h('div', { class: 'gallery-label' }, i < SWIM_FRAMES ? `swim ${i}` : `turn ${i - SWIM_FRAMES + 1}`)));
+    });
+    this.body.appendChild(strip);
     for (const row of galleryCells(sp.id)) {
       const r = h('div', { class: 'gallery-row' });
       for (const cell of row) r.appendChild(h('div', { class: 'gallery-cell' }, portraitCanvas(cell.input, length), h('div', { class: 'gallery-label' }, cell.label)));

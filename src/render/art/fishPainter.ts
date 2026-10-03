@@ -236,7 +236,8 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
   const fr = new Frame(g.W, g.H);
   const { cy, x0, bodyLen, bodyH } = g;
   const seed = p.variant * 977 + 13;
-  const cosY = Math.cos(yaw);
+  // Seen nearly head-on a fish is still as wide as its body is thick.
+  const cosY = Math.max(Math.cos(yaw), (bodyH * 0.6) / bodyLen);
   const sinY = Math.sin(yaw);
   // Yaw compresses the fish toward its middle (seen turning end-on).
   const X = (x: number) => g.pivot + (x - g.pivot) * cosY;

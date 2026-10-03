@@ -6,8 +6,9 @@ import { clockString } from '../../sim/time';
 import { queueCustomers } from '../../sim/customers';
 import { h } from '../dom';
 import type { Screen } from '../ui';
-import { fishCard, speciesSummary, tankStatusLine } from './common';
-import { openTankMenu } from './tankMenu';
+import { fishCard, specimen, speciesSummary, tankStatusLine } from './common';
+import { openFishDetail, openTankMenu } from './tankMenu';
+import { phenotypeKey, phenotypeOf } from '../../sim/phenotype';
 
 export class TankViewScreen implements Screen {
   el: HTMLElement;
@@ -15,15 +16,19 @@ export class TankViewScreen implements Screen {
   private top: HTMLElement;
   private card: HTMLElement;
   private acc = 0;
+  private portraitKey = '';
+  private portrait: HTMLElement | null = null;
+  private zBtn: HTMLElement;
 
   constructor(private c: GameController, private scene: TankScene) {
     this.top = h('div', { class: 'tv-top' });
     this.card = h('div', { class: 'tv-card' });
     const btn = (label: string, key: string, fn: () => void) => h('button', { class: 'tv-btn', onclick: (e: Event) => { e.stopPropagation(); fn(); } }, h('span', { class: 'key' }, key), label);
+    this.zBtn = btn('Tank menu', 'Z', () => this.handle('confirm'));
     const bar = h('div', { class: 'tv-bar' },
       btn('Feed', 'F', () => this.handle('feed')),
       btn('Next fish', 'E', () => this.handle('tab')),
-      btn('Tank menu', 'Z', () => this.handle('confirm')),
+      this.zBtn,
       btn('Aquascape', 'R', () => this.scene.openAquascape()),
       btn('Back', 'X', () => this.handle('back')),
     );
@@ -60,8 +65,17 @@ export class TankViewScreen implements Screen {
     this.card.innerHTML = '';
     if (f) {
       this.card.style.display = '';
+      // Close-up portrait of the selected individual (repainted only when its look changes).
+      const key = `${f.id}|${phenotypeKey(phenotypeOf(f))}|${Math.round(f.sizeCm * 4)}`;
+      if (key !== this.portraitKey) {
+        this.portraitKey = key;
+        this.portrait = specimen(f);
+      }
+      if (this.portrait) this.card.appendChild(this.portrait);
       this.card.appendChild(fishCard(this.c.state, f, false));
     } else this.card.style.display = 'none';
+    const label = this.zBtn.lastChild;
+    if (label) label.textContent = f ? 'Fish details' : 'Tank menu';
   }
 
   tick(): void {
@@ -92,9 +106,13 @@ export class TankViewScreen implements Screen {
       case 'remove':
         this.scene.openAquascape();
         return true;
-      case 'confirm':
-        openTankMenu(this.c, this.scene.tankId);
+      case 'confirm': {
+        const id = this.scene.tankRenderer.selectedId;
+        const f = id ? this.c.state.fish[id] : null;
+        if (f) openFishDetail(this.c, f, () => this.refreshFish());
+        else openTankMenu(this.c, this.scene.tankId);
         return true;
+      }
       case 'back':
       case 'menu':
         if (this.scene.tankRenderer.selectedId) {

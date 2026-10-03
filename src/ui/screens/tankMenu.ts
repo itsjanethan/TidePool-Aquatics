@@ -197,7 +197,7 @@ export function openLivestock(c: GameController, tankId: string): void {
   const scr = c.ui.menu({ title: `Livestock: ${s.tanks[tankId].name}`, items: items(), className: 'tall' });
 }
 
-function openFishDetail(c: GameController, f: FishEntity, onChange: () => void): void {
+export function openFishDetail(c: GameController, f: FishEntity, onChange: () => void): void {
   const s = c.state;
   const sameSpecies = () => (f.tankId ? fishInTank(s, f.tankId).filter((x) => x.speciesId === f.speciesId && !x.reservedBy) : []);
   const fryOfSpecies = () => sameSpecies().filter((x) => isFry(x));

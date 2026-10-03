@@ -13,7 +13,8 @@
 import Phaser from 'phaser';
 import { clamp } from '../core/math';
 import { Rng, visualRng as vr } from '../core/rng';
-import { getDecor, getFilter } from '../data/catalog';
+import { getDecor, getFilter, getSubstrate } from '../data/catalog';
+const getSubstrateColour = (id: string) => getSubstrate(id).colourB;
 import { fishInTank } from '../sim/fish';
 import type { DecorItem, FishEntity, GameState, TankState } from '../sim/types';
 import { buildPlant, drawPlant, type PlantModel } from './art/plantArt';
@@ -93,6 +94,7 @@ export class TankRenderer {
   private plantGfx: Phaser.GameObjects.Graphics[] = [];
   private bubbles: Bubble[] = [];
   private specks: Speck[] = [];
+  private puffs: Array<{ obj: Phaser.GameObjects.Rectangle; vx: number; vy: number; life: number }> = [];
   private rays: Phaser.GameObjects.Image[] = [];
   private caustics: Phaser.GameObjects.TileSprite[] = [];
   private surfaceGfx: Phaser.GameObjects.Graphics;
@@ -571,6 +573,23 @@ export class TankRenderer {
       a.update(dt, this.world, this.time);
     }
 
+    // Bottom feeders kick up little puffs of substrate while sifting.
+    for (const a of this.agents.values()) {
+      if (a.mode === 'sift' && a.fish.alive && a.y > VIEW.floor - 30 * RES && Math.random() < dt * 2.5) this.puff(a.x + a.heading * a.len * 0.3, this.baseYAt(1, a.x));
+    }
+    for (let i = this.puffs.length - 1; i >= 0; i--) {
+      const p = this.puffs[i];
+      p.life -= dt;
+      p.obj.y += p.vy * dt;
+      p.obj.x += p.vx * dt;
+      p.vy *= 1 - dt * 2;
+      p.obj.setAlpha(Math.max(0, p.life) * 0.9);
+      if (p.life <= 0) {
+        p.obj.destroy();
+        this.puffs.splice(i, 1);
+      }
+    }
+
     // Soft fish shadows on the substrate (stronger for fish near the bottom).
     this.shadowGfx.clear();
     if (t.lightOn && this.q.fishShadows) {
@@ -636,9 +655,13 @@ export class TankRenderer {
       }
     }
 
-    // Suspended particles with parallax drift.
-    for (const p of this.specks) {
+    // Suspended particles with parallax drift. How many show depends on the
+    // water: a clean, young tank is nearly clear; detritus and cloudiness add more.
+    const murk = clamp(0.25 + t.water.detritus / 6 + t.water.cloudiness * 1.5, 0, 1);
+    const visibleSpecks = Math.round(this.specks.length * murk);
+    for (const [i, p] of this.specks.entries()) {
       const o = p.obj;
+      o.setVisible(i < visibleSpecks);
       o.y += (Math.sin(this.time * 0.5 + o.x * 0.01) * 2 - 0.4) * RES * dt * (0.5 + p.depth);
       o.x += Math.cos(this.time * 0.3 + o.y * 0.02) * 3 * RES * dt * this.world.flow * (0.5 + p.depth);
       if (o.y < VIEW.surface) o.y = VIEW.floor;
@@ -713,6 +736,15 @@ export class TankRenderer {
     }
   }
 
+  private puff(x: number, y: number): void {
+    if (this.puffs.length > 60) return;
+    const col = Phaser.Display.Color.HexStringToColor(getSubstrateColour(this.preview.substrateId ?? this.tank.substrateId)).color;
+    for (let k = 0; k < 3; k++) {
+      const obj = this.scene.add.rectangle(x + vr.range(-3, 3) * RES, y - vr.range(0, 3) * RES, RES * vr.pick([1, 2]), RES, col, 0.9).setDepth(16);
+      this.puffs.push({ obj, vx: vr.range(-8, 8) * RES, vy: -vr.range(6, 16) * RES, life: vr.range(0.5, 1.1) });
+    }
+  }
+
   private spawnBubble(x: number, y: number): void {
     if (this.bubbles.length > 90) return;
     const obj = this.scene.add.image(x, y, 'bubble').setDepth(26).setScale(vr.range(0.3, 0.6));
@@ -737,6 +769,8 @@ export class TankRenderer {
     for (const a of this.agents.values()) a.destroy();
     this.agents.clear();
     this.floating.destroy();
+    for (const p of this.puffs) p.obj.destroy();
+    this.puffs = [];
   }
 }
 

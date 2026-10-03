@@ -256,11 +256,13 @@ input:focus { border-color: var(--accent); }
 }
 
 /* Developer morph gallery ----------------------------------------------- */
-.gallery { position: absolute; inset: 0; overflow-y: auto; background: linear-gradient(#2a5866, #173440); padding: calc(var(--px) * 4); pointer-events: auto; }
+.gallery { position: absolute; inset: 0; z-index: 50; overflow-y: auto; background: linear-gradient(#2a5866, #173440); padding: calc(var(--px) * 4); pointer-events: auto; }
 .gallery-head { color: var(--accent); font-size: 1.1em; padding-bottom: calc(var(--px) * 3); }
 .gallery-row { display: flex; gap: calc(var(--px) * 3); align-items: flex-end; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: calc(var(--px) * 2) 0; }
-.gallery-cell { display: flex; flex-direction: column; align-items: center; min-width: calc(var(--px) * 60); }
+.gallery-cell { display: flex; flex-direction: column; align-items: center; min-width: calc(var(--px) * 30); }
 .gallery-label { color: var(--ink); font-size: 0.75em; text-align: center; }
 .gallery canvas { image-rendering: pixelated; }
 .specimen { display: flex; justify-content: center; align-items: center; background: linear-gradient(#2c6474, #183a46); border: calc(var(--px) * 1) solid #0b0d1a; margin-bottom: calc(var(--px) * 2); min-height: calc(var(--px) * 46); }
 .specimen-canvas { image-rendering: pixelated; width: auto; max-width: 96%; height: calc(var(--px) * 44); object-fit: contain; }
+.tv-card .specimen { min-height: calc(var(--px) * 34); }
+.tv-card .specimen-canvas { height: calc(var(--px) * 32); }
