@@ -76,9 +76,9 @@ Customers are not saved (they leave on load), but carry `floor`, `pending` (stai
 
 ### FishEntity
 
-`id, speciesId, morphId, sex, ageDays, sizeCm, adultSizeCm, health, hunger, stress, shock, genes{loci, quality, size}, quality, temperament, disease, breedingReadiness, pregnancy, generation, parents{motherId, fatherId}, origin, originDetail, purchaseCost, tankId, tankHistory[], offspringCount, bornDay, alive, deathDay, deathCause, reservedBy, name, strainName`
+`id, speciesId, morphId, sex, ageDays, sizeCm, adultSizeCm, health, hunger, stress, shock, genes{loci, quality, size}, quality, temperament, disease, breedingReadiness, pregnancy, generation, parents{motherId, fatherId}, origin, originDetail, purchaseCost, tankId, tankHistory[], offspringCount, bornDay, alive, deathDay, deathCause, reservedBy, name, strainName, notForSale?`
 
-`genes.loci` maps locus id to an allele pair (see `src/data/genetics.ts`); `morphId` is derived from it for species with genetics. `pregnancy` is `{daysRemaining, fryCount, fatherId?}` or null. `strainName` holds a strain id (key into `strains`). `parents` and `generation` give lineage; sold fish with offspring are kept with `tankId: null`.
+`genes.loci` maps locus id to an allele pair (see `src/data/genetics.ts`); `morphId` is derived from it for species with genetics. `pregnancy` is `{daysRemaining, fryCount, fatherId?}` or null. `strainName` holds a strain id (key into `strains`). `notForSale` (optional, added 2026-10-03 without a version bump) marks a fish the player keeps; absent means for sale, so older saves load unprotected; it is kept by save, load, export and import, and never set on newborn fry. `parents` and `generation` give lineage; sold fish with offspring are kept with `tankId: null`.
 
 ### TankState
 

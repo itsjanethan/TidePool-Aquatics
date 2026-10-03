@@ -88,6 +88,14 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
 
+## 2026-10-03: Not for sale (individual fish)
+
+- **Enforced in the simulation, not the menus.** `sellable()` excludes protected fish (covers browsing, advice sales and stock lists), `completeSale()` keeps any protected fish that reaches a basket and takes its price off the total (covers the player and sales staff at the till), and `sellFishToTrade()` skips them. There is no other automatic selling.
+- **Protecting releases reservations.** The fish comes out of the customer's basket with a short "not for sale?" thought and a small satisfaction dip; a customer at the till with nothing left walks out without counting as a lost customer.
+- **Removing protection always asks.** Single fish and bulk both confirm, and the toast says what changed. Nothing else clears the flag.
+- **An optional field, no save version bump.** `notForSale` is absent on older saves (unprotected), survives moves, saves and export/import, and is never copied to fry. Allowed in Idle Mode, since it is not a transaction.
+- Tank-level "Customers can buy" stays as it was; the two combine (a fish is buyable only if both allow it).
+
 ## 2026-10-03: Aquarium visuals pass
 
 - **Every new effect reads the simulation; none is decoration for its own sake.** Mulm on the bed follows detritus (a gravel vac clears it). Surface film needs detritus and a still surface (filter flow, air stone). Oxygen pearls come only from healthy plants (health above 0.6) under light, fewer when there is no nitrate. Hardscape darkens under floating cover and canopies (the light map) and greens with the tank's algae. Lights ramp over about a second when the tank's light switches. Fish near the top mirror on the underside of the surface (High only). The formulas live in `render/stateVisuals.ts` and are unit tested.

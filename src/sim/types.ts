@@ -74,6 +74,12 @@ export interface FishEntity {
   deathCause: string | null;
   /** Customer currently holding this fish for purchase. */
   reservedBy: string | null;
+  /**
+   * Kept by the player: never reserved, sold at the till, sold to the trade
+   * buyer or sold automatically (see sim/protection.ts). Optional, so older
+   * saves load as unprotected; offspring start unprotected.
+   */
+  notForSale?: boolean;
   name: string | null;
   strainName: string | null;
 }

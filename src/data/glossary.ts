@@ -96,6 +96,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'hunger', section: 'fish', title: 'Hunger and feeding', body: 'Fish get hungry a few points an hour, faster in warm water. A normal feed is what they will finish; leftovers rot into ammonia.' },
   { id: 'groups', section: 'fish', title: 'Groups and shoals', body: 'Shoaling fish feel safe in numbers. Each species shows its minimum group size.' },
   { id: 'compatibility', section: 'fish', title: 'Compatibility', body: 'Big fish eat small ones, fin nippers chase long-finned fish, coldwater and tropical fish need different temperatures, and freshwater and marine fish can never share water.' },
+  { id: 'not_for_sale', section: 'fish', title: 'Not for sale', body: 'Mark a fish not for sale (fish details, or Livestock > Select fish) to keep it: customers cannot reserve or buy it, staff will not sell it and the trade buyer will not take it. If a customer had it in their basket, it comes out. Feeding, moving and breeding are unaffected, and its fry are for sale as usual.' },
   { id: 'quality', section: 'fish', title: 'Fish quality', body: 'Inherited: colour intensity, fin size and form. Shown as stars. Selective breeding slowly raises it.' },
 
   // Habitat ----------------------------------------------------------------------
