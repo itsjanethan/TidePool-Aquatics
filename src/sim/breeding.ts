@@ -85,7 +85,7 @@ export function breedingConditions(state: GameState, tank: TankState, speciesId:
   const sc = scape ?? summarizeAquascape(tank);
   for (const need of b.needs ?? []) {
     if (need === 'soft_water' && (w.gh > 6 || w.ph > 7.1)) fail('Needs soft, slightly acidic water to spawn (hardness 6 or less, pH 7 or less).');
-    if (need === 'cave' && sc.caves === 0) fail('Needs a cave to spawn in.');
+    if (need === 'cave' && sc.caveSlots === 0) fail('Needs a cave to spawn in.');
     if (need === 'plants' && sc.plants === 0) weaken('Prefers plants to spawn among.', 0.3);
   }
   if (b.trigger === 'water_change') {

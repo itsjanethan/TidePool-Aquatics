@@ -2,6 +2,7 @@
  * PlantSystem: growth of live plants, cuttings, potted plant stock and plant
  * sales. Plants are DecorItems with a `size` (1 = mature).
  */
+import { idleRefusal } from './idle';
 import { clamp, round } from '../core/math';
 import { getDecor, getSubstrate } from '../data/catalog';
 import { floatingShade } from './floating';
@@ -67,6 +68,7 @@ export function plantValue(p: { defId: string; size: number; health: number }): 
 }
 
 export function takeCutting(state: GameState, tank: TankState, uid: string, cut: CuttingSize): ActionResult {
+  if (state.idle) return idleRefusal();
   const d = tank.decor.find((x) => x.uid === uid);
   if (!d || !isPlant(d.defId)) return fail('That is not a plant.');
   const amount = CUTTING_AMOUNT[cut];
@@ -80,6 +82,7 @@ export function takeCutting(state: GameState, tank: TankState, uid: string, cut:
 
 /** Cuts an overgrown plant back to mature size without keeping the trimmings. */
 export function trimPlant(_state: GameState, tank: TankState, uid: string): ActionResult {
+  if (_state.idle) return idleRefusal();
   const d = tank.decor.find((x) => x.uid === uid);
   if (!d || !isPlant(d.defId)) return fail('That is not a plant.');
   if (d.size <= 1) return fail('This plant does not need trimming.');
@@ -89,6 +92,7 @@ export function trimPlant(_state: GameState, tank: TankState, uid: string): Acti
 
 /** Moves a decor item from a tank into the stockroom. */
 export function removeToStorage(state: GameState, tank: TankState, uid: string): ActionResult {
+  if (state.idle) return idleRefusal();
   const i = tank.decor.findIndex((x) => x.uid === uid);
   if (i < 0) return fail('Nothing to remove.');
   const d = tank.decor[i];
@@ -112,6 +116,7 @@ function placeItem(state: GameState, tank: TankState, item: Omit<DecorItem, 'uid
 export const MAX_DECOR = 16;
 
 export function plantFromStorage(state: GameState, tank: TankState, potUid: string, x: number, layer: 0 | 1 | 2): ActionResult {
+  if (state.idle) return idleRefusal();
   if (tank.decor.length >= MAX_DECOR) return fail('This tank is full of decor.');
   const i = state.storage.plants.findIndex((p) => p.uid === potUid && !p.reservedBy);
   if (i < 0) return fail('That plant is no longer in stock.');
@@ -122,6 +127,7 @@ export function plantFromStorage(state: GameState, tank: TankState, potUid: stri
 }
 
 export function placeDecorFromStorage(state: GameState, tank: TankState, defId: string, x: number, layer: 0 | 1 | 2): ActionResult {
+  if (state.idle) return idleRefusal();
   if (tank.decor.length >= MAX_DECOR) return fail('This tank is full of decor.');
   if ((state.storage.decor[defId] ?? 0) < 1) return fail('None left in the stockroom.');
   state.storage.decor[defId] -= 1;
@@ -132,6 +138,7 @@ export function placeDecorFromStorage(state: GameState, tank: TankState, defId: 
 
 /** Sells potted plants to the trade buyer at a discount (always available). */
 export function sellPlantsToTrade(state: GameState, uids: string[]): ActionResult {
+  if (state.idle) return idleRefusal();
   let total = 0;
   let n = 0;
   for (const uid of uids) {
@@ -147,6 +154,7 @@ export function sellPlantsToTrade(state: GameState, uids: string[]): ActionResul
 }
 
 export function sellStoredDecor(state: GameState, defId: string): ActionResult {
+  if (state.idle) return idleRefusal();
   if ((state.storage.decor[defId] ?? 0) < 1) return fail('None in the stockroom.');
   const def = getDecor(defId);
   state.storage.decor[defId] -= 1;

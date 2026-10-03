@@ -41,7 +41,9 @@ export function oxygenSaturation(tempC: number): number {
 export function bioCapacityMax(tank: TankState): number {
   const filter = getFilter(tank.filterId);
   const conditionFactor = 0.35 + 0.65 * tank.filterCondition;
-  return filter.capacity * conditionFactor + tank.litres * 0.004;
+  // Live rock is porous and full of nitrifying bacteria.
+  const liveRock = tank.decor.filter((d) => d.defId === 'live_rock').length;
+  return filter.capacity * conditionFactor + tank.litres * 0.004 + liveRock * 0.6;
 }
 
 export interface WaterInputs {

@@ -7,7 +7,7 @@ import { Emitter } from '../core/events';
 export type Action =
   | 'up' | 'down' | 'left' | 'right'
   | 'confirm' | 'back' | 'menu'
-  | 'tab' | 'tabPrev' | 'feed' | 'run' | 'dev' | 'speed' | 'remove';
+  | 'tab' | 'tabPrev' | 'feed' | 'run' | 'dev' | 'speed' | 'remove' | 'help';
 
 const KEYMAP: Record<string, Action> = {
   ArrowUp: 'up', KeyW: 'up',
@@ -22,11 +22,12 @@ const KEYMAP: Record<string, Action> = {
   Backquote: 'dev', F9: 'dev',
   KeyT: 'speed',
   Delete: 'remove', KeyR: 'remove',
+  KeyH: 'help', F1: 'help',
 };
 
 // Standard gamepad mapping.
 const PAD_BUTTONS: Record<number, Action> = {
-  0: 'confirm', 1: 'back', 2: 'run', 3: 'feed', 4: 'tabPrev', 5: 'tab', 8: 'speed', 9: 'menu',
+  0: 'confirm', 1: 'back', 2: 'run', 3: 'feed', 4: 'tabPrev', 5: 'tab', 6: 'help', 8: 'speed', 9: 'menu', 11: 'help',
   12: 'up', 13: 'down', 14: 'left', 15: 'right',
 };
 
@@ -59,7 +60,7 @@ export class InputManager {
     if (typing && e.code !== 'Escape' && e.code !== 'Enter') return;
     const a = KEYMAP[e.code];
     if (!a) return;
-    if (e.code === 'Tab' || e.code.startsWith('Arrow') || e.code === 'Space' || e.code === 'Backspace' || e.code === 'F9') e.preventDefault();
+    if (e.code === 'Tab' || e.code.startsWith('Arrow') || e.code === 'Space' || e.code === 'Backspace' || e.code === 'F9' || e.code === 'F1') e.preventDefault();
     this.lastDevice = 'keyboard';
     if (down) {
       const isRepeat = e.repeat;

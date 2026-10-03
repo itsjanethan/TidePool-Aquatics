@@ -7,6 +7,7 @@ import Phaser from 'phaser';
 import { InputManager, type Action } from '../input/input';
 import { Simulation } from '../sim/simulation';
 import { newGame } from '../sim/newGame';
+import { idleLockReason, type LockKind } from '../sim/idle';
 import { createStorage, SaveManager, MemoryStorage, slotLabel } from '../sim/save';
 import { clockString, dateString, GAME_MINUTES_PER_REAL_SECOND } from '../sim/time';
 import type { ActionResult } from '../sim/tank';
@@ -16,7 +17,8 @@ import { Hud } from '../ui/hud';
 import { markObjective } from '../sim/progression';
 import { toggleDevPanel } from '../ui/screens/devPanel';
 import { showDayReport } from '../ui/screens/report';
-import { showIntro } from '../ui/screens/help';
+import { showProposalPrompt } from '../ui/screens/staff';
+import { openHelp, setHelpController, showIntro } from '../ui/screens/help';
 import { play } from '../audio/sfx';
 import { installTouchControls } from '../ui/touch';
 
@@ -58,6 +60,7 @@ export class GameController {
     this.ui = new UIManager(uiRoot);
     this.input = new InputManager(window);
     this.hud = new Hud(this);
+    setHelpController(this);
     this.input.events.on('press', (a) => this.onPress(a));
     installTouchControls(this.input);
     game.events.on(Phaser.Core.Events.STEP, (_t: number, delta: number) => this.step(delta));
@@ -65,6 +68,48 @@ export class GameController {
       this.saves = new SaveManager(st);
     });
     if (DEV_ALLOWED) (window as unknown as { __tidepool: GameController }).__tidepool = this;
+  }
+
+  /** Idle Mode: business paused, visuals keep running. */
+  get idle(): boolean {
+    return !!this.sim?.state.idle;
+  }
+
+  enterIdle(): void {
+    if (!this.sim) return;
+    this.sim.state.idle = true;
+    this.hud.update(true);
+    this.ui.toast('Idle Mode: business paused. Look around as long as you like.', 'info', 3500);
+  }
+
+  exitIdle(): void {
+    if (!this.sim) return;
+    this.sim.state.idle = false;
+    this.hud.update(true);
+    this.ui.toast('Business resumed.', 'good', 2200);
+  }
+
+  /** Opens Help (H key, gamepad LT / right stick click, HUD ? button). Optional section or entry id. */
+  openHelp(topic?: string): void {
+    const top = this.ui.top();
+    if (!topic && top?.el.classList.contains('help-root')) {
+      this.ui.remove(top);
+      return;
+    }
+    openHelp(this, topic);
+  }
+
+  /** Asks to leave Idle Mode (HUD badge click). */
+  askResume(): void {
+    if (!this.idle) return;
+    void this.ui.confirm('Resume business? The clock, customers and fish care start again.').then((y) => {
+      if (y) this.exitIdle();
+    });
+  }
+
+  /** Null when an action is allowed; otherwise why not (Idle Mode). */
+  lockReason(kind: LockKind): string | null {
+    return this.sim ? idleLockReason(this.sim.state, kind) : null;
   }
 
   get paused(): boolean {
@@ -86,6 +131,10 @@ export class GameController {
   private onPress(a: Action): void {
     if (a === 'dev' && DEV_ALLOWED && this.inGame) {
       toggleDevPanel(this);
+      return;
+    }
+    if (a === 'help') {
+      this.openHelp();
       return;
     }
     if (this.ui.handle(a)) return;
@@ -117,6 +166,9 @@ export class GameController {
     });
     this.sim.events.on('customer', (e) => {
       if (e.type === 'arrived' && this.game.scene.isActive('Shop')) play('door');
+    });
+    this.sim.events.on('proposal', (p) => {
+      this.reportQueue.push(() => void showProposalPrompt(this, p));
     });
     this.sim.events.on('shopOpened', () => {
       void this.autosave();
@@ -207,6 +259,11 @@ export class GameController {
       this.ui.toast(result.message, 'warn');
     }
     return result;
+  }
+
+  /** Rebuilds the shop scene (after an expansion adds tanks or stairs open). */
+  refreshWorld(): void {
+    if (this.game.scene.isActive('Shop')) this.game.scene.getScene('Shop').scene.restart();
   }
 
   openTankView(tankId: string, mode: 'view' | 'aquascape' = 'view'): void {

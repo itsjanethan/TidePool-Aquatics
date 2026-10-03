@@ -7,6 +7,8 @@ import { clockString, dateString } from '../../sim/time';
 import { h } from '../dom';
 import type { MenuItem } from '../menu';
 import { showHelp } from './help';
+import { APP_VERSION } from '../../version';
+import { copyPlaytestReport } from './playtest';
 import { isMuted, setMuted } from '../../audio/sfx';
 import { getQuality, QUALITY_LEVELS, setQuality } from '../../render/quality';
 import { openGoals, reputationEl } from './office';
@@ -15,15 +17,20 @@ export function openPauseMenu(c: GameController): void {
   const s = c.state;
   const items = (): MenuItem[] => [
       { label: 'Resume', action: () => c.ui.remove(scr) },
+      c.idle
+        ? { label: 'Resume Business', right: 'Idle Mode on', hint: 'Leave Idle Mode: the clock, customers, staff and fish care start again.', action: () => { c.exitIdle(); c.ui.remove(scr); } }
+        : { label: 'Idle Mode', hint: 'Pause the business and just watch: fish swim and plants sway, but no time passes, nothing is bought or sold, and nothing gets hungry or dirty.', action: () => { c.enterIdle(); c.ui.remove(scr); } },
+      { label: 'Help', right: 'H', hint: 'Controls, symbols, water chemistry, habitat numbers and more.', action: () => c.openHelp() },
       { label: 'Save game', right: 'at office PC', hint: `Walk to the office PC (top right) to save, load, export or import. ${AUTOSAVE_TEXT}`, disabled: true },
       { label: 'Goals', action: () => openGoals(c) },
       ...settingsItems(c, () => scr.refresh(items())),
       { label: 'How to play', action: () => showHelp(c) },
+      { label: 'Copy Playtest Report', hint: 'Copies a short text summary (version, day, money, recent warnings) for bug reports. Nothing is sent anywhere.', action: () => void copyPlaytestReport(c) },
       { label: 'Quit to title', action: () => void c.ui.confirm(`Quit to the title screen? ${c.lastSaveText()} Anything since then will be lost.`).then((y) => y && c.toTitle()) },
   ];
   const scr = c.ui.menu({
     title: 'Paused',
-    body: () => h('div', null, h('div', { class: 'row' }, h('span', null, s.shopName), h('b', null, formatMoney(s.money))), h('div', { class: 'small save-status' }, c.lastSaveText()), reputationEl(c)),
+    body: () => h('div', null, h('div', { class: 'row' }, h('span', null, s.shopName), h('b', null, formatMoney(s.money))), h('div', { class: 'small' }, `Version ${APP_VERSION}${c.idle ? ' · IDLE MODE · BUSINESS PAUSED' : ''}`), h('div', { class: 'small save-status' }, c.lastSaveText()), reputationEl(c)),
     items: items(),
     className: 'wide',
   });

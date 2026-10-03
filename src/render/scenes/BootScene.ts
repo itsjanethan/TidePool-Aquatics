@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { FLOOR1 } from '../../data/shopLayout';
+import { FLOORS } from '../../data/floors';
 import { makeCharacterTexture, PLAYER_PALETTE } from '../art/characters';
 import { makeTexture, px } from '../art/pixel';
 import { makeFloorTexture, makePropTextures } from '../art/shopArt';
@@ -11,8 +11,10 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    makeFloorTexture(this, FLOOR1);
-    makePropTextures(this, FLOOR1);
+    for (const f of FLOORS) {
+      makeFloorTexture(this, f.layout);
+      makePropTextures(this, f.layout);
+    }
     makeCharacterTexture(this, 'player', PLAYER_PALETTE, true);
     makeIcons(this);
     this.scene.start('Title');
@@ -32,6 +34,27 @@ function bubble(ctx: CanvasRenderingContext2D, fill: string, draw: () => void): 
 function makeIcons(scene: Phaser.Scene): void {
   makeTexture(scene, 'icon-alert', 9, 10, (ctx) =>
     bubble(ctx, '#f04a3a', () => {
+      px(ctx, 4, 2, '#ffffff', 1, 3);
+      px(ctx, 4, 6, '#ffffff', 1, 1);
+    }),
+  );
+  // Dead fish: dark bubble with a cross.
+  makeTexture(scene, 'icon-dead', 9, 10, (ctx) =>
+    bubble(ctx, '#4a4658', () => {
+      px(ctx, 4, 1, '#ffffff', 1, 5);
+      px(ctx, 2, 2, '#ffffff', 5, 1);
+    }),
+  );
+  // Sick fish: pink bubble with a medical plus.
+  makeTexture(scene, 'icon-sick', 9, 10, (ctx) =>
+    bubble(ctx, '#e070a8', () => {
+      px(ctx, 4, 2, '#ffffff', 1, 4);
+      px(ctx, 3, 3, '#ffffff', 3, 2);
+    }),
+  );
+  // General attention (habitat, stocking, equipment): orange "!".
+  makeTexture(scene, 'icon-attention', 9, 10, (ctx) =>
+    bubble(ctx, '#f09030', () => {
       px(ctx, 4, 2, '#ffffff', 1, 3);
       px(ctx, 4, 6, '#ffffff', 1, 1);
     }),

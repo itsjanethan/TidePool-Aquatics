@@ -40,6 +40,15 @@ export class Rng {
     return items[items.length - 1];
   }
 
+  /** Shuffles in place (Fisher-Yates) and returns the array. */
+  shuffle<T>(arr: T[]): T[] {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(this.next() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
   /** Approximately normal, mean 0, sd 1. */
   gaussian(): number {
     return (this.next() + this.next() + this.next() + this.next() - 2) * 1.732;

@@ -1,4 +1,6 @@
 /** Shared UI fragments: tank status, water readout, fish cards. */
+import { MARINE_SAFE, sgLabel, TARGET_SALINITY } from '../../sim/marine';
+import { diagnoseTank, STATUS_LABEL } from '../../sim/tankDiagnostics';
 import { paintFishPortrait } from '../../render/art/fishPainter';
 import { phenotypeOf } from '../../sim/phenotype';
 import { clamp, formatMoney, round } from '../../core/math';
@@ -14,21 +16,15 @@ import { cycleStatus } from '../../sim/water';
 import type { FishEntity, GameState, TankState } from '../../sim/types';
 import { h, meter } from '../dom';
 
+/** One line naming the tank's status and top issues, from the shared diagnostics. */
 export function tankStatusLine(state: GameState, tank: TankState): string {
-  const fish = fishInTank(state, tank.id);
-  const avgHunger = fish.length ? fish.reduce((s, f) => s + f.hunger, 0) / fish.length : 0;
-  const bits: string[] = [];
-  if (fishInTank(state, tank.id, true).some((f) => !f.alive)) bits.push('Dead fish!');
-  if (tank.water.ammonia > 0.25 || tank.water.nitrite > 0.25) bits.push('Toxic water');
-  if (avgHunger > 60) bits.push('Hungry');
-  if (tank.algae > 0.5) bits.push('Algae');
-  if (tank.glassDirt > 0.6) bits.push('Dirty glass');
-  if (tank.filterCondition < 0.35) bits.push('Filter clogged');
-  if (tank.heaterBroken) bits.push('Heater broken');
-  return bits.join(' · ') || 'All good';
+  const r = diagnoseTank(state, tank);
+  const top = r.issues.filter((i) => i.severity !== 'advice').slice(0, 2).map((i) => i.title);
+  return top.length ? `${STATUS_LABEL[r.status]}: ${top.join(' · ')}` : STATUS_LABEL[r.status];
 }
 
-export function tankHeader(state: GameState, tank: TankState): HTMLElement {
+/** Tank facts. `withStatus` false when a diagnostics overview is shown beside it. */
+export function tankHeader(state: GameState, tank: TankState, withStatus = true): HTMLElement {
   const fish = fishInTank(state, tank.id);
   const ratio = stockingRatio(tank, fish);
   const cyc = cycleStatus(tank.water);
@@ -40,9 +36,9 @@ export function tankHeader(state: GameState, tank: TankState): HTMLElement {
     { class: 'tank-header' },
     h('div', { class: 'row' }, h('span', null, `${tank.litres}L · ${tank.lengthCm}cm long`), h('span', null, `${tank.water.temperature.toFixed(1)}°C`)),
     h('div', { class: 'row' }, h('span', null, `${filter.name} · ${heater}`)),
-    h('div', { class: 'row' }, h('span', null, 'Stocking'), meter(Math.min(1, ratio), ratio > 1 ? 'bad' : ratio > 0.8 ? 'warn' : 'good'), h('span', null, `${Math.round(ratio * 100)}%`)),
+    !withStatus ? null : h('div', { class: 'row' }, h('span', null, 'Stocking'), meter(Math.min(1, ratio), ratio > 1 ? 'bad' : ratio > 0.8 ? 'warn' : 'good'), h('span', null, `${Math.round(ratio * 100)}%`)),
     h('div', { class: 'row' }, h('span', null, 'Aquascape'), meter(scape.beauty / 100, 'blue'), h('span', null, `${Math.round(scape.beauty)}`)),
-    h('div', { class: 'row' }, h('span', { class: `tag tag-${cyc}` }, cyc.toUpperCase()), tank.forSale === false ? h('span', { class: 'tag tag-closed' }, 'NOT FOR SALE') : h('span', null, ''), h('span', { class: 'status' }, tankStatusLine(state, tank))),
+    h('div', { class: 'row' }, h('span', { class: `tag tag-${cyc}` }, cyc.toUpperCase()), tank.forSale === false ? h('span', { class: 'tag tag-closed' }, 'NOT FOR SALE') : h('span', null, ''), withStatus ? h('span', { class: 'status' }, tankStatusLine(state, tank)) : h('span', null, '')),
   );
 }
 
@@ -84,6 +80,15 @@ export function waterReadings(state: GameState, tank: TankState): Reading[] {
     if (w.ph < sp.ph.min || w.ph > sp.ph.max) { phNote = `${sp.commonName} prefer pH ${sp.ph.min}-${sp.ph.max}.`; phLevel = 'warn'; }
   }
   out.push({ label: 'pH', value: w.ph.toFixed(1), level: phLevel, note: phNote });
+  if (tank.waterType === 'marine') {
+    const sal = w.salinity ?? TARGET_SALINITY;
+    const bad = sal < MARINE_SAFE[0] - 1.5 || sal > MARINE_SAFE[1] + 1.5;
+    const warn = sal < MARINE_SAFE[0] || sal > MARINE_SAFE[1] || Math.abs(sal - TARGET_SALINITY) > 0.8;
+    out.push({
+      label: 'Salinity', value: sgLabel(sal), level: bad ? 'bad' : warn ? 'warn' : 'good',
+      note: sal > TARGET_SALINITY + 0.8 ? 'Rising from evaporation. Top off with RO water.' : sal < TARGET_SALINITY - 0.8 ? 'Low. Water changes need salt mix.' : 'Right on target (SG 1.026).',
+    });
+  }
   let ghNote = 'Fine.';
   let ghLevel: Reading['level'] = 'good';
   for (const sp of species) {

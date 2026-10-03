@@ -16,7 +16,7 @@ export function showDayReport(c: GameController, r: DayReport): void {
     h('div', { class: 'row' }, h('span', null, 'Income'), h('b', { class: 'good' }, formatMoney(l.income))),
     h('div', { class: 'row' }, h('span', null, 'Expenses (incl. rent & power)'), h('b', { class: 'bad' }, formatMoney(l.expenses))),
     h('div', { class: 'row' }, h('span', null, 'Net'), h('b', { class: net >= 0 ? 'good' : 'bad' }, formatMoney(net))),
-    h('div', { class: 'row small' }, h('span', null, `Rent ${formatMoney(r.rent)} · Electricity ${formatMoney(r.electricity)}`)),
+    h('div', { class: 'row small' }, h('span', null, `Rent ${formatMoney(r.rent)} · Electricity ${formatMoney(r.electricity)}${r.wages ? ` · Wages ${formatMoney(r.wages)}` : ""}`)),
     h('div', { class: 'row' }, h('span', null, 'Customers served / lost'), h('span', null, `${l.customersServed} / ${l.customersLost}`)),
     h('div', { class: 'row' }, h('span', null, 'Fish sold'), h('span', null, String(l.fishSold))),
     h('div', { class: 'row' }, h('span', null, 'Fish deaths'), h('span', { class: l.deaths ? 'bad' : '' }, String(l.deaths))),

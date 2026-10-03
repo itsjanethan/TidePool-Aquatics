@@ -2,7 +2,7 @@
  * Procedural pixel art for the shop overworld: floor, walls, props.
  */
 import Phaser from 'phaser';
-import type { FloorLayout, PropPlacement } from '../../data/shopLayout';
+import type { FloorLayout, FloorTheme, PropPlacement } from '../../data/shopLayout';
 import { TILE } from '../../data/shopLayout';
 import { Rng } from '../../core/rng';
 import { makeTexture, noiseFill, outlineRect, px, shade, type Ctx } from './pixel';
@@ -26,20 +26,41 @@ export const SHOP_PALETTE = {
   glass: '#cfe8f0',
 };
 
-function drawFloorTile(ctx: Ctx, ox: number, oy: number, variant: number): void {
-  const P = SHOP_PALETTE;
-  const a = variant % 2 === 0 ? P.floorA : P.floorB;
+/** Per-floor colours: floor tiles, wall face and stripes. Everything else is shared. */
+const THEMES: Record<FloorTheme, { floorA: string; floorB: string; grout: string; wall: string; wallStripe: string; skirting: string; skirtingHi: string; plank?: boolean }> = {
+  shop: { floorA: SHOP_PALETTE.floorA, floorB: SHOP_PALETTE.floorB, grout: SHOP_PALETTE.grout, wall: SHOP_PALETTE.wall, wallStripe: SHOP_PALETTE.wallStripe, skirting: SHOP_PALETTE.skirting, skirtingHi: SHOP_PALETTE.skirtingHi },
+  cool: { floorA: '#c9a878', floorB: '#bf9d6c', grout: '#a7845a', wall: '#a9c8d8', wallStripe: '#9cbccc', skirting: '#6e7d88', skirtingHi: '#8e9ea8', plank: true },
+  marine: { floorA: '#2f4a66', floorB: '#2a4360', grout: '#203650', wall: '#1d4f7a', wallStripe: '#1a4770', skirting: '#18324c', skirtingHi: '#2a5a80' },
+  basement: { floorA: '#9a9a94', floorB: '#93938c', grout: '#7c7c76', wall: '#7d8088', wallStripe: '#757880', skirting: '#4c4e54', skirtingHi: '#62656c' },
+};
+
+function drawFloorTile(ctx: Ctx, ox: number, oy: number, variant: number, theme: FloorTheme = 'shop'): void {
+  const T = THEMES[theme];
+  const a = variant % 2 === 0 ? T.floorA : T.floorB;
   px(ctx, ox, oy, a, 16, 16);
   // subtle speckle
-  noiseFill(ctx, ox + 1, oy + 1, 14, 14, [shade(a, -0.03), shade(a, 0.03)], 100 + variant, 0.08);
-  px(ctx, ox, oy + 15, P.grout, 16, 1);
-  px(ctx, ox + 15, oy, P.grout, 1, 16);
+  noiseFill(ctx, ox + 1, oy + 1, 14, 14, [shade(a, -0.03), shade(a, 0.03)], 100 + variant, theme === 'basement' ? 0.18 : 0.08);
+  if (T.plank) {
+    // Floorboards: long planks with staggered joints.
+    px(ctx, ox, oy + 7, T.grout, 16, 1);
+    px(ctx, ox, oy + 15, T.grout, 16, 1);
+    px(ctx, ox + (variant ? 5 : 11), oy, T.grout, 1, 7);
+    px(ctx, ox + (variant ? 12 : 3), oy + 8, T.grout, 1, 7);
+    return;
+  }
+  px(ctx, ox, oy + 15, T.grout, 16, 1);
+  px(ctx, ox + 15, oy, T.grout, 1, 16);
   px(ctx, ox, oy, shade(a, 0.12), 15, 1);
 }
 
 /** Pre-renders the static floor/wall layer for a layout into one texture. */
-export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key = 'floor-layer'): void {
+export function floorTextureKey(layout: FloorLayout): string {
+  return `floor-layer-${layout.id}`;
+}
+
+export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key = floorTextureKey(layout)): void {
   const P = SHOP_PALETTE;
+  const T = THEMES[layout.theme];
   makeTexture(scene, key, layout.width * TILE, layout.height * TILE, (ctx) => {
     for (let y = 0; y < layout.height; y++) {
       for (let x = 0; x < layout.width; x++) {
@@ -47,7 +68,7 @@ export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key =
         const ox = x * TILE;
         const oy = y * TILE;
         if (c === '.' || c === 'M') {
-          drawFloorTile(ctx, ox, oy, (x + y) % 2);
+          drawFloorTile(ctx, ox, oy, (x + y) % 2, layout.theme);
           if (c === 'M') {
             px(ctx, ox, oy + 2, '#8e3f33', 16, 12);
             px(ctx, ox, oy + 3, '#b0594a', 16, 1);
@@ -62,15 +83,15 @@ export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key =
         } else {
           // Wall: top band of the map is a two-tile-tall wall face; edges are dark tops.
           if (y <= 1 && x > 0 && x < layout.width - 1) {
-            px(ctx, ox, oy, P.wall, 16, 16);
-            for (let i = 0; i < 16; i += 4) px(ctx, ox + i, oy, P.wallStripe, 1, 16);
+            px(ctx, ox, oy, T.wall, 16, 16);
+            for (let i = 0; i < 16; i += 4) px(ctx, ox + i, oy, T.wallStripe, 1, 16);
             if (y === 0) {
               px(ctx, ox, oy, P.wallTop, 16, 3);
               px(ctx, ox, oy + 3, P.wallTopHi, 16, 1);
             } else {
-              px(ctx, ox, oy + 11, P.skirting, 16, 5);
-              px(ctx, ox, oy + 11, P.skirtingHi, 16, 1);
-              px(ctx, ox, oy + 15, shade(P.skirting, -0.3), 16, 1);
+              px(ctx, ox, oy + 11, T.skirting, 16, 5);
+              px(ctx, ox, oy + 11, T.skirtingHi, 16, 1);
+              px(ctx, ox, oy + 15, shade(T.skirting, -0.3), 16, 1);
             }
           } else {
             px(ctx, ox, oy, P.wallTop, 16, 16);
@@ -80,10 +101,34 @@ export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key =
         }
       }
     }
-    // Window above the shelves and a wall clock + fish plaque.
-    drawWindow(ctx, 20 * TILE + 4, 4);
-    drawPlaque(ctx, 24 * TILE - 2, 3);
+    if (layout.theme === 'shop') {
+      // Window above the shelves and a wall clock + fish plaque.
+      drawWindow(ctx, 20 * TILE + 4, 4);
+      drawPlaque(ctx, 24 * TILE - 2, 3);
+    } else if (layout.theme === 'cool') {
+      drawWindow(ctx, 2 * TILE - 6, 4);
+      drawWindow(ctx, 26 * TILE + 2, 4);
+    } else if (layout.theme === 'marine') {
+      for (const x of [3, 9, 15, 21, 27]) drawPorthole(ctx, x * TILE - 8, 6);
+    } else if (layout.theme === 'basement') {
+      // Pipes along the wall and a caged lamp.
+      px(ctx, 16, 6, '#5a5e66', layout.width * TILE - 32, 3);
+      px(ctx, 16, 6, '#7a7e86', layout.width * TILE - 32, 1);
+      px(ctx, 16, 13, '#6a4a3a', layout.width * TILE - 32, 2);
+      px(ctx, 24 * TILE, 3, '#f0e0a0', 6, 5);
+      outlineRect(ctx, 24 * TILE - 1, 2, 8, 7, '#3a3a40');
+    }
   });
+}
+
+function drawPorthole(ctx: Ctx, x: number, y: number): void {
+  px(ctx, x + 3, y, '#8a9aa8', 10, 16);
+  px(ctx, x, y + 3, '#8a9aa8', 16, 10);
+  px(ctx, x + 1, y + 1, '#8a9aa8', 14, 14);
+  px(ctx, x + 3, y + 2, '#2a7ab8', 10, 12);
+  px(ctx, x + 2, y + 3, '#2a7ab8', 12, 10);
+  px(ctx, x + 4, y + 4, '#5ab0e0', 3, 2);
+  px(ctx, x + 9, y + 8, '#f08030', 3, 2);
 }
 
 function drawWindow(ctx: Ctx, x: number, y: number): void {
@@ -113,7 +158,7 @@ function drawPlaque(ctx: Ctx, x: number, y: number): void {
 }
 
 export function propTextureKey(p: PropPlacement): string {
-  return `prop-${p.kind}-${p.w}x${p.h}`;
+  return p.kind === 'stairs' ? `prop-stairs-${p.dir ?? 'up'}` : `prop-${p.kind}-${p.w}x${p.h}`;
 }
 
 /** Generates textures for every prop kind/size used by a layout. */
@@ -143,6 +188,15 @@ export function makePropTextures(scene: Phaser.Scene, layout: FloorLayout): void
         break;
       case 'bench':
         makeTexture(scene, key, w, h + 4, (ctx) => drawBench(ctx, w));
+        break;
+      case 'stairs':
+        makeTexture(scene, key, w, h, (ctx) => drawStairs(ctx, w, h, p.dir ?? 'up'));
+        break;
+      case 'rack':
+        makeTexture(scene, key, w, h, (ctx) => drawRack(ctx, w, h, p.id.length + p.x));
+        break;
+      case 'pallet':
+        makeTexture(scene, key, w, h, (ctx) => drawPallet(ctx, w, h, p.x + p.y));
         break;
       default:
         makeTexture(scene, key, w, h, (ctx) => px(ctx, 0, 0, '#888', w, h));
@@ -257,4 +311,88 @@ function drawBench(ctx: Ctx, w: number): void {
   px(ctx, 1, 8, P.wood, w - 2, 3);
   px(ctx, 3, 12, P.woodLo, 2, 6);
   px(ctx, w - 5, 12, P.woodLo, 2, 6);
+}
+
+function drawStairs(ctx: Ctx, w: number, h: number, dir: 'up' | 'down'): void {
+  const P = SHOP_PALETTE;
+  const steps = 7;
+  if (dir === 'up') {
+    // A flight rising away from the viewer: treads get narrower and lighter toward the top.
+    px(ctx, 0, 0, '#2a2432', w, h);
+    for (let i = 0; i < steps; i++) {
+      const y = Math.round((i * h) / steps);
+      const sh = Math.ceil(h / steps);
+      const inset = Math.round((steps - 1 - i) * 0) + Math.round((1 - i / steps) * 3);
+      const tread = shade(P.woodHi, 0.12 - (steps - 1 - i) * 0.05);
+      px(ctx, 2 + inset, y, tread, w - 4 - inset * 2, sh - 2);
+      px(ctx, 2 + inset, y + sh - 2, shade(P.woodLo, -0.1), w - 4 - inset * 2, 2);
+      px(ctx, 2 + inset, y, shade(tread, 0.2), w - 4 - inset * 2, 1);
+    }
+    // Banisters.
+    px(ctx, 0, 0, P.metal, 2, h);
+    px(ctx, w - 2, 0, P.metal, 2, h);
+    px(ctx, 0, 0, P.metalHi, 1, h);
+    px(ctx, w - 2, 0, P.metalHi, 1, h);
+  } else {
+    // A stairwell opening in the floor: steps descend into darkness.
+    px(ctx, 0, 0, '#3a3236', w, h);
+    for (let i = 0; i < steps; i++) {
+      const y = Math.round((i * h) / steps);
+      const sh = Math.ceil(h / steps);
+      const tread = shade(P.wood, -0.12 - i * 0.1);
+      px(ctx, 2, y, tread, w - 4, sh - 2);
+      px(ctx, 2, y, shade(tread, 0.15), w - 4, 1);
+      px(ctx, 2, y + sh - 2, shade(tread, -0.35), w - 4, 2);
+    }
+    // Rail around the opening.
+    px(ctx, 0, 0, P.metalHi, w, 2);
+    px(ctx, 0, 0, P.metal, 2, h);
+    px(ctx, w - 2, 0, P.metal, 2, h);
+  }
+  // Small direction arrow on the top step.
+  const ax = Math.round(w / 2) - 2;
+  const c = dir === 'up' ? '#f2eee0' : '#e8c060';
+  if (dir === 'up') {
+    px(ctx, ax + 1, 2, c, 2, 4);
+    px(ctx, ax, 3, c, 4, 1);
+  } else {
+    px(ctx, ax + 1, 2, c, 2, 4);
+    px(ctx, ax, 5, c, 4, 1);
+  }
+}
+
+function drawRack(ctx: Ctx, w: number, h: number, seed: number): void {
+  const rng = new Rng(seed * 17 + 3);
+  px(ctx, 0, 0, '#3a3e48', w, h);
+  px(ctx, 1, 1, '#2a2d36', w - 2, h - 2);
+  const boxes = ['#2e7d9a', '#d8d8d0', '#3a6a9a', '#e0a040', '#5a9a5a', '#c05a3a', '#9aa0aa'];
+  for (let row = 0; row < 3; row++) {
+    const sy = 2 + row * 10;
+    px(ctx, 1, sy + 8, '#7a808c', w - 2, 2);
+    let x = 2;
+    while (x < w - 5) {
+      const bw = rng.int(4, 8);
+      const bh = rng.int(5, 8);
+      const c = rng.pick(boxes);
+      px(ctx, x, sy + 8 - bh, c, bw, bh);
+      px(ctx, x, sy + 8 - bh, shade(c, 0.25), bw, 1);
+      if (bw > 5) px(ctx, x + 1, sy + 8 - bh + 2, shade(c, 0.4), bw - 2, 1);
+      x += bw + 1;
+    }
+  }
+}
+
+function drawPallet(ctx: Ctx, w: number, h: number, seed: number): void {
+  const rng = new Rng(seed * 13 + 1);
+  px(ctx, 0, h - 4, '#8a6a42', w, 4);
+  for (let x = 1; x < w; x += 6) px(ctx, x, h - 3, '#5a4228', 3, 3);
+  let y = h - 4;
+  while (y > 4) {
+    const bh = rng.int(5, 8);
+    const c = rng.pick(['#c8a070', '#b89060', '#d0b080']);
+    px(ctx, 1, y - bh, c, w - 2, bh);
+    px(ctx, 1, y - bh, shade(c, 0.2), w - 2, 1);
+    px(ctx, w / 2 - 1, y - bh, '#e8e0c8', 2, bh);
+    y -= bh + 1;
+  }
 }

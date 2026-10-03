@@ -2,6 +2,7 @@
  * Small animated aquarium shown in the shop overworld. Shows water clarity,
  * algae, tiny swimming fish and status icons.
  */
+import { tankAlert, type AlertIcon } from '../sim/tankDiagnostics';
 import Phaser from 'phaser';
 import { visualRng as vr } from '../core/rng';
 import type { PropPlacement } from '../data/shopLayout';
@@ -26,7 +27,10 @@ interface Dot {
   dead: boolean;
 }
 
-export type TankAlert = 'dead' | 'toxic' | 'hungry' | 'dirty' | null;
+/** Overworld status bubble; always the top issue from the shared tank diagnostics. */
+export type TankAlert = AlertIcon | null;
+
+const ICON_TEXTURE: Record<AlertIcon, string> = { dead: 'icon-dead', toxic: 'icon-alert', sick: 'icon-sick', hungry: 'icon-hungry', dirty: 'icon-dirty', attention: 'icon-attention' };
 
 export class OverworldTank {
   image: Phaser.GameObjects.Image;
@@ -130,21 +134,14 @@ export class OverworldTank {
     }
     this.icon.setVisible(!!this.alert);
     if (this.alert) {
-      this.icon.setTexture(this.alert === 'hungry' ? 'icon-hungry' : this.alert === 'dirty' ? 'icon-dirty' : 'icon-alert');
+      this.icon.setTexture(ICON_TEXTURE[this.alert]);
       this.icon.y = this.prop.y * TILE - 5 + Math.round(Math.sin(this.t * 4) * 1.5);
     }
   }
 
   private updateAlert(): void {
     const s = this.getState();
-    const t = s.tanks[this.prop.id];
-    const all = fishInTank(s, t.id, true);
-    const alive = all.filter((f) => f.alive);
-    if (all.some((f) => !f.alive)) this.alert = 'dead';
-    else if (alive.length && (t.water.ammonia > 0.3 || t.water.nitrite > 0.3 || alive.some((f) => f.health < 45))) this.alert = 'toxic';
-    else if (alive.length && alive.reduce((a, f) => a + f.hunger, 0) / alive.length > 60) this.alert = 'hungry';
-    else if (t.algae + t.glassDirt + t.water.cloudiness > 1.1) this.alert = 'dirty';
-    else this.alert = null;
+    this.alert = tankAlert(s, s.tanks[this.prop.id]);
   }
 
   destroy(): void {

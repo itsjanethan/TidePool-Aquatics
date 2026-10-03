@@ -1,4 +1,5 @@
 /** Plant care UI shared by the tank menu, aquascape editor and stockroom. */
+import { locked } from './locks';
 import type { GameController } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
 import { getDecor, getFloating, PROPAGATION_TEXT } from '../../data/catalog';
@@ -43,7 +44,7 @@ export function openPlantActions(c: GameController, tank: TankState, uid: string
       const amount = CUTTING_AMOUNT[size];
       const possible = d.size - amount >= MIN_REMAINING;
       const value = plantValue({ defId: d.defId, size: amount, health: d.health * 0.95 });
-      list.push({
+      list.push(locked(c, 'aquascape', {
         label: `${size[0].toUpperCase()}${size.slice(1)} ${prop.piece}`,
         right: possible ? `~${formatMoney(value)}` : 'too small',
         hint: possible
@@ -55,11 +56,11 @@ export function openPlantActions(c: GameController, tank: TankState, uid: string
           scr.refresh(items());
           onDone();
         },
-      });
+      }));
     }
     list.push(
-      { label: 'Trim back', disabled: d.size <= 1, hint: 'Cuts an overgrown plant back to mature size. The trimmings are thrown away.', action: () => { c.perform(trimPlant(s, tank, uid)); scr.refresh(items()); onDone(); } },
-      { label: 'Uproot to stockroom', hint: 'Keeps the whole plant in a pot to replant elsewhere or sell.', action: () => { c.perform(removeToStorage(s, tank, uid)); c.ui.remove(scr); onDone(); } },
+      locked(c, 'aquascape', { label: 'Trim back', disabled: d.size <= 1, hint: 'Cuts an overgrown plant back to mature size. The trimmings are thrown away.', action: () => { c.perform(trimPlant(s, tank, uid)); scr.refresh(items()); onDone(); } }),
+      locked(c, 'aquascape', { label: 'Uproot to stockroom', hint: 'Keeps the whole plant in a pot to replant elsewhere or sell.', action: () => { c.perform(removeToStorage(s, tank, uid)); c.ui.remove(scr); onDone(); } }),
       { label: 'Back', action: () => c.ui.remove(scr) },
     );
     return list;
@@ -91,8 +92,8 @@ export function openTankPlants(c: GameController, tank: TankState): void {
       list.push({ label: 'Floating plants', header: true });
       for (const [id, cov] of floats) {
         const def = getFloating(id);
-        list.push({ label: `${def.name}: scoop half to stockroom`, right: `${coverLabel(cov)} ${Math.round(cov * 100)}%`, hint: `${def.description} Scooped portions can go in another tank or be sold.`, action: () => { c.perform(scoopFloating(c.state, tank, id, 0.5, true)); scr.refresh(items()); } });
-        list.push({ label: `${def.name}: scoop most and bin it`, hint: 'Clears 80% of the cover. Nothing is kept.', action: () => { c.perform(scoopFloating(c.state, tank, id, 0.8, false)); scr.refresh(items()); } });
+        list.push(locked(c, 'aquascape', { label: `${def.name}: scoop half to stockroom`, right: `${coverLabel(cov)} ${Math.round(cov * 100)}%`, hint: `${def.description} Scooped portions can go in another tank or be sold.`, action: () => { c.perform(scoopFloating(c.state, tank, id, 0.5, true)); scr.refresh(items()); } }));
+        list.push(locked(c, 'aquascape', { label: `${def.name}: scoop most and bin it`, hint: 'Clears 80% of the cover. Nothing is kept.', action: () => { c.perform(scoopFloating(c.state, tank, id, 0.8, false)); scr.refresh(items()); } }));
       }
     }
     list.push({ label: 'Back', action: () => c.ui.remove(scr) });
@@ -128,34 +129,34 @@ export function pottedPlantItems(c: GameController, refresh: () => void): MenuIt
   const groups = groupPotted(availablePlants(s));
   const mult = s.prices[PLANT_PRICE_KEY] ?? 1;
   const list: MenuItem[] = [{ label: 'Potted plants for sale', header: true }];
-  list.push({
+  list.push(locked(c, 'price', {
     label: 'Plant prices',
     right: `${Math.round(mult * 100)}%`,
     hint: 'Shelf price of all potted plants relative to normal value. Customers browse the plant shelf.',
     onLeft: () => { s.prices[PLANT_PRICE_KEY] = Math.max(0.5, Math.round((mult - 0.1) * 10) / 10); refresh(); },
     onRight: () => { s.prices[PLANT_PRICE_KEY] = Math.min(2, Math.round((mult + 0.1) * 10) / 10); refresh(); },
-  });
+  }));
   if (!groups.length) list.push({ label: 'No potted plants. Take cuttings from your tanks.', disabled: true });
   for (const g of groups) {
     const each = plantPrice(s, g.items[0]);
-    list.push({
+    list.push(locked(c, 'sell', {
       label: `${getDecor(g.defId).name} (${g.stage}) ×${g.items.length}`,
       right: `${formatMoney(each)} each`,
       hint: `Confirm to sell one to the trade buyer for ${formatMoney(plantValue(g.items[0]) * TRADE_RATE)}. Customers usually pay the full shelf price.`,
       action: () => { c.perform(sellPlantsToTrade(s, [g.items[0].uid])); refresh(); },
-    });
+    }));
   }
   const floats = Object.entries(s.storage.floating ?? {}).filter(([, n]) => n > 0);
   if (floats.length) {
     list.push({ label: 'Floating plants', header: true });
     for (const [id, n] of floats) {
       const def = getFloating(id);
-      list.push({
+      list.push(locked(c, 'sell', {
         label: `${def.name} ×${n} portions`,
         right: formatMoney(n * def.tradeValue),
         hint: `Float them in a tank from its Aquascape menu, or confirm to sell them all to the trade buyer.`,
         action: () => { c.perform(sellFloatingToTrade(s, id)); refresh(); },
-      });
+      }));
     }
   }
   return list;

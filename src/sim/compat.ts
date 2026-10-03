@@ -7,6 +7,7 @@ import { getFilter } from '../data/catalog';
 import { getSpecies } from '../data/species';
 import type { SpeciesDef } from '../data/speciesTypes';
 import type { AquascapeSummary } from './aquascape';
+import { coverPercent, habitatOf, tankNeeds } from './habitat';
 import { getMorph } from './fish';
 import type { FishEntity, TankState } from './types';
 
@@ -74,13 +75,18 @@ export function stressTarget(
   if (tank.lengthCm < sp.minTankLengthCm) add('Tank too short', 8);
   const ratio = stockingRatio(tank, mates);
   if (ratio > 1) add('Overcrowded', (ratio - 1) * 45);
-  if (sp.behaviour.schooling > 0.6 && scape.openSpace < 0.35) add('No swimming space', 10);
-
-  // Cover and habitat needs.
-  add('Nowhere to hide', sp.behaviour.shyness * (1 - Math.min(1, scape.cover * 1.6)) * 35);
-  if (sp.tags.includes('needs_cave') && scape.caves === 0) add('Wants a cave', 12);
-  if (sp.tags.includes('needs_wood') && !scape.provides.has('wood')) add('Wants wood to graze', 6);
-  if (sp.tags.includes('needs_sand') && !scape.provides.has('sand')) add('Prefers sand', 6);
+  // Habitat needs, measured against explicit numbers (see sim/habitat.ts).
+  const hab = habitatOf(sp);
+  if (hab.openSpace > 0 && scape.openSpace < hab.openSpace) add('Not enough swimming space', 4 + (hab.openSpace - scape.openSpace) * 30);
+  const coverPct = coverPercent(scape);
+  const coverReq = hab.cover * 100;
+  if (coverPct < coverReq) add('Not enough hiding cover', (0.3 + sp.behaviour.shyness) * ((coverReq - coverPct) / coverReq) * 30);
+  if (hab.caves > 0 && f.sizeCm >= f.adultSizeCm * 0.6) {
+    const need = tankNeeds(mates).caveSlots;
+    if (need > scape.caveSlots) add('Not enough caves', 12 * (1 - scape.caveSlots / need));
+  }
+  if (hab.wood && !scape.provides.has('wood')) add('Wants wood to graze', 6);
+  if (hab.substrate === 'sand' && !scape.provides.has('sand')) add('Prefers sand', 6);
 
   // Tank mates.
   let bully = 0;
@@ -94,7 +100,7 @@ export function stressTarget(
   add('Harassed by tank mates', Math.min(35, bully));
   if (sp.territorial && sp.tags.includes('territorial_bottom')) {
     const rivals = mates.filter((m) => m.alive && m.id !== f.id && getSpecies(m.speciesId).territorial).length;
-    if (rivals >= scape.caves) add('Territory dispute', Math.min(20, (rivals + 1 - scape.caves) * 8));
+    if (rivals >= scape.caveSlots) add('Territory dispute', Math.min(20, (rivals + 1 - scape.caveSlots) * 8));
   }
 
   // Hunger.
@@ -116,11 +122,16 @@ export interface SuitabilityResult {
  */
 export function assessSpeciesForSetup(
   speciesId: string,
-  setup: { litres: number; lengthCm?: number; heated: boolean; temperature?: number; residentSpecies?: string[] },
+  setup: { litres: number; lengthCm?: number; heated: boolean; temperature?: number; residentSpecies?: string[]; waterType?: 'freshwater' | 'brackish' | 'marine' },
 ): SuitabilityResult {
   const sp = getSpecies(speciesId);
   const issues: string[] = [];
   let score = 1;
+  const wt = setup.waterType ?? 'freshwater';
+  if (sp.waterType !== wt) {
+    issues.push(`${sp.commonName} is a ${sp.waterType} fish; this is a ${wt} tank.`);
+    score -= 1;
+  }
   if (setup.litres < sp.minTankLitres) {
     issues.push(`${sp.commonName} needs at least ${sp.minTankLitres}L.`);
     score -= setup.litres < sp.minTankLitres * 0.6 ? 0.7 : 0.4;

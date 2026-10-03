@@ -13,6 +13,8 @@ export class Hud {
   private goal: HTMLElement;
   private prompt: HTMLElement;
   private saved: HTMLElement;
+  private helpBtn: HTMLElement;
+  private idleBadge: HTMLElement;
   private savedTimer: ReturnType<typeof setTimeout> | null = null;
   private last = '';
   private promptText: string | null = null;
@@ -23,7 +25,15 @@ export class Hud {
     this.goal = h('div', { class: 'hud-goal' });
     this.prompt = h('div', { class: 'hud-prompt' });
     this.saved = h('div', { class: 'hud-saved' });
-    this.el = h('div', { class: 'hud' }, this.left, this.right, this.goal, this.prompt, this.saved);
+    this.helpBtn = h('div', { class: 'hud-help', title: 'Help (H)', role: 'button', onclick: (e: Event) => { e.stopPropagation(); c.openHelp(); } }, '?');
+    this.idleBadge = h(
+      'div',
+      { class: 'hud-idle', title: 'Click to resume business', role: 'button', onclick: (e: Event) => { e.stopPropagation(); c.askResume(); } },
+      'IDLE MODE · BUSINESS PAUSED',
+      h('small', null, 'Esc menu: Resume Business'),
+    );
+    this.idleBadge.style.display = 'none';
+    this.el = h('div', { class: 'hud' }, this.left, this.right, this.goal, this.prompt, this.saved, this.helpBtn, this.idleBadge);
     c.ui.hudLayer.appendChild(this.el);
     this.show(false);
   }
@@ -51,12 +61,13 @@ export class Hud {
     this.goal.style.visibility = on ? '' : 'hidden';
   }
 
-  update(): void {
+  update(force = false): void {
+    if (force) this.last = '';
     const s = this.c.state;
     const open = isShopOpen(s.minute);
     const stars = repStars(overallReputation(s));
     const obj = currentObjective(s);
-    const key = `${Math.floor(s.minute)}|${s.money}|${stars}|${obj?.id}|${s.settings.speed}|${this.c.paused}`;
+    const key = `${Math.floor(s.minute)}|${s.money}|${stars}|${obj?.id}|${s.settings.speed}|${this.c.paused}|${!!s.idle}`;
     if (key === this.last) return;
     this.last = key;
     this.left.innerHTML = '';
@@ -68,8 +79,9 @@ export class Hud {
     this.right.innerHTML = '';
     this.right.append(
       h('div', { class: `hud-money ${s.money < 0 ? 'neg' : ''}` }, formatMoney(s.money)),
-      h('div', null, h('span', { class: 'stars' }, starStr), ` ${s.settings.speed}x${this.c.paused ? ' ❚❚' : ''}`),
+      h('div', null, h('span', { class: 'stars' }, starStr), s.idle ? ' IDLE' : ` ${s.settings.speed}x${this.c.paused ? ' ❚❚' : ''}`),
     );
+    this.idleBadge.style.display = s.idle ? '' : 'none';
     this.goal.textContent = obj ? `Goal: ${obj.title}` : 'All starter goals complete!';
     this.goal.title = obj?.hint ?? '';
   }

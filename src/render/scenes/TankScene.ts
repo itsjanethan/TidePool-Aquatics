@@ -31,6 +31,8 @@ export class TankScene extends Phaser.Scene {
     tank.viewActive = true;
     this.tankRenderer = new TankRenderer(this, () => controller.state, this.tankId, {
       onEat: (fish, units) => {
+        // Idle Mode: hunger and water are frozen; fish only mime eating.
+        if (controller.idle) return 0;
         const t = controller.state.tanks[this.tankId];
         const took = eat(fish, units);
         t.food = Math.max(0, t.food - took);
@@ -58,11 +60,21 @@ export class TankScene extends Phaser.Scene {
   }
 
   openAquascape(): void {
+    const blocked = controller.lockReason('aquascape');
+    if (blocked) {
+      controller.ui.toast(blocked, 'warn');
+      return;
+    }
     controller.ui.push(new AquascapeScreen(controller, this));
   }
 
   feed(amount: 'light' | 'normal' | 'heavy'): void {
     const c = controller;
+    const blocked = c.lockReason('maintenance');
+    if (blocked) {
+      c.ui.toast(blocked, 'warn');
+      return;
+    }
     const t = c.state.tanks[this.tankId];
     const before = t.food;
     const res = c.perform(feedTank(c.state, t, amount), true);
@@ -79,6 +91,6 @@ export class TankScene extends Phaser.Scene {
   override update(_t: number, deltaMs: number): void {
     if (!controller.sim) return;
     this.tankRenderer.update(Math.min(0.1, deltaMs / 1000));
-    this.overlay?.tick();
+    this.overlay?.tick(Math.min(0.1, deltaMs / 1000));
   }
 }

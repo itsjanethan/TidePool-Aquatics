@@ -11,9 +11,13 @@ import { breedingConditions, isFry, lifeStage } from '../../sim/breeding';
 import { establishStrain, strainEligibility } from '../../sim/genetics';
 import { sellFishToTrade, tradeValue } from '../../sim/trade';
 import {
-  buyFilter, buyHeater, cleanFilter, cleanGlass, doWaterChange, feedingNeed, feedTank, removeDead, removeHeater,
-  scrubAlgae, setHeater, toggleAirStone, useBacteriaStarter, vacuumSubstrate, type ActionResult,
+  buyFilter, buyHeater, feedingNeed, feedTank, removeDead, removeHeater, setHeater, SKIMMER_COST, toggleAirStone, toggleSkimmer, useBacteriaStarter, type ActionResult,
 } from '../../sim/tank';
+import { FIXES, previewFix, previewLine, type FixId } from '../../sim/preview';
+import { diagnoseTank, STATUS_LABEL } from '../../sim/tankDiagnostics';
+import { issueItems, openTankStatus, overviewEl } from './diagnostics';
+import { helpItem, helpLink } from './help';
+import { locked } from './locks';
 import type { FishEntity } from '../../sim/types';
 import { h } from '../dom';
 import type { MenuItem } from '../menu';
@@ -23,31 +27,38 @@ import { fishCard, fishLabel, tankHeader, waterReportEl } from './common';
 export function openTankMenu(c: GameController, tankId: string): void {
   const s = c.state;
   const tank = s.tanks[tankId];
+  const toggleSale = () => { tank.forSale = tank.forSale === false ? undefined : false; screen.refresh(items()); };
   const items = (): MenuItem[] => {
     const n = fishInTank(s, tankId).length;
+    const report = diagnoseTank(s, tank);
     return [
+      ...issueItems(c, tankId, report, screen, 3),
+      { label: 'Tank Status', right: STATUS_LABEL[report.status], hint: 'Every issue and the habitat numbers (cover, caves, swimming space) for this tank.', action: () => openTankStatus(c, tankId, screen) },
       { label: 'View Tank', hint: 'Watch your fish up close.', action: () => c.openTankView(tankId) },
-      { label: 'Feed', right: `food: ${Math.floor(s.foodUnits)}`, action: () => openFeed(c, tankId, screen) },
+      locked(c, 'maintenance', { label: 'Feed', right: `food: ${Math.floor(s.foodUnits)}`, action: () => openFeed(c, tankId, screen) }),
       { label: `Livestock (${n})`, action: () => openLivestock(c, tankId) },
       { label: 'Water Test', hint: 'Takes 5 minutes.', action: () => openWaterTest(c, tankId) },
-      { label: 'Maintenance', action: () => openMaintenance(c, tankId, screen) },
-      { label: 'Equipment', action: () => openEquipment(c, tankId, screen) },
-      { label: 'Aquascape', hint: 'Decorate with a live preview: plants, rocks, wood, substrate and background.', action: () => c.openTankView(tankId, 'aquascape') },
+      locked(c, 'maintenance', { label: 'Maintenance', hint: 'Water changes and cleaning, with the expected result of each.', action: () => openMaintenance(c, tankId, screen) }),
+      { label: 'Equipment', hint: c.idle ? 'View only in Idle Mode.' : undefined, action: () => openEquipment(c, tankId, screen) },
+      locked(c, 'aquascape', { label: 'Aquascape', hint: 'Decorate with a live preview: plants, rocks, wood, substrate and background.', action: () => c.openTankView(tankId, 'aquascape') }),
       { label: `Plants (${tank.decor.filter((d) => getDecor(d.defId).kind === 'plant').length})`, hint: 'See how your plants are growing and take cuttings.', action: () => openTankPlants(c, tank) },
       { label: 'Breeding', hint: 'Who can breed here, what is stopping them, and any eggs or pregnancies.', action: () => openBreeding(c, tankId) },
-      { label: 'Prices', action: () => openPrices(c, tankId) },
-      {
+      locked(c, 'price', { label: 'Prices', action: () => openPrices(c, tankId) }),
+      locked(c, 'livestock', {
         label: 'Customers can buy',
         right: tank.forSale === false ? 'No' : 'Yes',
         hint: 'Set to No for breeding, grow-out or display tanks so customers leave them alone.',
-        action: () => { tank.forSale = tank.forSale === false ? undefined : false; screen.refresh(items()); },
-        onLeft: () => { tank.forSale = tank.forSale === false ? undefined : false; screen.refresh(items()); },
-        onRight: () => { tank.forSale = tank.forSale === false ? undefined : false; screen.refresh(items()); },
-      },
+        action: toggleSale,
+        onLeft: toggleSale,
+        onRight: toggleSale,
+      }),
+      helpItem('overall', 'Help: reading tank status'),
       { label: 'Close', action: () => c.ui.remove(screen) },
     ];
   };
-  const screen: MenuScreen = c.ui.menu({ title: tank.name, items: items(), body: () => tankHeader(s, tank), className: 'tank-menu' });
+  const body = () => h('div', null, tankHeader(s, tank, false), overviewEl(diagnoseTank(s, tank), 0));
+  const screen: MenuScreen = c.ui.menu({ title: tank.name, items: [], body, className: 'tank-menu' });
+  screen.refresh(items());
   (screen as MenuScreen & { refreshAll?: () => void }).refreshAll = () => screen.refresh(items());
 }
 
@@ -56,7 +67,12 @@ function refreshParent(parent: MenuScreen | undefined): void {
   p?.refreshAll?.();
 }
 
-function openFeed(c: GameController, tankId: string, parent: MenuScreen): void {
+/** Hint text: what the action will do, computed by running it on a copy of the state. */
+function previewHint(c: GameController, tankId: string, fix: FixId, extra = ''): string {
+  return `${extra ? `${extra} ` : ''}Expected: ${previewLine(previewFix(c.state, tankId, fix))}`;
+}
+
+function openFeed(c: GameController, tankId: string, parent?: MenuScreen): void {
   const s = c.state;
   const tank = s.tanks[tankId];
   const need = feedingNeed(s, tank);
@@ -67,10 +83,10 @@ function openFeed(c: GameController, tankId: string, parent: MenuScreen): void {
   };
   const scr = c.ui.menu({
     title: 'Feed',
-    body: h('div', null, need < 0.5 ? 'The fish are not very hungry.' : need > 3 ? 'The fish look hungry!' : 'The fish could eat.'),
+    body: h('div', null, need < 0.5 ? 'The fish are not very hungry.' : need > 3 ? 'The fish look hungry!' : 'The fish could eat.', ' ', helpLink('Hunger', 'hunger')),
     items: [
       { label: 'Light pinch', hint: 'Half a meal. Safest for water quality.', action: () => run('light') },
-      { label: 'Normal feed', hint: 'What they will eat in a couple of minutes.', action: () => run('normal') },
+      { label: 'Normal feed', hint: previewHint(c, tankId, 'feed', 'What they will eat in a couple of minutes.'), action: () => run('normal') },
       { label: 'Heavy feed', hint: 'Leftovers rot and pollute the water.', action: () => run('heavy') },
       { label: 'Back', action: () => c.ui.remove(scr) },
     ],
@@ -84,12 +100,21 @@ export function openWaterTest(c: GameController, tankId: string): void {
   const scr = c.ui.menu({
     title: `Water Test: ${s.tanks[tankId].name}`,
     body: () => waterReportEl(s, s.tanks[tankId]),
-    items: [{ label: 'Done', action: () => c.ui.remove(scr) }],
+    items: [helpItem('cycle', 'Help: the nitrogen cycle'), helpItem('ammonia', 'Help: ammonia, nitrite, nitrate'), { label: 'Done', action: () => c.ui.remove(scr) }],
     className: 'wide',
   });
 }
 
-function openMaintenance(c: GameController, tankId: string, parent: MenuScreen): void {
+/** Maintenance for a tank, usable from anywhere (diagnostics links here). */
+export function openMaintenanceFor(c: GameController, tankId: string, parent?: MenuScreen): void {
+  openMaintenance(c, tankId, parent);
+}
+
+export function openEquipmentFor(c: GameController, tankId: string, parent?: MenuScreen): void {
+  openEquipment(c, tankId, parent);
+}
+
+function openMaintenance(c: GameController, tankId: string, parent?: MenuScreen): void {
   const s = c.state;
   const tank = s.tanks[tankId];
   const doIt = (fn: () => ActionResult) => {
@@ -97,22 +122,25 @@ function openMaintenance(c: GameController, tankId: string, parent: MenuScreen):
     scr.refresh(items());
     refreshParent(parent);
   };
+  const fixItem = (label: string, fix: FixId, extra: string): MenuItem =>
+    locked(c, 'maintenance', { label, right: `${previewFix(s, tankId, fix).result.minutes || '-'} min`, hint: previewHint(c, tankId, fix, extra), action: () => doIt(() => FIXES[fix].run(s, tank)) });
   const dead = () => fishInTank(s, tankId, true).filter((f) => !f.alive).length;
   const items = (): MenuItem[] => [
-    { label: 'Water change 25%', right: '~20 min', hint: 'Lowers nitrate and toxins gently.', action: () => doIt(() => doWaterChange(s, tank, 0.25)) },
-    { label: 'Water change 50%', right: '~30 min', hint: 'Big reset. Large changes stress fish a little.', action: () => doIt(() => doWaterChange(s, tank, 0.5)) },
-    { label: 'Clean glass', right: '8 min', hint: `Glass dirt ${Math.round(tank.glassDirt * 100)}%`, action: () => doIt(() => cleanGlass(s, tank)) },
-    { label: 'Scrub algae', right: '10 min', hint: `Algae ${Math.round(tank.algae * 100)}%`, action: () => doIt(() => scrubAlgae(s, tank)) },
-    { label: 'Vacuum substrate', right: '15 min', hint: 'Removes rotting food and waste.', action: () => doIt(() => vacuumSubstrate(s, tank)) },
-    { label: 'Rinse filter media', right: '12 min', hint: `Filter condition ${Math.round(tank.filterCondition * 100)}%`, action: () => doIt(() => cleanFilter(s, tank)) },
-    { label: 'Remove dead fish', right: dead() ? `${dead()}` : '-', disabled: !dead(), action: () => doIt(() => removeDead(s, tank)) },
-    { label: 'Dose bacteria starter', right: `stock ${s.dryGoods.bacteria ?? 0}`, hint: 'Speeds up cycling a new tank.', disabled: !(s.dryGoods.bacteria > 0), action: () => doIt(() => useBacteriaStarter(s, tank)) },
+    fixItem('Water change 25%', 'water25', 'Lowers nitrate and toxins gently.'),
+    fixItem('Water change 50%', 'water50', 'Big reset. Large changes stress fish a little.'),
+    fixItem('Clean glass', 'glass', ''),
+    fixItem('Scrub algae', 'algae', ''),
+    fixItem('Vacuum substrate', 'vacuum', 'Removes rotting food and waste.'),
+    fixItem('Rinse filter media', 'filter', ''),
+    ...(tank.waterType === 'marine' ? [fixItem('Top off with RO water', 'topoff', `Uses 1 RO water (stock ${s.dryGoods.ro_water ?? 0}).`)] : []),
+    locked(c, 'maintenance', { label: 'Remove dead fish', right: dead() ? `${dead()}` : '-', disabled: !dead(), hint: 'Dead fish rot fast and poison the water.', action: () => doIt(() => removeDead(s, tank)) }),
+    locked(c, 'maintenance', { label: 'Dose bacteria starter', right: `stock ${s.dryGoods.bacteria ?? 0}`, hint: 'Speeds up cycling a new tank.', disabled: !(s.dryGoods.bacteria > 0), action: () => doIt(() => useBacteriaStarter(s, tank)) }),
     { label: 'Back', action: () => c.ui.remove(scr) },
   ];
-  const scr = c.ui.menu({ title: `Maintenance: ${tank.name}`, items: items(), body: () => tankHeader(s, tank) });
+  const scr = c.ui.menu({ title: `Maintenance: ${tank.name}`, items: items(), body: () => h('div', null, tankHeader(s, tank, false), overviewEl(diagnoseTank(s, tank), 2)) });
 }
 
-function openEquipment(c: GameController, tankId: string, parent: MenuScreen): void {
+function openEquipment(c: GameController, tankId: string, parent?: MenuScreen): void {
   const s = c.state;
   const tank = s.tanks[tankId];
   const doIt = (fn: () => ActionResult) => {
@@ -124,31 +152,37 @@ function openEquipment(c: GameController, tankId: string, parent: MenuScreen): v
     const list: MenuItem[] = [{ label: 'Filters', header: true }];
     for (const f of FILTERS) {
       const current = tank.filterId === f.id;
-      list.push({
+      list.push(locked(c, 'buy', {
         label: `${current ? '● ' : ''}${f.name}`,
         right: current ? 'installed' : formatMoney(f.cost),
         hint: `Rated ${f.ratedLitres}L. ${f.ratedLitres < tank.litres ? 'Undersized for this tank.' : ''}`,
         disabled: current,
         action: () => doIt(() => buyFilter(s, tank, f.id)),
-      });
+      }));
     }
     list.push({ label: 'Heating', header: true });
     if (tank.heaterId) {
-      list.push({
+      list.push(locked(c, 'maintenance', {
         label: 'Thermostat',
         right: `${tank.heaterSetpoint.toFixed(1)}°C`,
         hint: tank.heaterBroken ? 'The heater is broken! Buy a replacement.' : 'Use left/right to adjust.',
         onLeft: () => { setHeater(tank, tank.heaterSetpoint - 0.5); scr.refresh(items()); },
         onRight: () => { setHeater(tank, tank.heaterSetpoint + 0.5); scr.refresh(items()); },
-      });
-      list.push({ label: 'Remove heater', hint: 'For coldwater species.', action: () => doIt(() => removeHeater(s, tank)) });
+      }));
+      list.push(locked(c, 'maintenance', { label: 'Remove heater', hint: 'For coldwater species.', action: () => doIt(() => removeHeater(s, tank)) }));
     }
     for (const ht of HEATERS) {
       const current = tank.heaterId === ht.id && !tank.heaterBroken;
-      list.push({ label: `${current ? '● ' : ''}${ht.name}`, right: current ? 'installed' : formatMoney(ht.cost), disabled: current, hint: `${(ht.watts / tank.litres).toFixed(1)} W per litre`, action: () => doIt(() => buyHeater(s, tank, ht.id)) });
+      list.push(locked(c, 'buy', { label: `${current ? '● ' : ''}${ht.name}`, right: current ? 'installed' : formatMoney(ht.cost), disabled: current, hint: `${(ht.watts / tank.litres).toFixed(1)} W per litre`, action: () => doIt(() => buyHeater(s, tank, ht.id)) }));
+    }
+    if (tank.waterType === 'marine') {
+      list.push({ label: 'Marine', header: true });
+      list.push(locked(c, 'buy', { label: tank.skimmer ? 'Protein skimmer: ON' : 'Fit protein skimmer', right: tank.skimmer ? 'remove' : formatMoney(SKIMMER_COST), hint: 'Removes waste before it rots into ammonia. Keeps marine water clear.', action: () => doIt(() => toggleSkimmer(s, tank)) }));
     }
     list.push({ label: 'Aeration', header: true });
-    list.push({ label: tank.airStone ? 'Air stone: ON' : 'Install air stone', right: tank.airStone ? 'switch off' : '£9.00', hint: 'More oxygen, more bubbles.', action: () => doIt(() => toggleAirStone(s, tank)) });
+    list.push(locked(c, 'buy', { label: tank.airStone ? 'Air stone: ON' : 'Install air stone', right: tank.airStone ? 'switch off' : '£9.00', hint: 'More oxygen, more bubbles.', action: () => doIt(() => toggleAirStone(s, tank)) }));
+    list.push(helpItem('filter', 'Help: filters'), helpItem('temperature', 'Help: temperature'));
+    if (tank.waterType === 'marine') list.push(helpItem('skimmer', 'Help: skimmers'));
     list.push({ label: 'Back', action: () => c.ui.remove(scr) });
     return list;
   };
@@ -205,12 +239,12 @@ export function openFishDetail(c: GameController, f: FishEntity, onChange: () =>
     const elig = strainEligibility(s, f);
     const strain = f.strainName ? s.strains?.[f.strainName] : null;
     return [
-      { label: 'Move this fish', disabled: !f.alive || !!f.reservedBy, action: () => openMoveFish(c, [f], () => { c.ui.remove(scr); onChange(); }) },
-      { label: `Move all ${getSpecies(f.speciesId).commonName} (${sameSpecies().length})`, disabled: !f.alive, action: () => openMoveFish(c, sameSpecies(), () => { c.ui.remove(scr); onChange(); }) },
-      { label: `Move ${getSpecies(f.speciesId).commonName} fry (${fryOfSpecies().length})`, disabled: !fryOfSpecies().length, hint: 'Move fry to a grow-out tank where adults cannot eat them.', action: () => openMoveFish(c, fryOfSpecies(), () => { c.ui.remove(scr); onChange(); }) },
+      locked(c, 'livestock', { label: 'Move this fish', disabled: !f.alive || !!f.reservedBy, action: () => openMoveFish(c, [f], () => { c.ui.remove(scr); onChange(); }) }),
+      locked(c, 'livestock', { label: `Move all ${getSpecies(f.speciesId).commonName} (${sameSpecies().length})`, disabled: !f.alive, action: () => openMoveFish(c, sameSpecies(), () => { c.ui.remove(scr); onChange(); }) }),
+      locked(c, 'livestock', { label: `Move ${getSpecies(f.speciesId).commonName} fry (${fryOfSpecies().length})`, disabled: !fryOfSpecies().length, hint: 'Move fry to a grow-out tank where adults cannot eat them.', action: () => openMoveFish(c, fryOfSpecies(), () => { c.ui.remove(scr); onChange(); }) }),
       strain
         ? { label: `Strain: ${strain.name}`, disabled: true, hint: `Founded day ${strain.foundedDay}. Fry from two parents of this strain that show its look stay in the line.` }
-        : {
+        : locked(c, 'livestock', {
             label: 'Name a strain from this line',
             disabled: !elig.ok,
             hint: elig.reason,
@@ -225,8 +259,8 @@ export function openFishDetail(c: GameController, f: FishEntity, onChange: () =>
                 onChange();
               });
             },
-          },
-      {
+          }),
+      locked(c, 'sell', {
         label: 'Sell to the trade buyer',
         right: f.alive ? formatMoney(tradeValue(s, f.id)) : '',
         disabled: !f.alive || !!f.reservedBy,
@@ -237,7 +271,8 @@ export function openFishDetail(c: GameController, f: FishEntity, onChange: () =>
           c.ui.remove(scr);
           onChange();
         }),
-      },
+      }),
+      helpItem('genetics', 'Help: genetics and strains'),
       { label: 'Back', action: () => c.ui.remove(scr) },
     ];
   };
@@ -295,8 +330,10 @@ function openMoveFish(c: GameController, fish: FishEntity[], done: () => void): 
     .map((id) => {
       const t = s.tanks[id];
       const resident = [...new Set(fishInTank(s, id).map((x) => x.speciesId))];
-      const res = assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: t.water.temperature, residentSpecies: resident });
+      const res = assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: t.water.temperature, residentSpecies: resident, waterType: t.waterType ?? 'freshwater' });
       const warn = res.issues[0] ?? (t.water.ammonia > 0.25 ? 'Water is toxic!' : '');
+      const wrongWater = sp.waterType !== (t.waterType ?? 'freshwater');
+      if (wrongWater) return { label: `${t.name} (${t.waterType ?? 'freshwater'})`, disabled: true, hint: `${sp.commonName} is a ${sp.waterType} fish. It cannot live in this tank.` };
       return {
         label: `${t.name}${res.score < 0.75 ? ' ⚠' : ''}`,
         right: `${t.litres}L ${t.water.temperature.toFixed(0)}°C`,

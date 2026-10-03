@@ -1,6 +1,7 @@
 /**
  * ShopEconomy: money in/out, daily running costs, ledger.
  */
+import { expansionRent } from './expansion';
 import { round } from '../core/math';
 import { AIR_PUMP, getFilter, getHeater } from '../data/catalog';
 import type { GameState, LedgerDay } from './types';
@@ -20,6 +21,8 @@ export function canAfford(state: GameState, amount: number): boolean {
 /** Deducts money. Returns false (and changes nothing) if unaffordable unless `allowDebt`. */
 export function spend(state: GameState, amount: number, note: string, allowDebt = false): boolean {
   if (amount <= 0) return true;
+  // Idle Mode never moves money (see sim/idle.ts).
+  if (state.idle) return false;
   if (!allowDebt && !canAfford(state, amount)) return false;
   state.money = round(state.money - amount, 2);
   state.today.expenses = round(state.today.expenses + amount, 2);
@@ -29,7 +32,7 @@ export function spend(state: GameState, amount: number, note: string, allowDebt 
 }
 
 export function earn(state: GameState, amount: number, note: string): void {
-  if (amount <= 0) return;
+  if (amount <= 0 || state.idle) return;
   state.money = round(state.money + amount, 2);
   state.today.income = round(state.today.income + amount, 2);
   state.stats.totalSales = round(state.stats.totalSales + amount, 2);
@@ -37,7 +40,7 @@ export function earn(state: GameState, amount: number, note: string): void {
   if (state.today.notes.length > 60) state.today.notes.shift();
 }
 
-export function dailyRunningCosts(state: GameState): { rent: number; electricity: number; total: number } {
+export function dailyRunningCosts(state: GameState): { rent: number; electricity: number; wages: number; total: number } {
   let power = 0;
   for (const id of state.tankOrder) {
     const t = state.tanks[id];
@@ -46,7 +49,9 @@ export function dailyRunningCosts(state: GameState): { rent: number; electricity
     if (t.airStone) power += AIR_PUMP.powerPerDay;
   }
   const electricity = round(power * ELECTRICITY_PER_UNIT, 2);
-  return { rent: DAILY_RENT, electricity, total: round(DAILY_RENT + electricity, 2) };
+  const rent = DAILY_RENT + expansionRent(state);
+  const wages = round((state.staff ?? []).reduce((s, m) => s + m.wage, 0), 2);
+  return { rent, electricity, wages, total: round(rent + electricity + wages, 2) };
 }
 
 /** Demand for a species (1 = normal). Selling lots of one species saturates it. */

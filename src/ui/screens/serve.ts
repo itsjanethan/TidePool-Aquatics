@@ -3,10 +3,11 @@ import type { GameController } from '../../game/GameController';
 import { formatMoney, round } from '../../core/math';
 import { ARCHETYPES } from '../../data/customers';
 import { getDryGood } from '../../data/catalog';
+import { EQUIPMENT_WANTS } from '../../data/retail';
 import { getSpecies } from '../../data/species';
 import {
   acceptChance, adviceSetupText, offerPlant, checkoutQuote, completeSale, counterOffer, inStockSpecies, offerAddOn, problemFor,
-  refuseSale, resolveAdvice, resolveProblem, servingCustomer,
+  refuseSale, resolveAdvice, resolveProblem, servingCustomer, equipmentOptions, resolveEquipmentAdvice,
 } from '../../sim/customers';
 import { nudgeRep } from '../../sim/reputation';
 import { availablePlants } from '../../sim/plants';
@@ -21,6 +22,11 @@ function greeting(c: GameController, cu: CustomerState): string {
 }
 
 export async function serveAtTill(c: GameController): Promise<void> {
+  const blocked = c.lockReason('serve');
+  if (blocked) {
+    await c.ui.say(null, blocked);
+    return;
+  }
   const sim = c.sim!;
   const s = c.state;
   const cu = servingCustomer(s, sim.layout);
@@ -107,6 +113,11 @@ async function finish(c: GameController, cu: CustomerState, total: number, line:
 }
 
 export async function talkToCustomer(c: GameController, cu: CustomerState): Promise<void> {
+  const blocked = c.lockReason('serve');
+  if (blocked) {
+    await c.ui.say(cu.name, `(Just looking around.) ${blocked}`);
+    return;
+  }
   const sim = c.sim!;
   const s = c.state;
   const ctx = sim.customerCtx;
@@ -125,6 +136,20 @@ export async function talkToCustomer(c: GameController, cu: CustomerState): Prom
       return;
     }
     const res = resolveAdvice(s, ctx, cu, pick < stock.length ? stock[pick] : null);
+    sim.advance(3);
+    await c.ui.say(cu.name, res.reply);
+    return;
+  }
+  if (needsHelp && cu.goal === 'buy_equipment') {
+    cu.thought = null;
+    const story = EQUIPMENT_WANTS.find((w) => w.items.join() === (cu.wants ?? []).join())?.story ?? 'I need some equipment.';
+    const opts = equipmentOptions(s, cu);
+    const pick = await c.ui.ask(cu.name, `${story} What would you recommend?`, [...opts.map((o) => o.label), 'Sorry, we don\'t have the right thing']);
+    if (pick < 0) {
+      cu.thought = '?';
+      return;
+    }
+    const res = resolveEquipmentAdvice(s, ctx, cu, pick < opts.length ? opts[pick].items : null);
     sim.advance(3);
     await c.ui.say(cu.name, res.reply);
     return;

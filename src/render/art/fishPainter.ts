@@ -496,6 +496,23 @@ function bodyPattern(type: string, t: number, v: number, i: number, y: number, b
       const ear = Math.hypot(dx - r * 0.55, Math.abs(dy) - r * 0.95) < r * 0.45;
       return Math.hypot(dx, dy) < r || ear ? 1 : 0;
     }
+    case 'clown':
+    case 'clown_edge': {
+      // Clownfish: head band behind the eye, a mid band bulging forward, a thin band at the tail root.
+      // The edge layer is drawn first in black and slightly wider, giving the white bands their outline.
+      const grow = type === 'clown_edge' ? Math.max(0.018, 0.9 / bodyLen) : 0;
+      const wob = (noise(v * 3, 2, seed) - 0.5) * 0.025;
+      const bands: Array<[number, number]> = [[0.75, 0.055], [0.47 + 0.05 * Math.sin(v * Math.PI), 0.06], [0.06, 0.028]];
+      for (const [c, w] of bands) if (Math.abs(t - c - wob) < w + grow && v > 0.02 && v < 0.98) return 1;
+      return 0;
+    }
+    case 'bands': {
+      // Three bold vertical bars: through the eye, the front of the body and the rear (cardinals, rams).
+      const wob = (noise(v * 2, 5, seed) - 0.5) * 0.02;
+      const bands: Array<[number, number]> = [[0.88, 0.035], [0.6, 0.06], [0.3, 0.05]];
+      for (const [c, w] of bands) if (Math.abs(t - c - wob) < w && v > 0.03 && v < 0.97) return 0.95;
+      return 0;
+    }
     case 'gradient':
       return smooth(0.6, 0.15, t) * 0.85;
     case 'lateral':

@@ -2,6 +2,10 @@
  * Developer panel. Only reachable when DEV_ALLOWED (dev build or ?dev=1).
  * Every action marks the save as dev-touched.
  */
+import { EXPANSIONS } from '../../data/expansions';
+import { buyExpansion } from '../../sim/expansion';
+import { hireApplicant, refreshApplicants } from '../../sim/staff';
+import { RETAIL_ITEMS } from '../../data/retail';
 import type { GameController } from '../../game/GameController';
 import { DEV_ALLOWED } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
@@ -36,7 +40,7 @@ const STAGES = [
   { name: 'adult', frac: 1, ageK: 3 },
   { name: 'gravid adult', frac: 1, ageK: 3 },
 ] as const;
-const GOALS: CustomerGoal[] = ['browse', 'buy_specific', 'advice_stocking', 'problem'];
+const GOALS: CustomerGoal[] = ['browse', 'buy_specific', 'advice_stocking', 'problem', 'buy_equipment'];
 
 export function toggleDevPanel(c: GameController): void {
   if (!DEV_ALLOWED) return;
@@ -197,8 +201,24 @@ export function toggleDevPanel(c: GameController): void {
     act('Reputation +10 (all)', () => { for (const d of REP_DIMENSIONS) s.reputation[d] = Math.min(100, s.reputation[d] + 10); }),
     act('Reputation -10 (all)', () => { for (const d of REP_DIMENSIONS) s.reputation[d] = Math.max(0, s.reputation[d] - 10); }),
     act('Complete all goals', () => { for (const o of OBJECTIVES) s.objectives[o.id] = { done: true, doneDay: 1, progress: 1 }; }),
-    act('Unlock floor 2 flag', () => { if (!s.unlocks.floors.includes('floor2')) s.unlocks.floors.push('floor2'); }, 'Flag only: floor 2 content arrives in Milestone 3.'),
-    act('Unlock marine flag', () => (s.unlocks.marine = true), 'Flag only: marine content arrives in Milestone 4.'),
+    act('Build next expansion (meets requirements)', () => {
+      const next = EXPANSIONS.find((e) => !s.unlocks.floors.includes(e.floor));
+      if (!next) return;
+      s.money = Math.max(s.money, next.requires.capital + next.cost);
+      s.stats.customersServed = Math.max(s.stats.customersServed, next.requires.customersServed);
+      s.stats.fishBred = Math.max(s.stats.fishBred, next.requires.fishBred ?? 0);
+      for (const d of REP_DIMENSIONS) s.reputation[d] = Math.max(s.reputation[d], next.requires.reputation + 3);
+      for (const o of OBJECTIVES) s.objectives[o.id] = { done: true, doneDay: 1, progress: 1 };
+      c.perform(buyExpansion(s, next.id));
+      c.refreshWorld();
+    }, 'Sets money, reputation and goals as needed, then buys the next shop level.'),
+    act('Hire one of each role', () => {
+      for (const r of ['sales', 'maintenance', 'stock', 'floater'] as const) {
+        refreshApplicants(s, c.sim!.rng, true);
+        hireApplicant(s, s.applicants.list[0].id, r);
+      }
+    }),
+    act('Stock retail (5 of each)', () => { for (const r of RETAIL_ITEMS) s.retail[r.id] = (s.retail[r.id] ?? 0) + 5; }),
     { label: 'Close (`)', action: () => { c.ui.remove(scr); open = null; } },
   ];
   const scr = c.ui.menu({

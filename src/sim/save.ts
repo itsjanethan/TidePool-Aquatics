@@ -45,6 +45,19 @@ export const MIGRATIONS: Record<number, (s: any) => any> = {
     }
     return s;
   },
+  // v2 -> v3 (0.4.0): floor registry ids, staff, proposals, shop level, retail stock.
+  2: (s) => {
+    s.player ??= { x: 15, y: 15, facing: 'up', floor: 'ground' };
+    if (!s.player.floor || s.player.floor === 'floor1') s.player.floor = 'ground';
+    s.unlocks ??= { floors: [], marine: false, species: [], equipment: [] };
+    s.unlocks.floors = [...new Set(['ground', ...(s.unlocks.floors ?? []).filter((f: string) => f !== 'floor1')])];
+    s.staff ??= [];
+    s.applicants ??= { day: 0, list: [] };
+    s.proposals ??= [];
+    s.shopLevel ??= 1;
+    s.retail ??= {};
+    return s;
+  },
 };
 
 /** Human label for a save slot id. */
@@ -56,6 +69,15 @@ export function serialize(state: GameState, slot: string): SaveFile {
   const clone: GameState = JSON.parse(JSON.stringify(state));
   // Transient data is not persisted: customers inside the shop leave on reload.
   clone.customers = [];
+  // Idle Mode is a session state, not part of the save.
+  delete clone.idle;
+  // Staff resume their routine after loading: keep who and where, drop the errand.
+  for (const st of clone.staff ?? []) {
+    st.task = null;
+    st.path = [];
+    st.pending = null;
+    st.dialogue = null;
+  }
   for (const f of Object.values(clone.fish)) f.reservedBy = null;
   for (const t of Object.values(clone.tanks)) t.viewActive = false;
   const savedAt = Date.now();
@@ -104,6 +126,16 @@ export function deserialize(raw: unknown): GameState {
  * types, so older files of the same version still load cleanly).
  */
 function normalize(st: GameState): void {
+  st.staff ??= [];
+  st.applicants ??= { day: 0, list: [] };
+  st.proposals ??= [];
+  st.shopLevel ??= 1;
+  st.retail ??= {};
+  for (const m of st.staff) {
+    m.path ??= [];
+    m.task = null;
+    m.stats ??= { tasksDone: 0, customersHelped: 0, proposals: 0, sales: 0 };
+  }
   st.stats.plantsSold ??= 0;
   st.stats.fryEaten ??= 0;
   st.strains ??= {};

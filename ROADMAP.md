@@ -60,6 +60,17 @@ The aquarium view became a core product feature. See ART_DIRECTION.md.
 - DONE Hardscape and substrate painters, contoured beds, new substrates (fine gravel, river pebbles, planted soil), richer backgrounds, light map, water look, algae film, quality settings
 - DONE Starter tanks redecorated so each has its own character
 
+## Milestone 0.4: Clarity, staff, floors and public playtest (DONE 2026-10-03, v0.4.0)
+
+- DONE Tank diagnostics: one source of truth for tank problems with severity, numbers, affected fish, consequences and actions; tank overview at the top of the tank menu; action previews computed from the real simulation; overworld icons from diagnostics (dead, harmful water, sick, hungry, dirty, attention)
+- DONE Habitat in numbers: cover %, cave spaces, open swimming space, sand and wood per species
+- DONE Help and glossary with sections, icon images, ranges, causes and effects; contextual help links; H key, gamepad and HUD ? button
+- DONE Staff: hiring with skills, personalities and wages; Sales, Tank Maintenance, Stock and Floater roles; autonomous work using diagnostics; proposals brought to the player in person; slow skill growth
+- DONE Idle Mode: business paused, visuals alive, every transaction locked with the reason, tank view auto-hides its UI
+- DONE Floor registry and stairs; customers and staff move between floors; save v3 with migration
+- DONE Shop levels: Coldwater & Temperate floor (medaka, rosy barb, hillstream loach, paradise fish), Advanced Aquatics & Marine (German blue ram, ocellaris clownfish, royal gramma, Banggai cardinal; salinity, RO top-off, salt, live rock, skimmers), Basement warehouse and equipment retail (bundles, stock space, equipment customers); Shop Progression screen
+- DONE GitHub Pages workflow, env-driven base path, nested-path test, Copy Playtest Report, version shown on title, pause and help
+
 ## Milestone 2: Content depth and shop life (NEXT)
 
 Reassessed after Milestone 1.5. Staff, Floor 2 and marine stay later; the core loop now benefits most from variety and texture.
@@ -71,23 +82,19 @@ Reassessed after Milestone 1.5. Staff, Floor 2 and marine stay later; the core l
 - Customer special orders and repeat customers with home tanks
 - Plant depth: light levels, CO2, fertiliser, more plant species and propagation methods (runners, rhizome splits)
 - Economy balance with human playtests (see TESTING.md long-run notes)
-- Generalise layouts beyond Floor 1 in code (prerequisite for Milestone 3)
+- DONE in v0.4.0: layouts generalised into a floor registry
 
-## Milestone 3: Staff, upgrades and Floor 2 (LATER)
+## Milestone 3: Staff depth, upgrades and Floor 2 depth (LATER)
 
-- Staff hiring, wages, personalities, skills, weaknesses, dialogue pools, experience
-- Task assignment (till, feeding, cleaning, water changes, receiving stock)
+- Staff v1 shipped in v0.4.0. Next: dialogue pools, training, breaks and morale, schedules, receiving deliveries
 - Shop upgrades (flooring, lighting, racks, signage, display tanks, seating) affecting customer perception
 - Floor 2 unlock: planted and larger tanks (180 to 300L), broader tropical range, intermediate fish
 - Tank replacement and new tank purchases
 - Better aquascaping tools (more plants, hardscape rotation, competitions)
 
-## Milestone 4: Marine (LATER)
+## Milestone 4: Marine depth (LATER)
 
-- Unlock via reputation, knowledge (good advice record), capital and a marine-ready room
-- Salinity, specific gravity, top-off, RO water, protein skimmers, live rock cycling
-- Marine livestock and marine staff expertise
-- Specialist marine customers
+- Marine v1 shipped in v0.4.0 (salinity as SG, top-off, RO, salt, live rock, skimmer, three marine fish). Next: corals and lighting, alkalinity and calcium, invertebrates, marine staff expertise, specialist marine customers, quarantine and acclimation
 
 ## Habitat branch: paludariums and vivariums (LATER, after Milestone 4)
 

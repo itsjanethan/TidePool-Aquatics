@@ -105,6 +105,8 @@ export function waterLook(tank: TankState): WaterLook {
   for (const d of tank.decor) if (getDecor(d.defId).kind === 'wood') wood++;
   const tannin = Math.min(0.16, wood * 0.035 * (60 / Math.max(40, tank.lengthCm)));
   const green = Math.max(0, tank.algae - 0.55) * 0.35;
+  // Marine: crystal-clear water under cool actinic-blue reef lighting.
+  if (tank.waterType === 'marine') return green > 0.05 ? { tint: 0x4a8a3a, tintAlpha: green, light: 0xe6f4ff } : { tint: 0x1a50c8, tintAlpha: 0.07, light: 0xdcecff };
   if (green > tannin) return { tint: 0x4a8a3a, tintAlpha: green, light: 0xf4ffe0 };
   return { tint: 0x8a5418, tintAlpha: tannin, light: tannin > 0.08 ? 0xfff0cc : 0xfff8e6 };
 }

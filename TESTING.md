@@ -25,7 +25,12 @@ npm run check       # all of the above, in order. Must pass before a task is don
 | `menu.test.ts` | (happy-dom) Menu selection and wrapping, headers, disabled rows, refresh, resting mouse, nested screen stack, dialogue choices, capped key repeat, typing in text boxes |
 | `phenotype.test.ts` | Morphs and traits change looks; albino; male-only tails hidden in females and fry; additive metallic; fry develop; gravid belly paints fuller; siblings differ; painter fills every frame; turn frames narrower; every species paints under 400 ms |
 | `floating.test.ts` | Duckweed spreads to carpet the surface; cover shades plants, soaks up nitrate, adds fry cover; scoop to stockroom, move, sell, bin |
-| `longrun.test.ts` | 30, 100 and 365 day bot runs with breeding tanks; invariants checked every day (see below) |
+| `longrun.test.ts` | 30, 100 and 365 day bot runs with breeding tanks; a 100-day level 4 run with staff; a 100-day staff-only run; invariants checked (see below) |
+| `diagnostics.test.ts` | Starter shop reports sensibly and in severity order; dead fish are "dead", a sick fish in clean water is never "toxic", toxic water carries its value, hunger, glass and algae numbers; every fix's preview equals the real action exactly; cover % per species; cave spaces per adult cave dweller |
+| `idle.test.ts` | Idle Mode freezes clock, fish, water, growth, pregnancies, customers, staff, wages and rng across days and end-of-day; resumes afterwards; every transaction refused with the Idle Mode message; previews do not mutate; saves exclude the flag and loads resume normal play; staff stand still |
+| `floors.test.ts` | Floor registry (unique tank ids, reciprocal stairs, every prop reachable by staff and customers), routes between floors, v2 to v3 save migration, round trip with every floor, expansion requirements and unlocks, a customer walking upstairs and back out of the door |
+| `staff.test.ts` | Applicants and wages, wages charged nightly, diagnostics-based job priority, a worker really cleaning a tank, sales staff serving the till, stock proposals from real stock costing nothing until approved, aquascape proposals predicting the real effect, slow skill growth, dismissal, off-duty hours, taking the stairs to an upstairs job, floor assignment, save/load of staff and suggestions, knowledge vs suggestion quality (seeded), no spending without approval over a working day |
+| `marine_retail.test.ts` | Salinity evaporation and RO top-off, salt-mix water changes, SG display, freshwater/marine separation, salinity damage; retail stock space, an equipment customer visiting the basement and paying, bundle preference, bundle stock and margin, equipment advice (right vs plausible wrong), marine kit gated; every species and morph paints a full sheet |
 
 ### Long-run simulation
 
@@ -49,6 +54,18 @@ Balance notes:
 - Maintenance load: the bot does about 2 to 3 chores per tank per week to keep water clean, which matches the intended routine.
 - Earlier issue fixed: customer profiles grew without limit (446 after a year, 1 MB saves). Now capped at 80.
 
+Results on 2026-10-03 (v0.4.0):
+
+| Run | Money | Revenue | Customers | Fish bred | Deaths | Fish records | Save size | Runtime |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 30 days | £1,273 | £2,400 | 218 | 66 | 0 | 122 | 141 KB | 2.3 s |
+| 100 days | £2,358 | £7,282 | 644 | 102 | 21 | 133 | 161 KB | 6.1 s |
+| 365 days | £7,897 | £28,145 | 2,417 | 198 | 76 | 201 | 214 KB | 28 s |
+| Level 4, 2 staff, 100 days (start £2,500) | £9,547 | £27,783 | 1,523 | 83 | 28 | 135 | 194 KB | 12.5 s |
+
+- A played level 4 shop with two staff earns roughly three times a level 1 shop, after wages and the extra rent.
+- The staff-only run (no player, suggestions approved each morning) is a robustness test: staff keep tanks maintained and serve customers for 100 days without errors, but without a player buying stock a level 4 shop does not pay its way. That is intended: staff help, the player still runs the business.
+
 Simulation code is pure, so prefer adding tests at the `sim/` level. If you change balance numbers, run `npx vitest run tests/balance.test.ts --silent=false` and read the printed summary.
 
 ## Browser checks
@@ -66,13 +83,15 @@ Steps support `key` (press), `type` (text), `eval` (JS in page; result printed),
 
 `scripts/reload-test.mjs` verifies that a save survives a page reload in a persistent browser profile.
 
+`scripts/nested-test.mjs <url>` loads a built copy from a nested path (for example `BASE_PATH=/tidepool-aquatics/ npx vite build --outDir /tmp/site/tidepool-aquatics`, then serve `/tmp/site` and open `http://localhost:8099/tidepool-aquatics/`). It fails on any console error, failed request, missing title or version, a new game that does not start, and reports the service worker scope. Verified on 2026-10-03 for an absolute base (`/tidepool-aquatics/`) and a relative build under `/games/deep/tp/`.
+
 Chromium lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` in the agent sandbox; adjust `exe` elsewhere.
 
 ## Developer panel
 
 Available in `npm run dev` builds, or in production with `?dev=1` in the URL. Press backtick (or F9) in game. It never appears in normal play, and any use sets `flags.devUsed` in the save.
 
-Money (add, zero), time (hour, day, week, skip to opening), tank (target selector, instant cycle, ammonia spike, nitrate, pH, temperature, filth, algae bloom, filter and heater failure, clean all), fish (spawn any species, age, set health, feed or starve, inspect genetics), customers (spawn by goal, spawn many, patience), progression (reputation, complete goals, unlock flags). Visual genetics: choose sex and stage (fry, juvenile, adult, gravid) and spawn; spawn a morph sampler (every morph and trait, both sexes); spawn 10 adult siblings from a pair; age fry +10 days; randomise genes; pick a trait locus and allele and apply it to the chosen species in the tank; open the morph gallery. Breeding: force pregnancy or spawn (due in one hour), create 6 fry, make tank fish breeding-ready, trigger a mutation. Uses the chosen species when a pair is present.
+Money (add, zero), time (hour, day, week, skip to opening), tank (target selector, instant cycle, ammonia spike, nitrate, pH, temperature, filth, algae bloom, filter and heater failure, clean all), fish (spawn any species, age, set health, feed or starve, inspect genetics), customers (spawn by goal, spawn many, patience), progression (reputation, complete goals, build the next expansion with requirements met, hire one of each role, stock the retail racks). Visual genetics: choose sex and stage (fry, juvenile, adult, gravid) and spawn; spawn a morph sampler (every morph and trait, both sexes); spawn 10 adult siblings from a pair; age fry +10 days; randomise genes; pick a trait locus and allele and apply it to the chosen species in the tank; open the morph gallery. Breeding: force pregnancy or spawn (due in one hour), create 6 fry, make tank fish breeding-ready, trigger a mutation. Uses the chosen species when a pair is present.
 
 ### Tank view performance (v0.3.0)
 
@@ -110,3 +129,13 @@ A feature is done when it works in the playable game, not when the code exists:
 - The relevant manual checklist steps were exercised (screenshots for visual changes).
 - Docs updated (`TASKS.md` status, `DECISIONS.md` for choices, schema docs if data changed).
 - The main branch is left playable.
+
+## Manual checks for v0.4.0
+
+- Tank menu: overview at the top (overall status, five scores, top issues); an issue opens with numbers, affected fish, consequences and actions with predicted effects; "Help: ..." rows open the glossary.
+- Overworld bubble matches the top issue (make a fish sick in clean water: pink +, not red !).
+- H, F1, gamepad LT and the ? button open Help; H again closes it.
+- Idle Mode from the pause menu: badge "IDLE MODE · BUSINESS PAUSED", clock frozen, every buy/sell/feed/maintain/order/price row shows "Idle Mode" and the reason, tank view UI fades after 6 s (any key or mouse movement brings it back), Hide UI works, Resume Business restores everything.
+- Build each expansion via the dev panel; take the stairs; customers and staff appear on the floors they are on; marine tank shows salinity as SG in the water test and the diagnostics.
+- Hire staff; a stock clerk walks up with a suggestion: Approve / Review / Not now.
+- Copy Playtest Report copies text (or shows it to copy by hand).

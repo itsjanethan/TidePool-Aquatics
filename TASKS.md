@@ -4,21 +4,25 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 
 ## Next up (priority order)
 
-1. **Human playtest and balance pass (v0.2.0).** Watch a first-time player for 3 in-game days and a returning player for 2 weeks. Check day 1 to 3 feel busy but fair, breeding is discovered without help, mid-game money growth feels rewarding (long-run bot only earns £10 to £15/day). Acceptance: documented findings in TESTING.md and tuned numbers in DECISIONS.md.
+1. **Public playtest of v0.4.0.** Deploy to GitHub Pages, collect Copy Playtest Report texts. Watch for: diagnostics wording, whether players find Help (H / ?), staff wage balance at level 2, Idle Mode clarity, whether the progression requirements feel reachable. Acceptance: findings in TESTING.md, tuned numbers in DECISIONS.md.
+2. **Human playtest and balance pass (v0.2.0 carry-over).** Watch a first-time player for 3 in-game days and a returning player for 2 weeks. Check day 1 to 3 feel busy but fair, breeding is discovered without help, mid-game money growth feels rewarding (long-run bot only earns £10 to £15/day). Acceptance: documented findings in TESTING.md and tuned numbers in DECISIONS.md.
 2. **Visual polish follow-ups.** Egg sprites on glass and plants for egg layers; disease visuals once disease exists; leaf litter and blackwater tannin as an aquascape option; hand-tuned per-species profile tweaks in the gallery (pleco head width, cory dorsal spine); the bot should scoop duckweed in long runs.
 3. **Species wave 1 (Milestone 2).** Cherry Shrimp (colony breeding, colour grades), Otocinclus (algae grazer), Kuhli Loach (nocturnal, sand), Betta (solitary males, bubble nest method). Each with breeding data, genetics where relevant, art check in tank view, supplier entry. Acceptance: species tests pass, each visible and breeding in game.
 4. **Disease v1.** Ich and fin rot from sustained stress or bad water; spread within a tank; visible symptoms; treatments sold as dry goods; quarantine advice. Acceptance: unit tests for onset and treatment; visible in tank view.
 5. **Breeding tools.** Breeder box (protects livebearer fry), fry food (faster growth), pairing preview (expected looks from two parents using known genes).
 6. **Events v1.** Heatwave, power cut, rare shipment offer, each a choice. Fire via dev panel and naturally at low rates.
 7. **Plant depth.** Light level per tank, fertiliser dry good, runners and rhizome splits as propagation methods, three more plant species.
-8. **Generalise floors** (prerequisite for Milestone 3).
-9. **Accessibility pass.** Text size option, high-contrast UI, reduced motion in the tank view, key rebinding.
+8. **Staff depth.** Dialogue pools per personality, training at the PC, morale and breaks, receiving deliveries as a Stock task, a staff room on a floor.
+9. **Marine depth.** Alkalinity and calcium, corals with light needs, cleaner shrimp, quarantine and acclimation for marine deliveries.
+10. **Accessibility pass.** Text size option, high-contrast UI, reduced motion in the tank view, key rebinding.
 
 ## Backlog
 
 - Customer special orders (reserve fish for collection on a later day)
 - Aquarium club visits and loyalty rewards
-- Staff (Milestone 3): hiring screen, wages, skills, task assignment, dialogue pools
+- Optional "Live Simulation" variant of Idle Mode (time runs, transactions stay locked); hook described in DECISIONS.md
+- Overworld icon for a staff member waiting with a suggestion (currently a speech bubble)
+- Customers collide with staff only visually (no actor collision)
 - Shop upgrades and decoration placement in the overworld
 - Tank purchases and replacement with larger tanks
 - Seasonal demand curves and weekday patterns
@@ -34,6 +38,8 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 - The single-file build cannot register the service worker (by design); use the static `dist/` build for offline play.
 
 ## Done
+
+- 2026-10-03: v0.4.0. Tank diagnostics and previews, habitat numbers, help and glossary, staff (hiring, roles, proposals), Idle Mode, floor registry with stairs and save v3, three expansions with eight new species, marine v1, equipment retail, Shop Progression, GitHub Pages workflow, playtest report. Tests: diagnostics, idle, floors, staff, marine and retail, long runs with staff and every floor
 
 - 2026-10-02: Project scaffold (TS + Phaser 3.90 + Vite 8), lint, tests, builds, PWA files
 - 2026-10-02: Living docs created (GAME_DESIGN, ARCHITECTURE, ROADMAP, TASKS, DECISIONS, SPECIES_SCHEMA, SAVE_SCHEMA, ART_DIRECTION, TESTING)

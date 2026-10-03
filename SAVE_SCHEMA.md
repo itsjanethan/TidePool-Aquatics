@@ -29,7 +29,7 @@ A save is a JSON `SaveFile` (`src/sim/save.ts`):
 - Autosave: every opening time (09:00), after the overnight update and daily report, in slot `auto`.
 - Service worker updates never touch IndexedDB, so saves survive new deploys.
 
-## GameState top-level fields (version 2)
+## GameState top-level fields (version 3)
 
 | Field | Notes |
 | --- | --- |
@@ -44,14 +44,35 @@ A save is a JSON `SaveFile` (`src/sim/save.ts`):
 | `reputation{dimension: 0..100}` | |
 | `ledger[]`, `today` | Last 60 days of accounts |
 | `log[]` | Last 80 messages |
-| `player` | Position, facing, floor |
-| `unlocks` | floors, marine, species, equipment |
+| `player` | Position, facing, floor (a floor id from `src/data/floors.ts`: `ground`, `upstairs`, `marine`, `basement`) |
+| `unlocks` | `floors[]` built floors (always includes `ground`), `marine`, `species[]`, `equipment[]` |
+| `shopLevel` (v3) | 1..4; raised by buying expansions |
+| `staff[]` (v3) | StaffEntity, see below |
+| `applicants` (v3) | `{ day, list: StaffApplicant[] }` people who applied (refreshed every 3 days) |
+| `proposals[]` (v3) | StaffProposal: staff suggestions awaiting a decision, capped at 40 |
+| `retail{itemId: qty}` (v3) | Basement equipment stock (ids from `src/data/retail.ts`) |
 | `objectives{id: {done, doneDay, progress}}` | |
 | `stats`, `settings`, `flags` | `flags.devUsed` marks saves touched by the dev panel; `stats.plantsSold`, `stats.fryEaten` optional |
 | `storage` (v2) | `{ decor{defId: count}, plants: PottedPlant[] }` stockroom; potted plants carry `uid, defId, size, health, origin` |
 | `strains?` | `{id: Strain}` named lines: `id, name, speciesId, morphId, foundedDay, bestGeneration` |
 | `demand?` | `{speciesId: 0.5..1}` sales saturation; missing means 1 |
 | `lastSave?` | Most recent save of this game |
+
+`idle` (Idle Mode) is runtime only: `serialize` deletes it, so a loaded game always resumes normal play.
+
+### StaffEntity (v3)
+
+`id, name, appearance (palette seed), personality, wage (£/day), experience, floor, x, y, path[], pending?, facing, walkPhase, role (sales | maintenance | stock | floater), assignedFloor? (null = anywhere), task?, skills{cleaning, service, speed, knowledge 0..100}, hiredDay, dialogue?, dialogueUntil, stats{tasksDone, customersHelped, proposals, sales}`
+
+Saves keep who and where; `task`, `path`, `pending` and `dialogue` are cleared on save and load so staff simply resume their routine.
+
+### StaffProposal (v3)
+
+`id, staffId, kind (stock | aquascape), createdMinute, status (pending | approved | declined | snoozed), snoozeUntil?, delivered, title, reason, warnings[], stock?{speciesId, quantity, supplierId, tankId, unitCost}, aquascape?{tankId, defId, x, layer, cost, fixes}`
+
+### CustomerState additions (v3, never saved)
+
+Customers are not saved (they leave on load), but carry `floor`, `pending` (stairs leg), `wants[]`, `equipment[]`, `askedAdvice` and `helpedBy` at runtime.
 
 ### FishEntity
 
@@ -61,7 +82,7 @@ A save is a JSON `SaveFile` (`src/sim/save.ts`):
 
 ### TankState
 
-`id, name, sizeId, litres, lengthCm, water{temperature, ph, gh, ammonia, nitrite, nitrate, oxygen, aob, nob, detritus, cloudiness}, filterId, filterCondition, heaterId, heaterSetpoint, heaterBroken, airStone, lightOn, substrateId, backgroundId, ownedSubstrates[], ownedBackgrounds[], decor[{uid, defId, x, layer, flip, health, size}], broods?[{id, speciesId, motherId, fatherId, count, daysLeft, laidDay}], forSale? (false = customers cannot buy), waterType? (absent = freshwater), algae, glassDirt, food, lastFedMinute, viewActive, lastMaintenance{}`
+`id, name, sizeId, litres, lengthCm, water{temperature, ph, gh, ammonia, nitrite, nitrate, oxygen, aob, nob, detritus, cloudiness, salinity? (marine, ppt)}, skimmer? (marine), filterId, filterCondition, heaterId, heaterSetpoint, heaterBroken, airStone, lightOn, substrateId, backgroundId, ownedSubstrates[], ownedBackgrounds[], decor[{uid, defId, x, layer, flip, health, size}], broods?[{id, speciesId, motherId, fatherId, count, daysLeft, laidDay}], forSale? (false = customers cannot buy), waterType? (absent = freshwater), algae, glassDirt, food, lastFedMinute, viewActive, lastMaintenance{}`
 
 `floating?` maps floating-plant id to surface coverage (0..1, total at most 1). `storage.floating?` maps floating-plant id to stored portions. Both optional within v2.
 
@@ -83,3 +104,4 @@ Content IDs (species, morphs, decor, filters, suppliers) are stored in saves. Re
 | --- | --- |
 | 1 | Initial vertical slice |
 | 2 | Plant `size`, `storage`, per-tank `ownedSubstrates`/`ownedBackgrounds`. Migration 1 sets size 1, empty storage and owns the current substrate/background. Optional fields added within v2 (`broods`, `strains`, `demand`, `forSale`, `lastSave`, new stats) are filled by `normalize()` on load. |
+| 3 | v0.4.0. Floor registry ids (`floor1` becomes `ground`), `staff`, `applicants`, `proposals`, `shopLevel`, `retail`. Migration 2 maps the old floor id, keeps `ground` in `unlocks.floors` and fills empty staff, proposals, shop level 1 and empty retail stock. Tested in `tests/floors.test.ts` with a hand-made version 2 save. Expansion tanks (`U*`, `M*`, `Q*`) only exist once bought. |

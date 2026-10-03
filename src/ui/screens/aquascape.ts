@@ -4,6 +4,7 @@
  * and plants appear as a translucent ghost that can be positioned, and
  * Cancel restores the tank exactly.
  */
+import { coverPercent } from '../../sim/habitat';
 import type Phaser from 'phaser';
 import type { GameController } from '../../game/GameController';
 import type { Action } from '../../input/input';
@@ -139,7 +140,10 @@ export class AquascapeScreen implements Screen {
         floatPreview: f.id,
       } as MenuItem);
     }
+    const marine = t.waterType === 'marine';
     for (const d of DECOR) {
+      // Marine tanks take rock and caves, not freshwater plants or wood; live rock is marine only.
+      if (marine ? d.kind === 'plant' || d.kind === 'wood' : d.marineOnly) continue;
       list.push({
         label: d.name,
         right: formatMoney(d.cost),
@@ -344,7 +348,7 @@ export class AquascapeScreen implements Screen {
     this.info.innerHTML = '';
     this.info.append(
       h('div', { class: 'row' }, h('span', null, 'Layout score'), h('b', null, `${Math.round(sc.layout)}`)),
-      h('div', { class: 'row small' }, h('span', null, `Plants ${sc.plants} · Caves ${sc.caves} · Cover ${Math.round(sc.cover * 100)}% · Items ${t.decor.length}/${MAX_DECOR}`)),
+      h('div', { class: 'row small' }, h('span', null, `Plants ${sc.plants} · Cave spaces ${sc.caveSlots} · Cover ${coverPercent(sc)}% · Items ${t.decor.length}/${MAX_DECOR}`)),
       h('div', { class: 'small' }, needs.join(' · ')),
       h('div', { class: 'small' }, `Money: ${formatMoney(this.c.state.money)}`),
     );

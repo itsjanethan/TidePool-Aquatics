@@ -14,6 +14,8 @@ export interface DecorDef {
   cover: number;
   /** Provides a cave/territory. */
   cave: boolean;
+  /** How many fish can claim a cave in it (default 1 when cave is true). */
+  caveSlots?: number;
   /** Visual width in tank-view pixels at reference scale. */
   width: number;
   height: number;
@@ -25,6 +27,8 @@ export interface DecorDef {
   beauty: number;
   /** Tags used by species needs (needs_wood, needs_cave). */
   provides: string[];
+  /** Only for marine tanks. */
+  marineOnly?: boolean;
   /** Art key used by renderer. */
   art: string;
   description: string;
@@ -59,11 +63,12 @@ export const DECOR: DecorDef[] = [
   { id: 'java_moss', name: 'Java Moss', kind: 'plant', cost: 4, cover: 0.2, cave: false, width: 40, height: 20, nutrientUptake: 0.5, phEffect: 0, beauty: 0.5, provides: ['plants', 'fry_cover'], art: 'moss', description: 'Fuzzy moss clumps. Perfect cover for eggs and fry.', growthRate: 0.07, maxSize: 1.8, tough: true, propagation: 'division' },
   { id: 'anubias', name: 'Anubias', kind: 'plant', cost: 9, cover: 0.08, cave: false, width: 30, height: 30, nutrientUptake: 0.4, phEffect: 0, beauty: 0.6, provides: ['plants'], art: 'anubias', description: 'Low, dark-leaved plant. Goldfish leave it alone.', growthRate: 0.025, maxSize: 1.5, tough: true, propagation: 'rhizome' },
   { id: 'river_stone', name: 'River Stones', kind: 'rock', cost: 4, cover: 0.04, cave: false, width: 50, height: 26, nutrientUptake: 0, phEffect: 0, beauty: 0.3, provides: ['rocks'], art: 'stones', description: 'Smooth, inert pebbles.' },
-  { id: 'slate_stack', name: 'Slate Stack', kind: 'rock', cost: 10, cover: 0.1, cave: true, width: 62, height: 42, nutrientUptake: 0, phEffect: 0, beauty: 0.45, provides: ['rocks', 'cave'], art: 'slate', description: 'Layered slate with a crevice.' },
-  { id: 'limestone', name: 'Holey Limestone', kind: 'rock', cost: 12, cover: 0.08, cave: true, width: 46, height: 40, nutrientUptake: 0, phEffect: 0.25, beauty: 0.4, provides: ['rocks', 'cave'], art: 'limestone', description: 'Raises pH and hardness. Livebearers like it.' },
+  { id: 'slate_stack', name: 'Slate Stack', kind: 'rock', cost: 10, cover: 0.1, cave: true, caveSlots: 2, width: 62, height: 42, nutrientUptake: 0, phEffect: 0, beauty: 0.45, provides: ['rocks', 'cave'], art: 'slate', description: 'Layered slate with a crevice.' },
+  { id: 'limestone', name: 'Holey Limestone', kind: 'rock', cost: 12, cover: 0.08, cave: true, caveSlots: 2, width: 46, height: 40, nutrientUptake: 0, phEffect: 0.25, beauty: 0.4, provides: ['rocks', 'cave'], art: 'limestone', description: 'Raises pH and hardness. Livebearers like it.' },
   { id: 'mopani', name: 'Mopani Wood', kind: 'wood', cost: 14, cover: 0.12, cave: false, width: 78, height: 62, nutrientUptake: 0, phEffect: -0.15, beauty: 0.6, provides: ['wood'], art: 'mopani', description: 'Two-tone hardwood. Softens water slightly.' },
   { id: 'spider_wood', name: 'Spider Wood', kind: 'wood', cost: 16, cover: 0.14, cave: false, width: 70, height: 80, nutrientUptake: 0, phEffect: -0.1, beauty: 0.7, provides: ['wood'], art: 'spiderwood', description: 'Branching roots that reach for the surface.' },
   { id: 'clay_cave', name: 'Clay Cave', kind: 'cave', cost: 7, cover: 0.1, cave: true, width: 30, height: 18, nutrientUptake: 0, phEffect: 0, beauty: 0.2, provides: ['cave', 'breeding_cave'], art: 'claycave', description: 'A pleco breeding tube.' },
+  { id: 'live_rock', name: 'Live Rock', kind: 'rock', cost: 28, cover: 0.14, cave: true, caveSlots: 2, width: 66, height: 46, nutrientUptake: 0, phEffect: 0.1, beauty: 0.6, provides: ['rocks', 'cave', 'live_rock'], art: 'liverock', marineOnly: true, description: 'Porous reef rock full of bacteria: extra biological filtration and hiding places in marine tanks.' },
   { id: 'coconut_cave', name: 'Coconut Hut', kind: 'cave', cost: 5, cover: 0.09, cave: true, width: 34, height: 22, nutrientUptake: 0, phEffect: -0.05, beauty: 0.3, provides: ['cave'], art: 'coconut', description: 'Half a coconut shell. Rustic and cosy.' },
 ];
 
@@ -132,6 +137,7 @@ export interface HeaterDef {
 export const HEATERS: HeaterDef[] = [
   { id: 'heater_50', name: '50W Heater', cost: 14, watts: 50, powerPerDay: 0.35 },
   { id: 'heater_150', name: '150W Heater', cost: 24, watts: 150, powerPerDay: 0.6 },
+  { id: 'heater_300', name: '300W Heater', cost: 38, watts: 300, powerPerDay: 1.1 },
 ];
 
 export const AIR_PUMP = { id: 'air_stone', name: 'Air Pump & Stone', cost: 9, powerPerDay: 0.05 };
@@ -149,6 +155,8 @@ export const TANK_SIZES: TankSizeDef[] = [
   { id: 't40', name: 'Small (40L)', litres: 40, lengthCm: 50, heightCm: 30, depthCm: 27 },
   { id: 't60', name: 'Standard (60L)', litres: 60, lengthCm: 60, heightCm: 33, depthCm: 30 },
   { id: 't120', name: 'Large (120L)', litres: 120, lengthCm: 100, heightCm: 40, depthCm: 30 },
+  { id: 't200', name: 'Extra Large (200L)', litres: 200, lengthCm: 120, heightCm: 45, depthCm: 37 },
+  { id: 't300', name: 'Show Tank (300L)', litres: 300, lengthCm: 150, heightCm: 50, depthCm: 40 },
 ];
 
 export interface SubstrateDef {
@@ -196,6 +204,8 @@ export interface DryGoodDef {
   wholesale: number;
   retail: number;
   description: string;
+  /** Only stocked once marine is unlocked. */
+  marine?: boolean;
 }
 
 /** Dry goods sold to customers as add-ons (bought by the shop in packs). */
@@ -204,6 +214,8 @@ export const DRY_GOODS: DryGoodDef[] = [
   { id: 'test_kit', name: 'Test Kit', wholesale: 9, retail: 18, description: 'Liquid test kit for ammonia, nitrite and nitrate.' },
   { id: 'flake_food', name: 'Flake Food', wholesale: 1.8, retail: 3.99, description: 'Staple food for community fish.' },
   { id: 'bacteria', name: 'Bacteria Starter', wholesale: 3, retail: 6.5, description: 'Helps a brand new tank begin to cycle.' },
+  { id: 'salt_mix', name: 'Marine Salt Mix', wholesale: 4, retail: 9, description: 'Reef salt for mixing new saltwater. Needed for marine water changes.', marine: true },
+  { id: 'ro_water', name: 'RO Water (25L)', wholesale: 1.5, retail: 4, description: 'Pure reverse-osmosis water for topping up evaporation in marine tanks (salt does not evaporate).', marine: true },
 ];
 
 /** Shop fish food stock: one tub gives this many food units. */

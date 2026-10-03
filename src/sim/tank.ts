@@ -2,6 +2,8 @@
  * TankSimulation: background tick for one tank plus player maintenance,
  * equipment and aquascaping actions.
  */
+import { isMarine, salinityAfterChange, sgLabel, TARGET_SALINITY, tickMarine, topOff } from './marine';
+import { idleRefusal } from './idle';
 import { tickFloating } from './floating';
 import { clamp, clamp01, round } from '../core/math';
 import { AIR_PUMP, getDecor, getFilter, getHeater, getTankSize, getSubstrate, getBackground } from '../data/catalog';
@@ -110,6 +112,7 @@ export function tickTank(state: GameState, tank: TankState, dtHours: number, ctx
     dtHours,
   );
 
+  tickMarine(tank, dtHours, tank.decor.filter((d) => d.defId === 'live_rock').length);
   // Plants grow, get eaten by plant-unsafe fish, and recover.
   tickPlants(state, tank, dtHours);
   tickFloating(tank, dtHours);
@@ -128,6 +131,7 @@ export function tickTank(state: GameState, tank: TankState, dtHours: number, ctx
         oxygen: tank.water.oxygen,
         litres: tank.litres,
         stressTarget: st.total,
+        salinity: tank.water.salinity ?? 0,
       },
       tank,
       dtHours,
@@ -155,6 +159,7 @@ export type FeedAmount = 'light' | 'normal' | 'heavy';
 export const FEED_MULTIPLIER: Record<FeedAmount, number> = { light: 0.5, normal: 1, heavy: 2.2 };
 
 export function feedTank(state: GameState, tank: TankState, amount: FeedAmount): ActionResult {
+  if (state.idle) return idleRefusal();
   const fish = fishInTank(state, tank.id);
   if (!fish.length) {
     // Ghost feeding an empty tank is a valid (if slow) way to start cycling.
@@ -182,14 +187,53 @@ export function feedTank(state: GameState, tank: TankState, amount: FeedAmount):
 }
 
 export function doWaterChange(state: GameState, tank: TankState, fraction: number): ActionResult {
-  waterChange(tank, fraction);
+  if (state.idle) return idleRefusal();
+  let saltNote = '';
+  if (isMarine(tank)) {
+    // Mixing new saltwater uses salt; without it the change dilutes the tank.
+    const packs = fraction > 0.3 ? 2 : 1;
+    const withSalt = (state.dryGoods.salt_mix ?? 0) >= packs;
+    if (withSalt) state.dryGoods.salt_mix -= packs;
+    else saltNote = ' No salt mix left: the tank was topped up with plain water and salinity dropped!';
+    const sal = salinityAfterChange(tank.water.salinity ?? TARGET_SALINITY, fraction, withSalt);
+    waterChange(tank, fraction);
+    tank.water.salinity = sal;
+    tank.water.ph = 8.2 * fraction + tank.water.ph * (1 - fraction);
+  } else waterChange(tank, fraction);
   if (fraction > 0.5) for (const f of fishInTank(state, tank.id)) f.shock = Math.min(60, f.shock + 15);
   tank.lastMaintenance.waterChange = state.minute;
   const minutes = Math.round(12 + tank.litres * fraction * 0.35);
-  return ok(`Changed ${Math.round(fraction * 100)}% of the water.`, minutes);
+  return ok(`Changed ${Math.round(fraction * 100)}% of the water.${saltNote}`, minutes);
 }
 
+/** Marine: top off evaporation with RO water (uses one pack). */
+export function topOffTank(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
+  if (!isMarine(tank)) return fail('Only marine tanks need RO top-off.');
+  if ((state.dryGoods.ro_water ?? 0) < 1) return fail('You need RO water. Buy some in the stockroom.');
+  state.dryGoods.ro_water -= 1;
+  topOff(tank);
+  tank.lastMaintenance.topoff = state.minute;
+  return ok(`Topped off with RO water. ${sgLabel(tank.water.salinity ?? TARGET_SALINITY)}.`, 6);
+}
+
+/** Marine: fit or remove a protein skimmer. */
+export function toggleSkimmer(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
+  if (!isMarine(tank)) return fail('Skimmers are for marine tanks.');
+  if (tank.skimmer) {
+    tank.skimmer = false;
+    return ok('Skimmer removed.', 5);
+  }
+  if (!spend(state, SKIMMER_COST, `Skimmer for ${tank.name}`)) return fail('Not enough money.');
+  tank.skimmer = true;
+  return ok('Protein skimmer fitted.', 10);
+}
+
+export const SKIMMER_COST = 85;
+
 export function cleanGlass(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
   tank.glassDirt = 0;
   tank.algae = clamp01(tank.algae - 0.35);
   tank.lastMaintenance.glass = state.minute;
@@ -197,6 +241,7 @@ export function cleanGlass(state: GameState, tank: TankState): ActionResult {
 }
 
 export function vacuumSubstrate(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
   tank.water.detritus *= 0.3;
   tank.water.cloudiness *= 0.75;
   tank.food *= 0.2;
@@ -207,6 +252,7 @@ export function vacuumSubstrate(state: GameState, tank: TankState): ActionResult
 }
 
 export function cleanFilter(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
   tank.filterCondition = 1;
   // Rinsing in old tank water keeps most bacteria.
   tank.water.aob = Math.max(0.02, tank.water.aob * 0.93);
@@ -216,12 +262,14 @@ export function cleanFilter(state: GameState, tank: TankState): ActionResult {
 }
 
 export function scrubAlgae(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
   tank.algae = clamp01(tank.algae * 0.25);
   tank.lastMaintenance.algae = state.minute;
   return ok('You scrub algae off the decor.', 10);
 }
 
 export function removeDead(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
   const dead = fishInTank(state, tank.id, true).filter((f) => !f.alive);
   if (!dead.length) return fail('There are no dead fish in this tank.');
   for (const f of dead) f.tankId = null;
@@ -229,6 +277,7 @@ export function removeDead(state: GameState, tank: TankState): ActionResult {
 }
 
 export function useBacteriaStarter(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
   if ((state.dryGoods.bacteria ?? 0) < 1) return fail('No bacteria starter in stock.');
   state.dryGoods.bacteria -= 1;
   tank.water.aob = clamp01(tank.water.aob + 0.12);
@@ -237,6 +286,7 @@ export function useBacteriaStarter(state: GameState, tank: TankState): ActionRes
 }
 
 export function buyFilter(state: GameState, tank: TankState, filterId: string): ActionResult {
+  if (state.idle) return idleRefusal();
   const f = getFilter(filterId);
   if (tank.filterId === filterId) return fail('That filter is already installed.');
   if (!spend(state, f.cost, `${f.name} for ${tank.name}`)) return fail('Not enough money.');
@@ -249,6 +299,7 @@ export function buyFilter(state: GameState, tank: TankState, filterId: string): 
 }
 
 export function buyHeater(state: GameState, tank: TankState, heaterId: string): ActionResult {
+  if (state.idle) return idleRefusal();
   const h = getHeater(heaterId);
   if (tank.heaterId === heaterId && !tank.heaterBroken) return fail('That heater is already installed.');
   if (!spend(state, h.cost, `${h.name} for ${tank.name}`)) return fail('Not enough money.');
@@ -258,12 +309,14 @@ export function buyHeater(state: GameState, tank: TankState, heaterId: string): 
 }
 
 export function removeHeater(_state: GameState, tank: TankState): ActionResult {
+  if (_state.idle) return idleRefusal();
   if (!tank.heaterId) return fail('No heater installed.');
   tank.heaterId = null;
   return ok('Heater removed. This tank will drift to room temperature.', 5);
 }
 
 export function toggleAirStone(state: GameState, tank: TankState): ActionResult {
+  if (state.idle) return idleRefusal();
   if (tank.airStone) {
     tank.airStone = false;
     return ok('Air stone switched off.', 2);
@@ -278,8 +331,11 @@ export function setHeater(tank: TankState, temp: number): void {
 }
 
 export function addDecor(state: GameState, tank: TankState, defId: string, x: number, layer: 0 | 1 | 2): ActionResult {
+  if (state.idle) return idleRefusal();
   const def = getDecor(defId);
   if (tank.decor.length >= MAX_DECOR) return fail('This tank is full of decor.');
+  if (def.marineOnly && tank.waterType !== 'marine') return fail(`${def.name} is for marine tanks.`);
+  if (tank.waterType === 'marine' && (def.kind === 'plant' || def.kind === 'wood')) return fail(`${def.name} does not belong in a marine tank.`);
   if (!spend(state, def.cost, `${def.name} for ${tank.name}`)) return fail('Not enough money.');
   // New plants arrive as young nursery plants and grow into the tank.
   tank.decor.push({ uid: newId(state, 'd'), defId, x: clamp01(x), layer, flip: x > 0.5, health: 1, size: def.kind === 'plant' ? 0.6 : 1 });
@@ -289,6 +345,7 @@ export function addDecor(state: GameState, tank: TankState, defId: string, x: nu
 
 /** Removing decor keeps it: it goes to the stockroom (see plants.ts). */
 export function removeDecorItem(state: GameState, tank: TankState, uid: string): ActionResult {
+  if (state.idle) return idleRefusal();
   return removeToStorage(state, tank, uid);
 }
 
@@ -301,6 +358,7 @@ export function ownsBackground(tank: TankState, id: string): boolean {
 }
 
 export function setSubstrate(state: GameState, tank: TankState, id: string): ActionResult {
+  if (state.idle) return idleRefusal();
   const s = getSubstrate(id);
   if (tank.substrateId === id) return fail('Already using that substrate.');
   const owned = ownsSubstrate(tank, id);
@@ -313,6 +371,7 @@ export function setSubstrate(state: GameState, tank: TankState, id: string): Act
 }
 
 export function setBackground(state: GameState, tank: TankState, id: string): ActionResult {
+  if (state.idle) return idleRefusal();
   const b = getBackground(id);
   if (tank.backgroundId === id) return fail('Already using that background.');
   const owned = ownsBackground(tank, id);

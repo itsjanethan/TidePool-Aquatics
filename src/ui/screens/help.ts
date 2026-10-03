@@ -1,12 +1,15 @@
 /** Intro and help screens. */
 import type { GameController } from '../../game/GameController';
 import { h } from '../dom';
+import type { MenuItem } from '../menu';
+import { entriesFor, glossaryEntry, HELP_SECTIONS, type GlossaryEntry, type HelpSectionId } from '../../data/glossary';
+import { APP_VERSION } from '../../version';
 
 export function showIntro(c: GameController): void {
   const s = c.state;
   const lines = [
     `Welcome to ${s.shopName}, ${s.playerName}! The previous owner left you ten tanks, a till and a lot of hungry fish.`,
-    'Walk with the arrow keys or WASD. Press Z, Enter or Space to interact, X to go back, and Esc for the menu.',
+    'Walk with the arrow keys or WASD. Press Z, Enter or Space to interact, X to go back, and Esc for the menu. Press H (or the ? button) for Help any time.',
     'Feed your fish, keep the water clean, and serve customers at the till. Customers with a "?" want your advice.',
     'Tank C2 is brand new and has not cycled yet. Do not rush fish into it!',
     'Save at the office PC in the top right. The shop also autosaves every morning when it opens.',
@@ -57,4 +60,109 @@ export function helpBody(): HTMLElement {
 
 export function showHelp(c: GameController): void {
   const scr = c.ui.menu({ title: 'How to Play', body: helpBody(), items: [{ label: 'Back', action: () => c.ui.remove(scr) }], className: 'wide tall' });
+}
+
+// ---------------------------------------------------------------------------
+// Help & glossary browser
+
+let helpCtl: GameController | null = null;
+/** Lets help links inside any screen open the glossary without threading the controller through. */
+export function setHelpController(c: GameController): void {
+  helpCtl = c;
+}
+
+/** Inline clickable term that opens its glossary entry (mouse/touch). */
+export function helpLink(label: string, id: string): HTMLElement {
+  const el = h('span', { class: 'help-link', title: 'Help: click for details' }, label);
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (helpCtl) openHelpEntry(helpCtl, id);
+  });
+  return el;
+}
+
+/** Menu item that opens a glossary entry (keyboard and gamepad friendly). */
+export function helpItem(id: string, label?: string): MenuItem {
+  const g = glossaryEntry(id);
+  return {
+    label: label ?? `Help: ${g?.title ?? id}`,
+    right: '?',
+    hint: g ? g.body.slice(0, 110) + (g.body.length > 110 ? '...' : '') : '',
+    action: () => {
+      if (helpCtl) openHelpEntry(helpCtl, id);
+    },
+  };
+}
+
+/** Overworld icon textures shown next to their glossary entries. */
+const ICON_TEXTURE: Record<string, string> = {
+  icon_attention: 'icon-attention', icon_dead: 'icon-dead', icon_toxic: 'icon-alert', icon_sick: 'icon-sick', icon_hungry: 'icon-hungry', icon_dirty: 'icon-dirty',
+};
+
+function iconImage(id: string): HTMLElement | null {
+  const key = ICON_TEXTURE[id];
+  const tex = key && helpCtl?.game?.textures.exists(key) ? helpCtl.game.textures.get(key) : null;
+  const src = tex?.getSourceImage() as HTMLCanvasElement | undefined;
+  if (!src || typeof src.toDataURL !== 'function') return null;
+  return h('img', { class: 'help-icon', src: src.toDataURL(), alt: '' });
+}
+
+function entryBody(g: GlossaryEntry): HTMLElement {
+  const list = (title: string, xs?: string[]) =>
+    xs?.length ? h('div', { class: 'help-sec' }, h('div', { class: 'section-title' }, title), ...xs.map((x) => h('div', { class: 'small' }, `• ${x}`))) : null;
+  return h(
+    'div',
+    { class: 'help help-entry' },
+    iconImage(g.id) ?? (g.symbol ? h('div', { class: 'help-symbol' }, g.symbol) : null),
+    h('div', null, g.body),
+    g.ranges ? h('div', { class: 'help-sec' }, h('div', { class: 'section-title' }, 'Ranges'), h('div', { class: 'small' }, g.ranges)) : null,
+    list('Affected by', g.affectedBy),
+    list('Affects', g.affects),
+  );
+}
+
+export function openHelpEntry(c: GameController, id: string): void {
+  const g = glossaryEntry(id);
+  if (!g) return;
+  const sec = HELP_SECTIONS.find((s) => s.id === g.section)!;
+  const scr = c.ui.menu({
+    title: g.title,
+    body: entryBody(g),
+    items: [
+      { label: `More in ${sec.title}`, action: () => { c.ui.remove(scr); openHelpSection(c, sec.id); } },
+      { label: 'Back', action: () => c.ui.remove(scr) },
+    ],
+    className: 'wide',
+  });
+}
+
+export function openHelpSection(c: GameController, id: HelpSectionId): void {
+  const sec = HELP_SECTIONS.find((s) => s.id === id)!;
+  const entries = entriesFor(id);
+  const items: MenuItem[] = entries.map((g) => ({
+    label: g.symbol ? `${g.symbol}  ${g.title}` : g.title,
+    hint: g.body,
+    action: () => openHelpEntry(c, g.id),
+  }));
+  items.push({ label: 'Back', action: () => c.ui.remove(scr) });
+  const scr = c.ui.menu({ title: `Help: ${sec.title}`, body: h('div', { class: 'small' }, sec.intro), items, className: 'wide' });
+}
+
+/** Main Help screen: How to Play plus every glossary section. Optional section opens directly. */
+export function openHelp(c: GameController, section?: HelpSectionId | string): void {
+  if (section) {
+    if (HELP_SECTIONS.some((s) => s.id === section)) return openHelpSection(c, section as HelpSectionId);
+    if (glossaryEntry(section)) return openHelpEntry(c, section);
+  }
+  const items: MenuItem[] = [
+    { label: 'How to Play', hint: 'The basics in one page.', action: () => showHelp(c) },
+    ...HELP_SECTIONS.map((s) => ({ label: s.title, right: `${entriesFor(s.id).length}`, hint: s.intro, action: () => openHelpSection(c, s.id) })),
+    { label: 'Close', action: () => c.ui.remove(scr) },
+  ];
+  const scr = c.ui.menu({
+    title: 'Help',
+    body: h('div', { class: 'small' }, `Tidepool Aquatics v${APP_VERSION}. Press H any time to open Help. Underlined words elsewhere open their entry here.`),
+    items,
+    className: 'wide help-root',
+  });
 }

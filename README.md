@@ -16,6 +16,23 @@ npm run build:single # one self-contained HTML file in dist-single/
 
 Open the production build with `?dev=1` (or `#dev`) to enable the developer panel. `npm run build:artifact` makes the hosted single-file version.
 
+Current version: **0.4.0** (shown on the title screen, the pause menu and Help).
+
+## Deploying / Public Playtest
+
+The game is a static site. GitHub Pages is the supported host:
+
+1. Push the repository to GitHub.
+2. In the repository, open **Settings > Pages** and set **Source** to **GitHub Actions** (one time).
+3. Push to `main`, or run **Actions > Deploy to GitHub Pages > Run workflow**. The workflow (`.github/workflows/deploy-pages.yml`) runs `npm ci`, `npm run check` (types, lint, tests, build) and publishes `dist/`.
+4. The game appears at `https://<user>.github.io/<repo>/` (or the root for a `<user>.github.io` repository).
+
+Base path: builds are relative (`./`) by default, so `dist/` also works from any folder, a zip or a sub-path on another host. The workflow sets `BASE_PATH=/<repo>/`; set `BASE_PATH` yourself for other absolute hosts (`BASE_PATH=/games/tidepool/ npm run build`). `node scripts/nested-test.mjs <url>` checks a deployed or locally served copy boots from a nested path, registers its service worker and loads every file.
+
+Saves live in each player's browser (IndexedDB) and survive new deploys. Players can move saves between browsers with Export / Import at the office PC.
+
+**Playtest feedback:** in the pause menu, **Copy Playtest Report** copies a short text (version, save version, day and time, floor, money, reputation, current goal, recent warnings, Idle Mode, browser) plus an optional description, ready to paste into an issue or message. The game collects and sends nothing.
+
 ## For AI agents and contributors
 
 This repository is developed mostly by AI coding agents. Before any task:
@@ -37,10 +54,13 @@ This repository is developed mostly by AI coding agents. Before any task:
 | `SAVE_SCHEMA.md` | Save format, versioning and migrations |
 | `ART_DIRECTION.md` | Visual rules and procedural art approach |
 | `TESTING.md` | Test commands, dev panel, verification checklist |
+| `STAFF.md` | Staff personalities, skills, roles and suggestions |
 
 ## Controls
 
-Move: arrow keys or WASD (gamepad d-pad or stick). Interact: Z, Enter or Space (A). Back: X or Backspace (B). Menu: Esc (Start). Facing a tank, F feeds it. T cycles game speed. Mouse works in menus and for selecting fish.
-Q / E scroll long details (and cycle fish in the tank view).
+Move: arrow keys or WASD (gamepad d-pad or stick). Interact: Z, Enter or Space (A). Back: X or Backspace (B). Menu: Esc (Start). Help: H or F1 (gamepad LT or right-stick click), or the ? button. Facing a tank, F feeds it. T cycles game speed. Mouse works in menus and for selecting fish.
+Q / E scroll long details (and cycle fish in the tank view). Stairs on the left wall lead to other floors once they are built.
 
 Saving: walk to the office PC (top right) to save, load, export or import. The game also autosaves every morning at opening.
+
+Idle Mode (pause menu or office PC) pauses the business while fish keep swimming: nothing can be bought or sold, and loading a save always resumes normal play.

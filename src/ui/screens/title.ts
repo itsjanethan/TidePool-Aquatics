@@ -1,4 +1,5 @@
 /** Title screen and new-game form. */
+import { APP_VERSION } from '../../version';
 import type { GameController } from '../../game/GameController';
 import { DEV_ALLOWED } from '../../game/GameController';
 import type { Action } from '../../input/input';
@@ -10,7 +11,7 @@ import { showHelp } from './help';
 import { importSave, importSaveText, openSaveSlots } from './pause';
 
 export const GAME_TITLE = 'Tidepool Aquatics';
-export const GAME_VERSION = __APP_VERSION__;
+export const GAME_VERSION = APP_VERSION;
 
 class TitleScreen implements Screen {
   el: HTMLElement;

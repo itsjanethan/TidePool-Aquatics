@@ -143,11 +143,45 @@ Saving happens at the office PC (Save, Load, Export, Import, Settings, Statistic
 
 The balance test bot (tests/balance.test.ts) represents near-perfect play and should earn a moderate profit over three weeks without fish deaths. Real players will earn less.
 
-## Progression (vertical slice)
+## Tank status and diagnostics
+
+The player should never have to guess why a tank has a warning. Every tank has one diagnosis: an overall status (Good, Needs attention, Urgent, Empty), five scores (fish welfare, water, cleanliness, habitat, stocking) and a list of issues ordered critical, warning, advice. Each issue states the number now, what is recommended, which fish are affected, what it leads to and what helps. One-step fixes show their predicted effect ("Glass dirt 68% → 0% · 8 min"), computed by running the real action on a copy of the game. The overworld bubble shows the top issue's icon: dead fish, harmful water, sick fish, hungry, needs cleaning, or attention. A sick fish in good water is "sick", never "toxic".
+
+Habitat is in numbers: hiding cover as a percent against the strictest species' need ("Hiding cover 12% / 55% recommended"), cave spaces against adult cave dwellers ("Cave spaces 1 / 3"), open swimming space, sand and wood.
+
+## Help
+
+Help (H, gamepad LT or right-stick click, or the ? button) covers Controls, Tank Status, Symbols & Icons, Water Chemistry, Fish Needs, Habitat & Aquascaping, Breeding & Genetics, Plants, Customers, Staff, Shop Progression, Marine, Saving, Idle Mode and Playtest. Entries give ranges, what affects a value and what it affects. Screens link to entries in context (underlined words for the mouse, "Help: ..." rows for keyboard and gamepad).
+
+## Staff
+
+Staff are people in the shop, not menu buffs. Each has a name, a look (blue shop polo and name tag), a personality, a daily wage, four skills (cleaning, service, speed, knowledge) and a role. Personalities are trade-offs: Meticulous (thorough, slow), Chatty (great with customers, distracted), Speedy (fast, cuts corners), Fish nerd (excellent advice, awkward), Steady (no weak spots, learns slowly), Eager (cheap, learns fast, beginner mistakes). Skills grow slowly with practice.
+
+- **Sales** serve the till when the player is not there and walk to customers with questions anywhere in the shop. Knowledge decides whether the advice is right; service decides how happy the customer is and how quickly it goes.
+- **Tank Maintenance** work through the diagnostics by severity: dead fish and toxins first, then feeding and top-offs, then cleaning. A worker's cleaning skill and personality decide how thorough the job is.
+- **Stock** watch demand, shop stock and supplier lists and bring order suggestions.
+- **Floaters** go where they are needed: queues and questions first, then tank jobs.
+
+Any member of staff can be kept to one floor ("Works on") or allowed anywhere. Each personality has its own lines as well as the shared ones.
+
+Staff never spend money on their own. When they have a suggestion (an order, or a decor item for a tank lacking cover or caves) they walk up to the player: Approve order / Review order / Not now (or Go ahead / Show me / Leave it for aquascape ideas). Review lets the player edit the order quantity. Suggestions show species, quantity, supplier, destination, cost, the reason and any warnings; aquascape suggestions show the effect predicted by the real simulation. They also wait in Suggestions at the office PC. Staff work 08:30 to 18:30 and are paid nightly with the rent. See STAFF.md.
+
+## Idle Mode
+
+Idle Mode is for watching the shop without running it: Idle Mode = paused persistent simulation + active visual animation. Entered from the pause menu or the office PC, it freezes the clock, hunger, water, growth, breeding, pregnancies, customers, staff work, wages, rent, deliveries and progression. Fish swim, plants sway and the light moves. Every transaction is locked and says so ("Unavailable in Idle Mode"). The player can walk every floor and inspect tanks, fish, genetics, lineage, strains, plants, diagnostics and help. The HUD shows "IDLE MODE · BUSINESS PAUSED"; "Resume Business" ends it. In the tank view the UI fades after a few quiet seconds (Hide UI also works any time). Saving while idle is safe; loading always resumes normal play.
+
+## Progression and shop levels
 
 Starter goals guide the first sessions: feed a tank, inspect an aquarium, serve a customer, give good advice, order livestock, cycle tank C2, build a beautiful tank, serve 10 customers, reach 2.5 stars, save £1,500. Some pay small cash rewards.
 
-Planned unlock path: Floor 2 (planted and larger tanks, broader tropical range), Floor 3 (advanced freshwater: discus, cichlids, oddballs, high-tech planted), Floor 4 (marine), Floor 5 (reef, corals, inverts), then breeding facilities and display tanks. Marine should require demonstrated knowledge and reputation, plus capital, rather than a level number.
+Shop levels are bought at the PC (Shop Progression) once their requirements are met (reputation, customers served, capital, goals, and for level 3 fish bred):
+
+1. **Starter shop** (ground floor, ten tanks).
+2. **Coldwater & Temperate** (upstairs): six 200L and 300L unheated tanks; medaka, rosy barb, hillstream loach, paradise fish; a temperate supplier.
+3. **Advanced Aquatics & Marine**: three marine systems and three specialist tropical tanks; German blue ram, ocellaris clownfish, royal gramma, Banggai cardinal; marine supplies. Marine water has salinity (shown as SG 1.024 to 1.026), evaporates (top off with RO water, never salt water), needs salt mix for water changes, benefits from live rock and a protein skimmer, and is strictly separate from freshwater.
+4. **Basement Warehouse & Retail**: equipment racks (aquariums, filters and media, heaters, air pumps and stones, lighting, substrate, nets and gravel vacuums, marine kit) and setup bundles (40L Tropical Starter, 60L Community Starter, Planted Tank Starter, a 120L Coldwater Setup sized for goldfish welfare, a 120L Community Kit and a Marine Starter once marine is open). Stock space rises from 40 to 240 and two quarantine tanks are added. Some customers come in just for equipment ("I need a heater for my 100L tank", "My air pump has died"); bigger or unfamiliar purchases start with a question, answered by the player or by staff. Offering the right bundle or parts pleases them; a plausible but wrong item (a 50W heater for a 100L tank) may be spotted by an experienced customer. Bundles cost a little more to buy in but carry a better margin and appeal to beginners.
+
+Level 3 also needs an Expert Advice reputation of 55. Each level adds rent; a bigger shop draws more customers. Later: reef and corals, breeding facilities, display tanks.
 
 ## Starter shop
 
@@ -162,4 +196,4 @@ Ten tanks on one floor:
 
 ## Planned systems (not yet built)
 
-Disease, events, more species (each adding a mechanic), breeding tools, plant depth (light, CO2), staff, shop upgrades, more floors, marine and reef. See `ROADMAP.md`.
+Disease, events, more species (each adding a mechanic), breeding tools, plant depth (light, CO2), staff depth (training, morale), shop upgrades, reef. See `ROADMAP.md`.

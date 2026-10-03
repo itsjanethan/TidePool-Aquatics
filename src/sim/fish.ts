@@ -2,6 +2,7 @@
  * FishSystem: creation, growth, hunger, health and value of individual
  * persistent fish. The tank view renders these same entities.
  */
+import { salinityDamage } from './marine';
 import { clamp, clamp01, smooth } from '../core/math';
 import type { Rng } from '../core/rng';
 import { getSpecies } from '../data/species';
@@ -165,6 +166,8 @@ export interface FishEnv {
   oxygen: number;
   litres: number;
   stressTarget: number;
+  /** ppt; absent/0 = freshwater. */
+  salinity?: number;
 }
 
 /** Health damage per hour from the environment. Exported for tests/UI. */
@@ -200,6 +203,11 @@ export function environmentalDamage(f: FishEntity, env: FishEnv): { damage: numb
     const dev = env.gh < sp.hardness.min ? sp.hardness.min - env.gh : env.gh - sp.hardness.max;
     dmg += dev * 0.15 * sens;
     causes.push('hardness');
+  }
+  const salt = salinityDamage(sp.waterType, env.salinity ?? 0);
+  if (salt > 0) {
+    dmg += salt * sens;
+    causes.push('salinity');
   }
   if (env.oxygen < 4.5) {
     dmg += (4.5 - env.oxygen) * 3;

@@ -93,6 +93,8 @@ export interface WaterState {
   /** Organic detritus in mg/L equivalent, mineralises into ammonia. */
   detritus: number;
   cloudiness: number; // 0..1
+  /** Marine tanks: salinity in ppt (35 ppt ≈ SG 1.026). Absent for freshwater. */
+  salinity?: number;
 }
 
 export interface DecorItem {
@@ -163,9 +165,11 @@ export interface TankState {
   broods?: Brood[];
   /** False for breeding, grow-out or display tanks customers may not buy from. */
   forSale?: boolean;
+  /** Marine: protein skimmer installed. */
+  skimmer?: boolean;
 }
 
-export type CustomerGoal = 'browse' | 'buy_specific' | 'advice_stocking' | 'problem';
+export type CustomerGoal = 'browse' | 'buy_specific' | 'advice_stocking' | 'problem' | 'buy_equipment';
 export type CustomerPhase =
   | 'entering'
   | 'browsing'
@@ -230,6 +234,18 @@ export interface CustomerState {
   arrivedMinute: number;
   queueIndex: number;
   negotiated: boolean;
+  /** Floor the customer is on (save v3; absent = ground). */
+  floor?: string;
+  /** Final destination when walking via stairs to another floor. */
+  pending?: { floor: string; x: number; y: number } | null;
+  /** Equipment wanted (goal buy_equipment). */
+  wants?: string[];
+  /** Retail equipment picked up (item ids), paid at the till. */
+  equipment?: string[];
+  /** Equipment customer has already asked for advice this visit. */
+  askedAdvice?: boolean;
+  /** Staff member currently helping this customer. */
+  helpedBy?: string | null;
 }
 
 export interface CustomerProfile {
@@ -299,6 +315,97 @@ export interface LogEntry {
   kind: 'info' | 'good' | 'warn' | 'bad';
 }
 
+// ---------------------------------------------------------------------------
+// Staff (save v3)
+
+export type StaffRole = 'sales' | 'maintenance' | 'stock' | 'floater';
+export type Personality = 'meticulous' | 'chatty' | 'speedy' | 'scholar' | 'steady' | 'eager';
+
+/** Skills 0..100. */
+export interface StaffSkills {
+  cleaning: number;
+  service: number;
+  speed: number;
+  knowledge: number;
+}
+
+export interface StaffTask {
+  kind: 'maintain' | 'serve' | 'advise' | 'restock' | 'propose' | 'walk' | 'break' | 'idle';
+  tankId?: string;
+  fix?: string;
+  customerId?: string;
+  proposalId?: string;
+  /** Destination floor and tile. */
+  floor?: string;
+  x?: number;
+  y?: number;
+  /** Game minute when the current step finishes. */
+  until?: number;
+  /** Short description for the UI ("Cleaning glass on Tank A2"). */
+  label: string;
+}
+
+export interface StaffEntity {
+  id: string;
+  name: string;
+  appearance: number;
+  personality: Personality;
+  /** Wage per working day, £. */
+  wage: number;
+  /** Experience points; skills grow slowly with practice. */
+  experience: number;
+  floor: string;
+  x: number;
+  y: number;
+  path: Array<{ x: number; y: number }>;
+  /** Stairs hop still to make on the way to another floor. */
+  pending?: { floor: string; x: number; y: number } | null;
+  facing: 'up' | 'down' | 'left' | 'right';
+  walkPhase: number;
+  role: StaffRole;
+  /** Floor they work on (null or absent = anywhere). Optional within save v3. */
+  assignedFloor?: string | null;
+  task: StaffTask | null;
+  skills: StaffSkills;
+  hiredDay: number;
+  /** Speech bubble text. */
+  dialogue: string | null;
+  dialogueUntil: number;
+  stats: { tasksDone: number; customersHelped: number; proposals: number; sales: number };
+}
+
+/** An applicant offered at the PC (not yet hired). */
+export interface StaffApplicant {
+  id: string;
+  name: string;
+  appearance: number;
+  personality: Personality;
+  skills: StaffSkills;
+  wage: number;
+  intro: string;
+}
+
+export type ProposalKind = 'stock' | 'aquascape';
+export type ProposalStatus = 'pending' | 'approved' | 'declined' | 'snoozed';
+
+/** A recommendation a staff member brings to the player for approval. */
+export interface StaffProposal {
+  id: string;
+  staffId: string;
+  kind: ProposalKind;
+  createdMinute: number;
+  status: ProposalStatus;
+  /** Snoozed proposals come back after this minute. */
+  snoozeUntil?: number;
+  /** Delivered in person (staff walked over); otherwise waits at the PC. */
+  delivered: boolean;
+  title: string;
+  reason: string;
+  warnings: string[];
+  stock?: { speciesId: string; quantity: number; supplierId: string; tankId: string; unitCost: number };
+  aquascape?: { tankId: string; defId: string; x: number; layer: 0 | 1 | 2; cost: number; fixes: string };
+}
+
 export interface GameState {
   version: number;
   seed: number;
@@ -346,6 +453,21 @@ export interface GameState {
   settings: { speed: number; tutorialSeen: boolean };
   flags: { devUsed: boolean; tutorialStep: number };
   lastCustomerSpawnMinute: number;
+  /**
+   * Idle Mode (runtime only, never saved): persistent simulation is paused
+   * and economic actions are refused. See sim/idle.ts.
+   */
+  idle?: boolean;
+  /** Employees (save v3). */
+  staff: StaffEntity[];
+  /** Applicants at the PC, refreshed every few days (save v3). */
+  applicants: { day: number; list: StaffApplicant[] };
+  /** Staff recommendations awaiting a decision (save v3). */
+  proposals: StaffProposal[];
+  /** Shop level 1..4 (save v3). */
+  shopLevel: number;
+  /** Retail equipment stock by item id (save v3). Dry goods stay in dryGoods. */
+  retail: Record<string, number>;
   /** Most recent save of this game (added in save v1, optional). */
   lastSave?: { slot: string; minute: number; at: number };
 }

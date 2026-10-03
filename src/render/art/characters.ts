@@ -119,6 +119,12 @@ export function customerPalette(seed: number): CharPalette {
   return { o: '#2a2030', h: r.pick(HAIR), s: r.pick(SKIN), e: '#1a1420', c: r.pick(SHIRT), p: r.pick(PANTS), f: '#2a2226' };
 }
 
+/** Staff wear the shop polo (deep blue) so they read as employees at a glance. */
+export function staffPalette(seed: number): CharPalette {
+  const r = new Rng(seed);
+  return { o: '#22202c', h: r.pick(HAIR), s: r.pick(SKIN), e: '#1a1420', c: '#2f5fa8', p: r.pick(PANTS), f: '#2a2226' };
+}
+
 export const PLAYER_PALETTE: CharPalette = {
   o: '#22202c', h: '#3a2418', s: '#f0c8a0', e: '#1a1420', c: '#2e9c8a', p: '#34405a', f: '#2a2226',
 };

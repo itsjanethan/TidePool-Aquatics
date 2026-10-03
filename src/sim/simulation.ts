@@ -5,7 +5,8 @@
  */
 import { Emitter } from '../core/events';
 import { Rng } from '../core/rng';
-import { buildCustomerGrid, buildWalkGrid, FLOOR1, type FloorLayout } from '../data/shopLayout';
+import { buildCustomerGrid, buildWalkGrid, type FloorLayout } from '../data/shopLayout';
+import { FLOORS, GROUND, getFloor } from '../data/floors';
 import { getSpecies } from '../data/species';
 import { updateCustomers, type CustomerContext, type CustomerEvent } from './customers';
 import { dailyRunningCosts, emptyLedger, spend } from './economy';
@@ -17,7 +18,8 @@ import { tickTank } from './tank';
 import { tickBreeding } from './breeding';
 import { recoverDemand } from './economy';
 import { ambientTemperature, CLOSE_HOUR, dayOf, hourOf, MINUTES_PER_DAY, OPEN_HOUR } from './time';
-import type { GameState, LedgerDay, LogEntry, RepDimension } from './types';
+import type { GameState, LedgerDay, LogEntry, RepDimension, StaffProposal } from './types';
+import { refreshApplicants, tickStaff, type StaffContext } from './staff';
 
 export const TANK_STEP_MINUTES = 5;
 
@@ -25,6 +27,7 @@ export interface DayReport {
   ledger: LedgerDay;
   rent: number;
   electricity: number;
+  wages: number;
   repDeltas: Partial<Record<RepDimension, number>>;
   deliveries: string[];
 }
@@ -36,26 +39,47 @@ export interface SimEvents {
   shopClosed: { day: number };
   objective: ObjectiveDef;
   customer: CustomerEvent;
+  proposal: StaffProposal;
 }
 
 export class Simulation {
   readonly events = new Emitter<SimEvents>();
   readonly rng: Rng;
-  readonly layout: FloorLayout = FLOOR1;
-  readonly grid: boolean[][];
+  /** Ground floor (door, till, queue). */
+  readonly layout: FloorLayout = GROUND;
+  /** Player/staff walk grids per floor. */
+  readonly grids: Record<string, boolean[][]> = {};
   readonly customerCtx: CustomerContext;
+  readonly staffCtx: StaffContext;
   private tankAccumulator = 0;
   private pendingReport: DayReport | null = null;
 
   constructor(public state: GameState) {
     this.rng = new Rng(state.rngState || state.seed || 1);
-    this.grid = buildWalkGrid(this.layout);
+    const customerGrids: Record<string, boolean[][]> = {};
+    for (const f of FLOORS) {
+      this.grids[f.id] = buildWalkGrid(f.layout);
+      customerGrids[f.id] = buildCustomerGrid(f.layout);
+    }
     this.customerCtx = {
       layout: this.layout,
-      grid: buildCustomerGrid(this.layout),
+      grid: customerGrids[this.layout.id],
+      grids: customerGrids,
       rng: this.rng,
       onEvent: (e) => this.events.emit('customer', e),
     };
+    this.staffCtx = {
+      grids: (f) => this.grids[f] ?? this.grids.ground,
+      customers: this.customerCtx,
+      rng: this.rng,
+      log: (text, kind) => this.log(text, kind),
+      onProposal: (p) => this.events.emit('proposal', p),
+    };
+  }
+
+  /** Walk grid of the player's current floor. */
+  get grid(): boolean[][] {
+    return this.grids[getFloor(this.state.player.floor).id];
   }
 
   log(text: string, kind: LogEntry['kind'] = 'info'): void {
@@ -67,7 +91,8 @@ export class Simulation {
 
   /** Advances the simulation by `minutes` of game time. */
   advance(minutes: number): void {
-    if (minutes <= 0) return;
+    // Idle Mode: the persistent world does not move on.
+    if (minutes <= 0 || this.state.idle) return;
     let remaining = minutes;
     while (remaining > 1e-9) {
       // Never step across an hour boundary so open/close/day events are exact.
@@ -85,6 +110,7 @@ export class Simulation {
     const before = s.minute;
     s.minute = before + dt;
     updateCustomers(s, this.customerCtx, dt);
+    tickStaff(s, this.staffCtx, dt);
 
     this.tankAccumulator += dt;
     while (this.tankAccumulator >= TANK_STEP_MINUTES) {
@@ -135,13 +161,14 @@ export class Simulation {
     const costs = dailyRunningCosts(s);
     spend(s, costs.rent, 'Rent', true);
     spend(s, costs.electricity, 'Electricity', true);
+    if (costs.wages > 0) spend(s, costs.wages, 'Wages', true);
     const repDeltas = dailyReputationUpdate(s);
     recoverDemand(s);
     const finished = s.today;
     s.ledger.push({ ...finished, notes: finished.notes.slice(-12) });
     if (s.ledger.length > 60) s.ledger.shift();
     s.today = emptyLedger(dayOf(s.minute));
-    this.pendingReport = { ledger: finished, rent: costs.rent, electricity: costs.electricity, repDeltas, deliveries: [] };
+    this.pendingReport = { ledger: finished, rent: costs.rent, electricity: costs.electricity, wages: costs.wages, repDeltas, deliveries: [] };
     if (s.money < 0) this.log('You are overdrawn! Sell stock and cut costs.', 'warn');
   }
 
@@ -149,6 +176,7 @@ export class Simulation {
     const s = this.state;
     const day = dayOf(s.minute);
     maybeRefreshSuppliers(s, this.rng, day);
+    refreshApplicants(s, this.rng);
     const deliveries = processDeliveries(s, this.rng, day);
     for (const d of deliveries) this.log(d, 'good');
     this.log(`Day ${day}: the shop is open!`, 'info');
@@ -163,6 +191,7 @@ export class Simulation {
   /** Skips forward to the next opening time (end of day / sleep). */
   skipToNextMorning(): void {
     const s = this.state;
+    if (s.idle) return;
     const day = dayOf(s.minute);
     const nextOpen = (s.minute % MINUTES_PER_DAY) / 60 < OPEN_HOUR
       ? (day - 1) * MINUTES_PER_DAY + OPEN_HOUR * 60

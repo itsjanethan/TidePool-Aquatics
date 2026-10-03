@@ -200,6 +200,29 @@ export function ensureHardscapeTexture(scene: Phaser.Scene, def: DecorDef, scale
       }
       break;
     }
+    case 'liverock': {
+      // Porous reef rock: two lumps, pits and caves, coralline algae in pink and purple.
+      contactShadow(img, w / 2, w);
+      rock(img, w * 0.38, h * 0.62, w * 0.34, h * 0.4, hex('#b8a890'), seed, { grain: 0.22, pits: 0.8 });
+      rock(img, w * 0.64, h * 0.5, w * 0.3, h * 0.48, hex('#c4b49a'), seed + 5, { grain: 0.22, pits: 0.8 });
+      const coral: RGB[] = [hex('#c45a9a'), hex('#9a4ac0'), hex('#e07ab0'), hex('#7a3aa0')];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (img.data[i + 3] < 200) continue;
+        const n = fbm(x * 0.16, y * 0.16, seed + 31);
+        if (n > 0.58) {
+          const c = coral[Math.floor(h2(x >> 2, y >> 2, seed) * coral.length)];
+          img.set(x, y, lit(c, 0.75 + (1 - y / h) * 0.45), 0.85);
+        } else if (n < 0.24) img.set(x, y, [40, 32, 36], 0.7);
+      }
+      // A cave mouth at the base.
+      const cx = w * 0.5;
+      const cy = h * 0.8;
+      for (let y = -6 * scale; y <= 0; y++) for (let x = -8 * scale; x <= 8 * scale; x++) {
+        if (Math.hypot(x / (8 * scale), y / (6 * scale)) <= 1) img.set(cx + x, cy + y, [18, 14, 20], 0.95);
+      }
+      break;
+    }
     case 'mopani':
     case 'spiderwood': {
       const mop = def.art === 'mopani';

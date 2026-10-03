@@ -44,7 +44,12 @@ export type PatternType =
   /** Thin iridescent lateral line. */
   | 'lateral'
   /** Large dark blotches (bronze cory flank, dalmatian). */
-  | 'blotch';
+  | 'blotch'
+  /** Clownfish white bands; 'clown_edge' is the slightly wider black outline drawn first. */
+  | 'clown'
+  | 'clown_edge'
+  /** Three bold vertical bars: through the eye, front and rear of the body. */
+  | 'bands';
 
 /** Caudal (tail) fin shapes the renderer can draw. */
 export type CaudalShape = 'fork' | 'round' | 'fan' | 'delta' | 'veil' | 'sword' | 'double_sword' | 'lyre' | 'twin' | 'spade';
@@ -137,6 +142,23 @@ export interface SpeciesBehaviour {
   finNipper: boolean;
 }
 
+/**
+ * Habitat needs in player-facing numbers. Diagnostics, stress and advice all
+ * read these, so "how much is enough" is defined once.
+ */
+export interface HabitatNeeds {
+  /** Recommended hiding cover for the tank, 0..1 (shown as %). */
+  cover: number;
+  /** Cave slots each adult of this species wants (bristlenose 1). */
+  caves?: number;
+  /** Minimum open swimming space, 0..1. */
+  openSpace?: number;
+  /** Wants this substrate grain (sand-sifters). */
+  substrate?: 'sand';
+  /** Wants wood to rasp. */
+  wood?: boolean;
+}
+
 export interface SpeciesMotion {
   /** Tail beats per second when cruising. */
   beatHz: number;
@@ -225,6 +247,8 @@ export interface SpeciesDef {
     /** 0..1 how see-through fins are (default 0.25). */
     finClarity?: number;
   };
+  /** Habitat needs (defaults derive from shyness and tags; see habitatOf). */
+  habitat?: HabitatNeeds;
   /** Swimming style for the tank view; defaults derive from body shape and behaviour. */
   motion?: SpeciesMotion;
   behaviour: SpeciesBehaviour;
@@ -235,4 +259,6 @@ export interface SpeciesDef {
   femaleSizeMultiplier: number;
   /** Available from the starter supplier on day one. */
   starter: boolean;
+  /** Shop level that unlocks this species (default 1). */
+  shopLevel?: number;
 }

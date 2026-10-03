@@ -9,7 +9,10 @@ import { floatingFryCover, floatingShade, totalFloating } from './floating';
 
 export interface AquascapeSummary {
   cover: number; // 0..1+
+  /** Number of cave objects. */
   caves: number;
+  /** Fish that can claim a cave across all cave objects. */
+  caveSlots: number;
   plants: number;
   plantHealth: number; // avg 0..1
   provides: Set<string>;
@@ -29,6 +32,7 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
   const provides = new Set<string>();
   let cover = 0;
   let caves = 0;
+  let caveSlots = 0;
   let plants = 0;
   let plantHealthSum = 0;
   let uptake = 0;
@@ -46,7 +50,10 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
     const size = isPlant ? (d.size ?? 1) : 1;
     const h = isPlant ? d.health : 1;
     cover += def.cover * h * sizeScale * Math.min(size, 1.3);
-    if (def.cave) caves += 1;
+    if (def.cave) {
+      caves += 1;
+      caveSlots += def.caveSlots ?? 1;
+    }
     if (isPlant) {
       plants += 1;
       plantHealthSum += d.health;
@@ -91,6 +98,7 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
 
   return {
     cover: cover + floatingFryCover(tank),
+    caveSlots,
     shade: floatingShade(tank),
     caves,
     plants,

@@ -52,7 +52,7 @@ Fish are painted procedurally per individual. Never a single sprite per species,
 
 ### Pattern layers ("morph masks")
 
-Patterns are procedural layers with a colour, region (body, fins, tail, all) and strength, stacked in order: neon, stripes, bars, spots, speckle, mosaic, cobra (snakeskin), tuxedo, wag (black fins via `finColour`), gradient, lateral, blotch, calico, tailspot. Placement varies with the fish's variant so siblings differ. To add a pattern: implement it in `bodyPattern` (and in `drawCaudal`/`drawDorsal` for fin regions), add it to `PatternType`, document it here.
+Patterns are procedural layers with a colour, region (body, fins, tail, all) and strength, stacked in order: neon, stripes, bars, spots, speckle, mosaic, cobra (snakeskin), tuxedo, wag (black fins via `finColour`), gradient, lateral, blotch, calico, tailspot, clown (clownfish white bands, drawn over a slightly wider black `clown_edge` layer for the outline), bands (three bold vertical bars through the eye, front and rear: cardinals, rams). Placement varies with the fish's variant so siblings differ. To add a pattern: implement it in `bodyPattern` (and in `drawCaudal`/`drawDorsal` for fin regions), add it to `PatternType`, document it here.
 
 ### Visible genetics rules
 
@@ -109,6 +109,31 @@ Procedural art is the default so every species, morph and growth stage has art f
 - Plants: one PNG per leaf type plus a JSON describing architecture and growth stages; sway stays procedural.
 - Hardscape: single PNG, origin bottom-centre, top-left light, with a separate back-layer variant optional.
 - Update this file and `ARCHITECTURE.md` when adding a pipeline step.
+
+## v0.4.0 species
+
+All eight new species use the standard pipeline (data only plus two new pattern layers) and are checked in the morph gallery and by `tests/marine_retail.test.ts` (every species and morph paints a full sheet):
+
+| Species | Look |
+| --- | --- |
+| Medaka | Slender, upturned mouth, glassy fins; wild olive, orange himedaka, silver blue, miyuki with a glowing metallic back |
+| Rosy barb | Deep body; males rosy red with a metallic sheen, females gold; longfin morph with veil tail |
+| Hillstream loach | Flat sucker body (pleco shape) with big pectorals; reticulated and spotted gold-and-black |
+| Paradise fish | Lyre tail and long fins; red with blue bars and blue-speckled fins; albino and blue morphs |
+| German blue ram | Deep, tall dorsal, ruby iris, gold with blue spangles and faint bars; electric blue and gold |
+| Ocellaris clownfish | Rounded deep body, three white bands outlined in black; black and snowflake morphs |
+| Royal gramma | Violet front fading to gold rear and golden fins |
+| Banggai cardinal | Silver deep body, tall fins, three black bars and pearl spots |
+
+Marine tanks use a cool actinic light colour and a faint blue tint (`waterLook`). Live rock is porous tan rock with pink and purple coralline patches and a cave mouth.
+
+## Overworld floors and people
+
+- Floors have themes (`THEMES` in `shopArt.ts`): ground floor cream tiles and teal wall; upstairs warm floorboards, pale blue walls and windows; marine floor deep blue tiles with portholes; basement concrete with pipes and a caged lamp.
+- Stairs: an up-flight with banisters (treads lighter toward the top) and a down-stairwell (steps darken into the floor). Stairs to a floor that is not built yet are roped off.
+- Retail racks are steel shelving with boxed equipment; the warehouse has pallets of boxes.
+- Staff use the character generator with the blue shop polo and an apron, a blue name tag under their feet and a pale blue speech bubble.
+- Status bubbles: grey with a white cross (dead fish), red with ! (harmful water), pink with + (sick fish), yellow with dots (hungry), green with smudges (needs cleaning), orange with ! (attention). The same textures appear in Help.
 
 ## Overworld tanks
 

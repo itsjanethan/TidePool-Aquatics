@@ -89,6 +89,13 @@ Grazers also reduce algae in the background simulation.
 - `motion`: `{ beatHz, glide, turnRate, inertia, hover }` (defaults by body shape).
 - `morph.visual` (`VisualMod`): extra patterns, metallic, wen, telescope, caudal, fin colour; `maleOnly` limits it to adult males.
 
+## Habitat and progression (v0.4.0)
+
+- `habitat`: `{ cover, caves?, openSpace?, substrate?: 'sand', wood? }`. `cover` and `openSpace` are fractions (0.55 means "55% hiding cover recommended"); `caves` is cave spaces per adult. The strictest species in a tank sets the tank's target. Defaults derive from shyness and tags (`habitatOf` in `sim/habitat.ts`).
+- `shopLevel`: shop level that unlocks the species (default 1). Level 2+ species are sold by level-gated suppliers (`SupplierDef.level`).
+- `waterType: 'marine'` species only go into marine tanks (orders and moves into the wrong water are refused) and take damage outside 32 to 36.5 ppt; freshwater species take damage from any salt.
+- Pattern types added in v0.4.0: `clown` (use with a `clown_edge` base pattern for the black outline) and `bands`.
+
 ## Genetics (optional, `src/data/genetics.ts`)
 
 `GENETICS[speciesId] = { loci: [{id, name, alleles: [{id, name, dom, freq?, visual?, value?, label?}], additive?, maleOnly?}], rules: [{when: {locusId: alleleId}, morph}] }`. List the wild/common allele first. `visual` is a `VisualMod` applied when the allele is expressed; `value` multiplies price; `label` is added to the fish's name (e.g. "Albino"); `freq` weights supplier stock. Higher `dom` wins; equal ranks are co-dominant by list order. Rules are checked in order and the last rule is the fallback, so put rare combinations first. Every morph in the species should be reachable by some rule (a test checks this). Species without genetics keep randomly picked morphs.
@@ -98,6 +105,6 @@ Grazers also reduce algae in the background simulation.
 1. All ranges valid (`min < ideal < max`), `retailPrice > supplierCost`. The unit test enforces this.
 2. At least one morph with sensible colours; check it in the tank view (dev panel: spawn species).
 3. Tags for any special needs.
-4. Add to a supplier.
+4. Add to a supplier (and set `shopLevel` if it belongs to a later floor).
 5. Breeding data filled in (clutch, incubation, predation, care, needs); optional genetics entry.
 6. Add a line to `GAME_DESIGN.md` if it introduces a new mechanic.

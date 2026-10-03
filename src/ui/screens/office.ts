@@ -8,7 +8,7 @@ import { dailyRunningCosts } from '../../sim/economy';
 import { fishInTank } from '../../sim/fish';
 import { OBJECTIVES, markObjective } from '../../sim/progression';
 import { overallReputation, REP_DIMENSIONS, REP_LABELS, repStars } from '../../sim/reputation';
-import { buyDryGood, buyFoodTub, getSupplier, placeOrder, SUPPLIERS } from '../../sim/supplier';
+import { buyDryGood, buyFoodTub, getSupplier, placeOrder, refreshSupplierStock, suppliersFor } from '../../sim/supplier';
 import { dateString, dayOf, isShopOpen, minuteOfDay, OPEN_HOUR } from '../../sim/time';
 
 const beforeOpening = (m: number) => minuteOfDay(m) < OPEN_HOUR * 60;
@@ -21,6 +21,12 @@ import { AUTOSAVE_TEXT } from '../../game/GameController';
 import { pottedPlantItems } from './plants';
 import { sellStoredDecor } from '../../sim/plants';
 import { getDecor } from '../../data/catalog';
+import { locked } from './locks';
+import { openStaffHub } from './staff';
+import { openProgression } from './progression';
+import { openRetail } from './retail';
+import { retailUnlocked } from '../../sim/retail';
+import { openProposals } from '../../sim/staff';
 
 function storedDecorItems(c: GameController, refresh: () => void): MenuItem[] {
   const s = c.state;
@@ -33,7 +39,7 @@ function storedDecorItems(c: GameController, refresh: () => void): MenuItem[] {
       right: 'Owned',
       hint: `Place it from a tank's Aquascape menu, or confirm to sell one second-hand for ${formatMoney(getDecor(id).cost * 0.4)}.`,
       action: () => { c.perform(sellStoredDecor(s, id)); refresh(); },
-    })),
+    })).map((it) => locked(c, 'sell', it)),
   ];
 }
 
@@ -45,36 +51,50 @@ export function openOffice(c: GameController): void {
       h('div', null,
         h('div', { class: 'row' }, h('span', null, 'Balance'), h('b', null, formatMoney(s.money))),
         h('div', { class: 'row' }, h('span', null, 'Daily running costs'), h('span', null, formatMoney(dailyRunningCosts(s).total))),
+        c.idle ? h('div', { class: 'warn small' }, 'IDLE MODE · BUSINESS PAUSED') : null,
         h('div', { class: 'row' }, h('span', null, 'Pending deliveries'), h('span', null, String(s.orders.length))),
         h('div', { class: 'small save-status' }, c.lastSaveText())),
-    items: [
+    items: [],
+  });
+  const items = (): MenuItem[] => {
+    const props = openProposals(s).length;
+    return [
       { label: 'Game', header: true },
-      { label: 'Save game', hint: `Save to one of three slots. ${AUTOSAVE_TEXT}`, action: () => void openSaveSlots(c, 'save', false, () => scr.renderBody()) },
-      { label: 'Load game', hint: 'Load a slot or the autosave.', action: () => void openLoad(c) },
+      { label: 'Save game', hint: `Save to one of three slots. ${AUTOSAVE_TEXT}${c.idle ? ' Saving in Idle Mode is safe; loading resumes normal play.' : ''}`, action: () => void openSaveSlots(c, 'save', false, () => scr.renderBody()) },
+      { label: 'Load game', hint: 'Load a slot or the autosave. A loaded game always starts with the business running.', action: () => void openLoad(c) },
       { label: 'Export save', hint: 'Make a backup copy you can import on any device or browser.', action: () => exportSave(c) },
       { label: 'Import save', hint: 'Restore a backup made with Export save.', action: () => void openImport(c) },
-      { label: 'Settings', hint: 'Game speed and sound.', action: () => openSettings(c) },
+      { label: 'Settings', hint: 'Game speed, visual quality and sound.', action: () => openSettings(c) },
+      c.idle
+        ? { label: 'Resume Business', right: 'Idle Mode on', hint: 'Leave Idle Mode: time, customers, staff and fish care start again.', action: () => { c.exitIdle(); refresh(); } }
+        : { label: 'Idle Mode', hint: 'Pause the business and just watch. Nothing is bought, sold, eaten or dirtied while idle.', action: () => { c.enterIdle(); refresh(); } },
+      { label: 'Help', right: 'H', action: () => c.openHelp() },
       { label: 'Shop', header: true },
-      { label: 'Order livestock', hint: 'Buy fish from suppliers. Delivered at opening time.', action: () => openSuppliers(c) },
+      locked(c, 'order', { label: 'Order livestock', hint: 'Buy fish from suppliers. Delivered at opening time.', action: () => openSuppliers(c) }),
       { label: 'Stockroom', hint: 'Food, dry goods, potted plants and stored decor.', action: () => openStockroom(c) },
-      { label: 'Prices', action: () => openPrices(c, null) },
+      ...(retailUnlocked(s) ? [{ label: 'Equipment retail', hint: 'Basement stock: tanks, filters, heaters, bundles.', action: () => openRetail(c) }] : []),
+      { label: `Staff (${s.staff.length})`, right: props ? `${props} suggestion${props > 1 ? 's' : ''}` : '', hint: 'Your team, hiring, roles and staff suggestions.', action: () => openStaffHub(c) },
+      { label: 'Shop Progression', right: `Level ${s.shopLevel}`, hint: 'Expansions: new floors, species and equipment retail.', action: () => openProgression(c) },
+      locked(c, 'price', { label: 'Prices', action: () => openPrices(c, null) }),
       { label: 'Accounts', action: () => openLedger(c) },
       { label: 'Reputation', action: () => openReputation(c) },
       { label: 'Goals', action: () => openGoals(c) },
       { label: 'Statistics', action: () => openStats(c) },
       { label: 'Day', header: true },
-      beforeOpening(s.minute)
+      locked(c, 'time', beforeOpening(s.minute)
         ? { label: 'Wait until opening (09:00)', hint: 'The shop opens and the game autosaves.', action: () => c.endDay() }
         : { label: isShopOpen(s.minute) ? 'Close early & end day' : 'End day', hint: 'Sleep until opening time tomorrow. Tanks keep running overnight. The game autosaves when the shop opens.', action: () => {
             void c.ui.confirm('End the day and skip to tomorrow morning?').then((y) => y && c.endDay());
-          } },
+          } }),
       { label: 'Log off', action: () => c.ui.remove(scr) },
-    ],
-  });
+    ];
+  };
+  const refresh = () => scr.refresh(items());
+  refresh();
 }
 
 export function openSuppliers(c: GameController): void {
-  const items: MenuItem[] = SUPPLIERS.map((sup) => ({
+  const items: MenuItem[] = suppliersFor(c.state).map((sup) => ({
     label: sup.name,
     right: `${sup.deliveryDays}d`,
     hint: sup.blurb,
@@ -94,6 +114,7 @@ interface CartLine {
 function openOrder(c: GameController, supplierId: string): void {
   const s = c.state;
   const sup = getSupplier(supplierId);
+  if (!s.suppliers[supplierId]) refreshSupplierStock(s, c.sim!.rng, supplierId, dayOf(s.minute));
   const stock = s.suppliers[supplierId]?.stock ?? [];
   const cart: CartLine[] = [];
   const unitCost = (sid: string) => stock.find((x) => x.speciesId === sid)?.unitCost ?? 0;
@@ -236,9 +257,9 @@ export function openStockroom(c: GameController): void {
   const s = c.state;
   const items = (): MenuItem[] => [
     { label: 'Fish food', header: true },
-    { label: `Buy food tub (+${FOOD_TUB.units})`, right: formatMoney(FOOD_TUB.cost), hint: `In stock: ${Math.floor(s.foodUnits)} portions`, action: () => { const r = buyFoodTub(s); c.ui.toast(r.message, r.ok ? 'good' : 'warn'); scr.refresh(items()); } },
+    locked(c, 'buy', { label: `Buy food tub (+${FOOD_TUB.units})`, right: formatMoney(FOOD_TUB.cost), hint: `In stock: ${Math.floor(s.foodUnits)} portions`, action: () => { const r = buyFoodTub(s); c.ui.toast(r.message, r.ok ? 'good' : 'warn'); scr.refresh(items()); } }),
     { label: 'Dry goods for sale (packs of 5)', header: true },
-    ...DRY_GOODS.map((g) => ({
+    ...DRY_GOODS.filter((g) => !g.marine || s.unlocks.marine).map((g) => locked(c, 'buy', {
       label: g.name,
       right: `${s.dryGoods[g.id] ?? 0} · ${formatMoney(g.wholesale * 5)}`,
       hint: `${g.description} Sells for ${formatMoney(g.retail)}.`,

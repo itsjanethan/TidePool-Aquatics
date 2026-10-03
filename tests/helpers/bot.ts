@@ -9,7 +9,7 @@ import { checkoutQuote, completeSale, inStockSpecies, problemFor, resolveAdvice,
 import { assessSpeciesForSetup, stockingRatio } from '../../src/sim/compat';
 import { fishInTank } from '../../src/sim/fish';
 import { cleanFilter, cleanGlass, doWaterChange, feedTank, removeDead, scrubAlgae } from '../../src/sim/tank';
-import { buyFoodTub, placeOrder } from '../../src/sim/supplier';
+import { buyFoodTub, placeOrder, suppliersFor } from '../../src/sim/supplier';
 import { overallReputation } from '../../src/sim/reputation';
 import { dayOf, hourOf } from '../../src/sim/time';
 import { sellPlantsToTrade, takeCutting } from '../../src/sim/plants';
@@ -26,9 +26,10 @@ export interface BotResult {
   tradeSales: number;
 }
 
-export function runBot(days: number, seed: number, opts: { onDay?: (sim: Simulation) => void; breedingTanks?: string[] } = {}): BotResult {
+export function runBot(days: number, seed: number, opts: { onDay?: (sim: Simulation) => void; setup?: (sim: Simulation) => void; breedingTanks?: string[] } = {}): BotResult {
   const s = newGame({ seed });
   const sim = new Simulation(s);
+  opts.setup?.(sim);
   // Breeding tanks are kept off the shop floor; their surplus goes to the trade buyer.
   for (const id of opts.breedingTanks ?? []) s.tanks[id].forSale = false;
   const initial = new Map<string, { tank: string; n: number }>();
@@ -90,9 +91,10 @@ export function runBot(days: number, seed: number, opts: { onDay?: (sim: Simulat
       for (const [sid, { tank, n }] of initial) {
         const have = fishInTank(s, tank).filter((f) => f.speciesId === sid).length;
         const pending = s.orders.some((o) => o.lines.some((l) => l.speciesId === sid));
-        const avail = s.suppliers.riverside.stock.find((x) => x.speciesId === sid)?.available ?? 0;
+        const sup = suppliersFor(s).find((x) => (s.suppliers[x.id]?.stock.find((y) => y.speciesId === sid)?.available ?? 0) > 0);
+        const avail = sup ? s.suppliers[sup.id].stock.find((x) => x.speciesId === sid)!.available : 0;
         const target = Math.round(n * 1.6);
-        if (have < target * 0.7 && !pending && s.money > 60 && avail > 0 && stockingRatio(s.tanks[tank], fishInTank(s, tank)) < 0.8) placeOrder(s, 'riverside', [{ speciesId: sid, quantity: Math.min(target - have, avail), tankId: tank }], day);
+        if (sup && have < target * 0.7 && !pending && s.money > 60 && avail > 0 && stockingRatio(s.tanks[tank], fishInTank(s, tank)) < 0.8) placeOrder(s, sup.id, [{ speciesId: sid, quantity: Math.max(1, Math.min(target - have, avail)), tankId: tank }], day);
       }
       maxTotalFish = Math.max(maxTotalFish, Object.keys(s.fish).length);
       opts.onDay?.(sim);

@@ -33,9 +33,16 @@ function serviceWorkerVersion(): Plugin {
   };
 }
 
+/**
+ * Base path. Relative ('./') by default so the build works from any folder,
+ * a zip, file:// and the single-file artifact. GitHub Pages can set
+ * BASE_PATH=/<repo>/ for absolute URLs; relative also works there.
+ */
+const base = process.env.BASE_PATH || './';
+
 // `--mode single` produces one self-contained HTML file (used for hosted artifact builds).
 export default defineConfig(({ mode }) => ({
-  base: './',
+  base: mode === 'single' ? './' : base,
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: mode === 'single' ? [viteSingleFile()] : [serviceWorkerVersion()],
   build: {

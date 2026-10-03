@@ -2,6 +2,7 @@
  * SupplierSystem: wholesale livestock orders with delivery delays and
  * rotating stock. Dry goods are bought instantly from the stockroom.
  */
+import { idleRefusal } from './idle';
 import { round } from '../core/math';
 import type { Rng } from '../core/rng';
 import { FOOD_TUB, getDryGood } from '../data/catalog';
@@ -23,6 +24,8 @@ export interface SupplierDef {
   stockRange: [number, number];
   /** Minimum order value in £. */
   minOrder: number;
+  /** Shop level needed before this supplier will deal with you (default 1). */
+  level?: number;
 }
 
 export const SUPPLIERS: SupplierDef[] = [
@@ -50,7 +53,38 @@ export const SUPPLIERS: SupplierDef[] = [
     stockRange: [6, 18],
     minOrder: 15,
   },
+  {
+    id: 'northern',
+    name: 'Northern Temperate Fisheries',
+    blurb: 'Coldwater and temperate specialists. Hardy, unheated species. Two-day delivery.',
+    deliveryDays: 2,
+    costMultiplier: 1.1,
+    quality: [0.45, 0.75],
+    doaRisk: 0.03,
+    species: ['medaka', 'rosy_barb', 'hillstream_loach', 'paradise_fish', 'white_cloud', 'zebra_danio', 'fancy_goldfish'],
+    stockRange: [6, 24],
+    minOrder: 20,
+    level: 2,
+  },
+  {
+    id: 'coralcoast',
+    name: 'Coral Coast Imports',
+    blurb: 'Tank-bred marine fish and specialist soft-water tropicals. Careful packing, three-day delivery.',
+    deliveryDays: 3,
+    costMultiplier: 1,
+    quality: [0.55, 0.85],
+    doaRisk: 0.04,
+    species: ['german_blue_ram', 'clownfish', 'royal_gramma', 'banggai_cardinal'],
+    stockRange: [3, 12],
+    minOrder: 40,
+    level: 3,
+  },
 ];
+
+/** Suppliers that trade with a shop of this level. */
+export function suppliersFor(state: GameState): SupplierDef[] {
+  return SUPPLIERS.filter((s) => (s.level ?? 1) <= state.shopLevel);
+}
 
 export function getSupplier(id: string): SupplierDef {
   const s = SUPPLIERS.find((x) => x.id === id);
@@ -79,7 +113,7 @@ export function refreshSupplierStock(state: GameState, rng: Rng, supplierId: str
 
 /** Weekly stock rotation; call daily. */
 export function maybeRefreshSuppliers(state: GameState, rng: Rng, day: number): void {
-  for (const def of SUPPLIERS) {
+  for (const def of suppliersFor(state)) {
     const st = state.suppliers[def.id];
     if (!st || day - st.lastRefreshDay >= 7) refreshSupplierStock(state, rng, def.id, day);
   }
@@ -91,6 +125,7 @@ export interface OrderResult {
 }
 
 export function placeOrder(state: GameState, supplierId: string, lines: Array<Omit<SupplierOrderLine, 'unitCost'>>, day: number): OrderResult {
+  if (state.idle) return idleRefusal();
   const def = getSupplier(supplierId);
   const st = state.suppliers[supplierId];
   if (!st) return { ok: false, message: 'Supplier unavailable.' };
@@ -102,6 +137,9 @@ export function placeOrder(state: GameState, supplierId: string, lines: Array<Om
     const s = st.stock.find((x) => x.speciesId === l.speciesId);
     if (!s || s.available < (wanted.get(l.speciesId) ?? 0)) return { ok: false, message: `Not enough ${getSpecies(l.speciesId).commonName} in stock.` };
     if (!state.tanks[l.tankId]) return { ok: false, message: 'Pick a tank for every line.' };
+    const sp = getSpecies(l.speciesId);
+    const tw = state.tanks[l.tankId].waterType ?? 'freshwater';
+    if (sp.waterType !== tw) return { ok: false, message: `${sp.commonName} is a ${sp.waterType} fish and cannot go in ${state.tanks[l.tankId].name} (${tw}).` };
     priced.push({ ...l, unitCost: s.unitCost });
   }
   if (!priced.length) return { ok: false, message: 'The order is empty.' };
@@ -146,12 +184,14 @@ export function processDeliveries(state: GameState, rng: Rng, day: number): stri
 }
 
 export function buyFoodTub(state: GameState): OrderResult {
+  if (state.idle) return idleRefusal();
   if (!spend(state, FOOD_TUB.cost, 'Fish food tub')) return { ok: false, message: 'Not enough money.' };
   state.foodUnits += FOOD_TUB.units;
   return { ok: true, message: `Bought a tub of food (+${FOOD_TUB.units} portions).` };
 }
 
 export function buyDryGood(state: GameState, id: string, qty: number): OrderResult {
+  if (state.idle) return idleRefusal();
   const g = getDryGood(id);
   const cost = round(g.wholesale * qty, 2);
   if (!spend(state, cost, `${qty} x ${g.name}`)) return { ok: false, message: 'Not enough money.' };

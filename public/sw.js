@@ -5,7 +5,10 @@
 // caches are deleted on activate. Saves live in IndexedDB and are never touched.
 const BUILD_ID = '__BUILD_ID__';
 const PRECACHE = /*__PRECACHE__*/ [];
-const CACHE = `tidepool-${BUILD_ID}`;
+// Caches are named per scope, so two copies of the game on one site (for example
+// two GitHub Pages projects) never delete each other's files.
+const PREFIX = `tidepool-${self.registration ? self.registration.scope : ''}-`;
+const CACHE = `${PREFIX}${BUILD_ID}`;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -20,7 +23,7 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('tidepool-') && k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => (k.startsWith(PREFIX) && k !== CACHE) || (k.startsWith('tidepool-') && !k.includes('://'))).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });

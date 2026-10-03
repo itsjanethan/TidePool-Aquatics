@@ -2,7 +2,7 @@
  * New game factory: the inherited starter shop.
  */
 import { Rng } from '../core/rng';
-import { FLOOR1 } from '../data/shopLayout';
+import { GROUND } from '../data/floors';
 import { getDecor } from '../data/catalog';
 import { emptyLedger } from './economy';
 import { createFish } from './fish';
@@ -11,7 +11,7 @@ import { refreshSupplierStock, SUPPLIERS } from './supplier';
 import { createTank } from './tank';
 import type { DecorItem, GameState, TankState } from './types';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 export const START_MINUTE = 8 * 60 + 40; // Day 1, 08:40
 
 interface StarterTank {
@@ -69,8 +69,13 @@ export function newGame(opts: { seed?: number; playerName?: string; shopName?: s
     ledger: [],
     today: emptyLedger(1),
     log: [],
-    player: { x: FLOOR1.playerStart.x, y: FLOOR1.playerStart.y, facing: 'up', floor: FLOOR1.id },
-    unlocks: { floors: ['floor1'], marine: false, species: [], equipment: [] },
+    player: { x: GROUND.playerStart.x, y: GROUND.playerStart.y, facing: 'up', floor: GROUND.id },
+    unlocks: { floors: ['ground'], marine: false, species: [], equipment: [] },
+    staff: [],
+    applicants: { day: 0, list: [] },
+    proposals: [],
+    shopLevel: 1,
+    retail: {},
     objectives: initObjectives(),
     stats: { totalSales: 0, totalFishSold: 0, customersServed: 0, fishBred: 0, fishDied: 0, adviceGiven: 0, goodAdvice: 0 },
     settings: { speed: 1, tutorialSeen: false },

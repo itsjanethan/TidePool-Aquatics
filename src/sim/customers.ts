@@ -3,18 +3,23 @@
  * shop grid, browse tanks, reserve fish, queue at the till, ask for advice and
  * leave. The renderer only draws them.
  */
+import { IDLE_MESSAGE } from './idle';
 import { clamp, round } from '../core/math';
 import type { Rng } from '../core/rng';
 import { ARCHETYPES, FIRST_NAMES, PROBLEMS, THOUGHTS, type ArchetypeDef, type ProblemDef } from '../data/customers';
 import { getDecor, getDryGood } from '../data/catalog';
 import { availablePlants, plantValue } from './plants';
+import { EQUIPMENT_WANTS, getRetailItem, RETAIL_ITEMS } from '../data/retail';
+import { availableRetail, retailPrice, retailUnlocked } from './retail';
 import { getSpecies, SPECIES } from '../data/species';
 import type { FloorLayout } from '../data/shopLayout';
+import { findProp, GROUND_FLOOR_ID } from '../data/floors';
+import { floorOfWalker, hopStairs, pathTo, stepPath, walkTo as walkToShared } from './walker';
 import { summarizeAquascape } from './aquascape';
 import { assessSpeciesForSetup } from './compat';
 import { demandFor, earn, noteSold, priceFor } from './economy';
 import { fishInTank, fishValue, getMorph, newId } from './fish';
-import { findPath, type Pt } from './pathfinding';
+import type { Pt } from './pathfinding';
 import { nudgeRep, overallReputation } from './reputation';
 import { dayOf, isShopOpen, weekdayOf } from './time';
 import type { CustomerGoal, CustomerProfile, CustomerState, FishEntity, GameState } from './types';
@@ -24,8 +29,12 @@ export const MAX_CUSTOMERS = 7;
 export const MAX_PROFILES = 80;
 
 export interface CustomerContext {
+  /** Ground floor: street door, till and queue. */
   layout: FloorLayout;
+  /** Customer walk grid of the ground floor. */
   grid: boolean[][];
+  /** Customer walk grids for every floor, by id. */
+  grids?: Record<string, boolean[][]>;
   rng: Rng;
   onEvent?: (e: CustomerEvent) => void;
 }
@@ -108,6 +117,8 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
   }
 
   let goal: CustomerGoal = opts.goal ?? rng.weighted(Object.keys(arch.goals) as CustomerGoal[], (g) => arch.goals[g] ?? 0);
+  // With the basement retail floor open, some visitors come in just for equipment.
+  if (!opts.goal && retailUnlocked(state) && rng.chance(0.22)) goal = 'buy_equipment';
   let problemId = opts.problemId;
   if (profile.grievance && !opts.goal) {
     goal = 'problem';
@@ -136,8 +147,9 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
   } else if (goal === 'problem') {
     goalData.problemId = problemId ?? rng.pick(PROBLEMS).id;
   }
+  const want = goal === 'buy_equipment' ? rng.weighted(EQUIPMENT_WANTS.filter((w) => state.unlocks.marine || !w.items.includes('skimmer')), (w) => w.weight) : null;
 
-  const door = layout.door;
+  const door = layout.door ?? layout.playerStart;
   const c: CustomerState = {
     id: newId(state, 'c'),
     profileId: profile.id,
@@ -167,7 +179,13 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
     arrivedMinute: state.minute,
     queueIndex: -1,
     negotiated: false,
+    floor: GROUND_FLOOR_ID,
+    pending: null,
+    helpedBy: null,
+    wants: want ? [...want.items] : undefined,
+    equipment: [],
   };
+  if (want) c.traits.budget = round(c.traits.budget + want.items.reduce((t, id) => t + getRetailItem(id).retail, 0) * rng.range(0.9, 1.3), 2);
   profile.visits += 1;
   profile.lastVisitDay = dayOf(state.minute);
   state.customers.push(c);
@@ -182,6 +200,10 @@ function planAfterEntering(state: GameState, ctx: CustomerContext, c: CustomerSt
     // Glance at one tank first, then look for the shopkeeper.
     c.browseQueue = rng.chance(0.5) ? [rng.pick(state.tankOrder)] : [];
     c.phase = c.browseQueue.length ? 'browsing' : 'seeking_help';
+  } else if (c.goal === 'buy_equipment') {
+    c.browseQueue = rng.shuffle(['retail1', 'retail2', 'retail3']).slice(0, 2);
+    c.phase = 'browsing';
+    if (c.wants?.length) think(state, c, EQUIPMENT_WANTS.find((w) => w.items.join() === c.wants!.join())?.story ?? 'Need some kit.', 10);
   } else if (c.goal === 'buy_specific') {
     const sid = c.goalData.speciesId!;
     const withSpecies = state.tankOrder.filter((id) => tankForSale(state, id) && fishInTank(state, id).some((f) => f.speciesId === sid));
@@ -202,15 +224,30 @@ function planAfterEntering(state: GameState, ctx: CustomerContext, c: CustomerSt
 // ---------------------------------------------------------------------------
 // Movement helpers
 
-function setPath(ctx: CustomerContext, c: CustomerState, to: Pt): boolean {
-  const p = findPath(ctx.grid, { x: Math.round(c.x), y: Math.round(c.y) }, to);
-  if (!p) return false;
-  c.path = p;
-  return true;
+export function customerFloor(c: { floor?: string }): string {
+  return floorOfWalker(c);
 }
 
-function tankInteractTiles(ctx: CustomerContext, tankId: string): Pt[] {
-  return ctx.layout.props.find((p) => p.id === tankId)?.interact ?? [];
+function gridOf(ctx: CustomerContext, floor: string): boolean[][] {
+  return ctx.grids?.[floor] ?? ctx.grid;
+}
+
+/** Path on the customer's current floor. */
+function setPath(ctx: CustomerContext, c: CustomerState, to: Pt): boolean {
+  return pathTo((f) => gridOf(ctx, f), c, to);
+}
+
+/** Walks to a tile on any unlocked floor, taking stairs on the way. */
+function walkTo(state: GameState, ctx: CustomerContext, c: CustomerState, floor: string, to: Pt): boolean {
+  return walkToShared(state, (f) => gridOf(ctx, f), c, floor, to);
+}
+
+function tankInteractTiles(_ctx: CustomerContext, tankId: string): Pt[] {
+  return findProp(tankId)?.prop.interact ?? [];
+}
+
+function propFloor(id: string): string {
+  return findProp(id)?.floor ?? GROUND_FLOOR_ID;
 }
 
 function nextBrowseTarget(state: GameState, ctx: CustomerContext, c: CustomerState): void {
@@ -219,7 +256,7 @@ function nextBrowseTarget(state: GameState, ctx: CustomerContext, c: CustomerSta
     const tiles = tankInteractTiles(ctx, tid);
     if (!tiles.length) continue;
     const tile = ctx.rng.pick(tiles);
-    if (setPath(ctx, c, tile)) {
+    if (walkTo(state, ctx, c, propFloor(tid), tile)) {
       c.currentTankId = tid;
       c.phase = 'browsing';
       c.waitMinutes = -1; // walking
@@ -237,7 +274,7 @@ function nextBrowseTarget(state: GameState, ctx: CustomerContext, c: CustomerSta
     return;
   }
   if (hasPurchases(c)) goToQueue(state, ctx, c);
-  else leave(state, ctx, c, c.goal === 'buy_specific' ? 'out of stock' : 'nothing caught their eye');
+  else leave(state, ctx, c, c.goal === 'buy_specific' || c.goal === 'buy_equipment' ? 'out of stock' : 'nothing caught their eye');
 }
 
 export function queueCustomers(state: GameState): CustomerState[] {
@@ -259,9 +296,9 @@ function reindexQueue(state: GameState, ctx: CustomerContext): void {
   q.forEach((qc, i) => {
     qc.queueIndex = i;
     const spot = ctx.layout.queue[Math.min(i, ctx.layout.queue.length - 1)];
-    const atSpot = Math.round(qc.x) === spot.x && Math.round(qc.y) === spot.y && qc.path.length === 0;
+    const atSpot = customerFloor(qc) === ctx.layout.id && Math.round(qc.x) === spot.x && Math.round(qc.y) === spot.y && qc.path.length === 0 && !qc.pending;
     if (!atSpot) {
-      setPath(ctx, qc, spot);
+      walkTo(state, ctx, qc, ctx.layout.id, spot);
       qc.phase = 'to_queue';
     }
   });
@@ -275,7 +312,119 @@ function think(state: GameState, c: CustomerState, text: string, minutes = 6): v
 export const PLANT_SHELF = 'shelf1';
 
 function hasPurchases(c: CustomerState): boolean {
-  return c.basket.length > 0 || c.addOns.length > 0 || (c.plantUids?.length ?? 0) > 0;
+  return c.basket.length > 0 || c.addOns.length > 0 || (c.plantUids?.length ?? 0) > 0 || (c.equipment?.length ?? 0) > 0;
+}
+
+/** Similar but wrong items: what a poor adviser might hand over instead. */
+const DECOY: Record<string, string> = {
+  heater_150: 'heater_50', heater_50: 'heater_150', filter_hob: 'filter_sponge', filter_canister: 'filter_hob', filter_sponge: 'filter_hob',
+  tank_120: 'tank_60', tank_60: 'tank_40', tank_40: 'tank_60', light_led: 'air_stone', air_pump: 'air_stone', soil_bag: 'gravel_bag',
+};
+
+export interface EquipmentOption {
+  label: string;
+  items: string[];
+}
+
+/** What could be offered to an equipment customer: bundles covering their needs, the parts, and a plausible wrong choice. */
+export function equipmentOptions(state: GameState, c: CustomerState): EquipmentOption[] {
+  const wants = c.wants ?? [];
+  const opts: EquipmentOption[] = [];
+  for (const b of RETAIL_ITEMS) {
+    if (b.contains && wants.length >= 2 && wants.every((w) => b.contains!.includes(w)) && availableRetail(state, b.id) > 0) opts.push({ label: `${b.name} (£${retailPrice(state, b.id).toFixed(2)})`, items: [b.id] });
+  }
+  if (wants.every((w) => availableRetail(state, w) > 0)) opts.push({ label: wants.map((w) => getRetailItem(w).name).join(' + '), items: [...wants] });
+  const decoy = wants.map((w) => DECOY[w] ?? w);
+  if (decoy.join() !== wants.join() && decoy.every((w) => availableRetail(state, w) > 0)) opts.push({ label: decoy.map((w) => getRetailItem(w).name).join(' + '), items: decoy });
+  return opts;
+}
+
+/** True when the items give the customer what they need. */
+export function equipmentCovers(c: CustomerState, items: string[]): boolean {
+  const have = new Set(items.flatMap((i) => [i, ...(RETAIL_ITEMS.find((r) => r.id === i)?.contains ?? [])]));
+  return (c.wants ?? []).every((w) => have.has(w));
+}
+
+/** Player or staff recommends equipment (null = "sorry, we don't have that"). */
+export function resolveEquipmentAdvice(state: GameState, ctx: CustomerContext, c: CustomerState, items: string[] | null): AdviceResult {
+  if (state.idle) return { reply: IDLE_MESSAGE, success: false };
+  state.stats.adviceGiven += 1;
+  c.thought = null;
+  if (!items || !items.length) {
+    c.satisfaction -= 4;
+    leave(state, ctx, c, 'out of stock');
+    return { reply: 'Never mind, I\'ll try somewhere else.', success: false };
+  }
+  const price = items.reduce((t, i) => t + retailPrice(state, i), 0);
+  const good = equipmentCovers(c, items);
+  if (price > c.traits.budget * 1.15) {
+    leave(state, ctx, c, 'over budget');
+    return { reply: 'That\'s more than I wanted to spend.', success: good };
+  }
+  if (!good && ctx.rng.chance(c.traits.experience * 0.8)) {
+    nudgeRep(state, 'knowledge', -1.5);
+    c.satisfaction -= 12;
+    leave(state, ctx, c, 'bad advice');
+    return { reply: 'Hmm, I don\'t think that\'s right for my tank. I\'ll think about it.', success: false };
+  }
+  c.equipment = [...(c.equipment ?? []), ...items];
+  c.wants = [];
+  if (good) {
+    state.stats.goodAdvice += 1;
+    nudgeRep(state, 'knowledge', 1);
+    c.satisfaction += items.some((i) => getRetailItem(i).contains) ? 14 : 10;
+  } else nudgeRep(state, 'welfare', -0.5);
+  goToQueue(state, ctx, c);
+  return { reply: good ? 'Perfect, that\'s exactly what I need. Thanks!' : 'Okay, I\'ll take that then.', success: good };
+}
+
+/** Equipment customer at a retail rack: picks up what they came for, or a bundle that covers it. */
+function evaluateRetail(state: GameState, ctx: CustomerContext, c: CustomerState): void {
+  const wants = (c.wants ?? []).filter((w) => !(c.equipment ?? []).includes(w));
+  if (!wants.length) return;
+  c.equipment ??= [];
+  // Bigger or unfamiliar purchases often start with a question.
+  if (!c.askedAdvice && (wants.length >= 2 || c.traits.experience < 0.35) && ctx.rng.chance(0.45)) {
+    c.askedAdvice = true;
+    c.browseQueue = [];
+    c.phase = 'seeking_help';
+    c.path = [];
+    think(state, c, '?', 600);
+    return;
+  }
+  let budget = c.traits.budget - checkoutQuote(state, c).total;
+  // Several parts wanted: a bundle that covers them is tempting (and better for the shop).
+  if (wants.length >= 2) {
+    const bundle = RETAIL_ITEMS.filter((r) => r.contains && wants.every((w) => r.contains!.includes(w)) && availableRetail(state, r.id) > 0)
+      .sort((a, b) => retailPrice(state, a.id) - retailPrice(state, b.id))[0];
+    // Judged against what everything in the box would cost separately.
+    const contents = bundle ? bundle.contains!.reduce((t, w) => t + retailPrice(state, w), 0) : 0;
+    if (bundle && retailPrice(state, bundle.id) <= budget && ctx.rng.chance(retailPrice(state, bundle.id) <= contents * 0.95 ? 0.8 : 0.3)) {
+      c.equipment.push(bundle.id);
+      c.wants = [];
+      think(state, c, 'A kit with everything!');
+      return;
+    }
+  }
+  let missing = 0;
+  for (const w of wants) {
+    if (availableRetail(state, w) <= 0) {
+      missing++;
+      continue;
+    }
+    const price = retailPrice(state, w);
+    if (price > budget * 1.1) {
+      think(state, c, ctx.rng.pick(THOUGHTS.pricey));
+      continue;
+    }
+    c.equipment.push(w);
+    budget -= price;
+  }
+  c.wants = (c.wants ?? []).filter((w) => !c.equipment!.includes(w));
+  if (missing && !c.browseQueue.length) {
+    think(state, c, 'Out of stock? Shame.');
+    c.satisfaction -= 6;
+  }
 }
 
 /** Customer looks over the potted plants on the shelf. */
@@ -329,6 +478,7 @@ function releaseReservations(state: GameState, c: CustomerState): void {
     if (p && p.reservedBy === c.id) p.reservedBy = null;
   }
   c.plantUids = [];
+  c.equipment = [];
   for (const line of c.basket) {
     for (const id of line.fishIds) {
       const f = state.fish[id];
@@ -343,7 +493,8 @@ export function leave(state: GameState, ctx: CustomerContext, c: CustomerState, 
   releaseReservations(state, c);
   c.queueIndex = -1;
   c.phase = 'leaving';
-  setPath(ctx, c, ctx.layout.door);
+  c.helpedBy = null;
+  walkTo(state, ctx, c, ctx.layout.id, ctx.layout.door ?? ctx.layout.playerStart);
   if (lost) {
     state.today.customersLost += 1;
     ctx.onEvent?.({ type: 'lost', customer: c, reason });
@@ -461,11 +612,13 @@ function evaluateTank(state: GameState, ctx: CustomerContext, c: CustomerState, 
 export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: number): void {
   // Spawning.
   const open = isShopOpen(state.minute);
-  if (open && state.customers.filter((c) => c.phase !== 'gone').length < MAX_CUSTOMERS) {
+  // A bigger shop (more floors) draws more people and has room for them.
+  const level = Math.max(1, state.shopLevel ?? 1);
+  if (open && state.customers.filter((c) => c.phase !== 'gone').length < MAX_CUSTOMERS + (level - 1) * 3) {
     const rep = overallReputation(state);
     const wd = weekdayOf(state.minute);
     const weekend = wd === 'Sat' || wd === 'Sun' ? 1.35 : 1;
-    const perHour = (1.2 + (rep / 100) * 2.6) * weekend;
+    const perHour = (1.2 + (rep / 100) * 2.6) * weekend * (1 + (level - 1) * 0.35);
     if (ctx.rng.chance(1 - Math.exp(-(perHour / 60) * dtMin))) spawnCustomer(state, ctx);
   }
 
@@ -474,27 +627,10 @@ export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: n
     if (c.thought && state.minute > c.thoughtUntil) c.thought = null;
 
     // Walk along path.
-    if (c.path.length) {
-      let move = WALK_TILES_PER_MINUTE * dtMin;
-      c.walkPhase += dtMin;
-      while (move > 0 && c.path.length) {
-        const n = c.path[0];
-        const dx = n.x - c.x;
-        const dy = n.y - c.y;
-        const d = Math.hypot(dx, dy);
-        if (Math.abs(dx) > Math.abs(dy)) c.facing = dx > 0 ? 'right' : 'left';
-        else if (d > 0.001) c.facing = dy > 0 ? 'down' : 'up';
-        if (d <= move) {
-          c.x = n.x;
-          c.y = n.y;
-          c.path.shift();
-          move -= d;
-        } else {
-          c.x += (dx / d) * move;
-          c.y += (dy / d) * move;
-          move = 0;
-        }
-      }
+    if (stepPath(c, WALK_TILES_PER_MINUTE * dtMin, dtMin)) continue;
+    // Reached stairs on the way to another floor.
+    if (c.pending) {
+      hopStairs(state, (f) => gridOf(ctx, f), c);
       continue;
     }
 
@@ -512,8 +648,9 @@ export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: n
         c.waitMinutes -= dtMin;
         if (c.waitMinutes <= 0) {
           if (c.currentTankId === PLANT_SHELF) evaluatePlants(state, ctx, c);
+          else if (c.currentTankId?.startsWith('retail')) evaluateRetail(state, ctx, c);
           else if (c.currentTankId && state.tanks[c.currentTankId]) evaluateTank(state, ctx, c, c.currentTankId);
-          nextBrowseTarget(state, ctx, c);
+          if (c.phase === 'browsing') nextBrowseTarget(state, ctx, c);
         }
         break;
       }
@@ -532,8 +669,8 @@ export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: n
           nudgeRep(state, 'service', -1.5);
           leave(state, ctx, c, 'waited too long', true);
         }
-        if (c.phase === 'waiting_help') {
-          const dist = Math.hypot(state.player.x - c.x, state.player.y - c.y);
+        if (c.phase === 'waiting_help' && !c.helpedBy) {
+          const dist = state.player.floor === customerFloor(c) ? Math.hypot(state.player.x - c.x, state.player.y - c.y) : 99;
           if (dist > 2.5) c.phase = 'seeking_help';
         }
         break;
@@ -544,6 +681,13 @@ export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: n
           break;
         }
         c.patienceLeft -= dtMin * 0.5;
+        if (c.helpedBy) break;
+        // The shopkeeper is on another floor: wait for them (or a member of staff).
+        if (state.player.floor !== customerFloor(c)) {
+          c.waitMinutes += dtMin * 0.3;
+          if (c.waitMinutes > 45) leave(state, ctx, c, 'could not find help', true);
+          break;
+        }
         const dist = Math.hypot(state.player.x - c.x, state.player.y - c.y);
         if (dist <= 1.6) {
           c.phase = 'waiting_help';
@@ -554,7 +698,7 @@ export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: n
           const dy = state.player.y - c.y;
           c.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
         } else {
-          const target = nearestFreeNeighbour(ctx, state.player.x, state.player.y, c.x, c.y);
+          const target = nearestFreeNeighbour(gridOf(ctx, customerFloor(c)), state.player.x, state.player.y, c.x, c.y);
           if (!target || !setPath(ctx, c, target)) {
             c.waitMinutes += dtMin;
             if (c.waitMinutes > 30) leave(state, ctx, c, 'could not find help', true);
@@ -586,14 +730,14 @@ export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: n
   state.customers = state.customers.filter((c) => c.phase !== 'gone');
 }
 
-function nearestFreeNeighbour(ctx: CustomerContext, px: number, py: number, fromX: number, fromY: number): Pt | null {
+export function nearestFreeNeighbour(grid: boolean[][], px: number, py: number, fromX: number, fromY: number): Pt | null {
   const cx = Math.round(px);
   const cy = Math.round(py);
   const cands: Pt[] = [];
   for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
     const x = cx + dx;
     const y = cy + dy;
-    if (ctx.grid[y]?.[x]) cands.push({ x, y });
+    if (grid[y]?.[x]) cands.push({ x, y });
   }
   cands.sort((a, b) => Math.hypot(a.x - fromX, a.y - fromY) - Math.hypot(b.x - fromX, b.y - fromY));
   return cands[0] ?? null;
@@ -617,11 +761,12 @@ export function servingCustomer(state: GameState, layout: FloorLayout): Customer
   return c;
 }
 
-export function helpableCustomerNear(state: GameState, x: number, y: number): CustomerState | null {
+export function helpableCustomerNear(state: GameState, x: number, y: number, floor = state.player.floor): CustomerState | null {
   let best: CustomerState | null = null;
   let bestD = 1.6;
   for (const c of state.customers) {
     if (c.phase !== 'waiting_help' && c.phase !== 'seeking_help') continue;
+    if (customerFloor(c) !== floor || c.helpedBy) continue;
     const d = Math.hypot(c.x - x, c.y - y);
     if (d <= bestD) {
       best = c;
@@ -631,8 +776,8 @@ export function helpableCustomerNear(state: GameState, x: number, y: number): Cu
   return best;
 }
 
-export function customerAt(state: GameState, x: number, y: number): CustomerState | null {
-  return state.customers.find((c) => c.phase !== 'gone' && Math.hypot(c.x - x, c.y - y) < 0.7) ?? null;
+export function customerAt(state: GameState, x: number, y: number, floor = state.player.floor): CustomerState | null {
+  return state.customers.find((c) => c.phase !== 'gone' && customerFloor(c) === floor && Math.hypot(c.x - x, c.y - y) < 0.7) ?? null;
 }
 
 export interface QuoteLine {
@@ -666,6 +811,10 @@ export function checkoutQuote(state: GameState, c: CustomerState): { lines: Quot
     const g = getDryGood(id);
     lines.push({ label: g.name, qty: 1, unit: g.retail, total: g.retail });
   }
+  for (const id of c.equipment ?? []) {
+    const price = retailPrice(state, id);
+    lines.push({ label: getRetailItem(id).name, qty: 1, unit: price, total: price });
+  }
   return { lines, total: round(lines.reduce((s, l) => s + l.total, 0), 2) };
 }
 
@@ -697,6 +846,7 @@ export interface SaleResult {
 }
 
 export function completeSale(state: GameState, ctx: CustomerContext, c: CustomerState, finalTotal: number): SaleResult {
+  if (state.idle) return { total: 0, fishCount: 0, plantCount: 0 };
   const quote = checkoutQuote(state, c);
   const avgRatio = c.basket.length ? c.basket.reduce((s, l) => s + priceRatio(state, l.speciesId), 0) / c.basket.length : 1;
   let fishCount = 0;
@@ -717,6 +867,8 @@ export function completeSale(state: GameState, ctx: CustomerContext, c: Customer
     }
   }
   for (const id of c.addOns) state.dryGoods[id] = Math.max(0, (state.dryGoods[id] ?? 0) - 1);
+  for (const id of c.equipment ?? []) state.retail[id] = Math.max(0, (state.retail[id] ?? 0) - 1);
+  c.equipment = [];
   const plantCount = (c.plantUids ?? []).length;
   state.storage.plants = state.storage.plants.filter((p) => !(c.plantUids ?? []).includes(p.uid));
   state.stats.plantsSold = (state.stats.plantsSold ?? 0) + plantCount;
@@ -820,6 +972,7 @@ export function adviceSetupText(c: CustomerState): string {
 
 /** Player recommends a species (or null = "nothing suitable in stock"). */
 export function resolveAdvice(state: GameState, ctx: CustomerContext, c: CustomerState, speciesId: string | null): AdviceResult {
+  if (state.idle) return { reply: IDLE_MESSAGE, success: false };
   const setup = { litres: c.goalData.tankLitres ?? 60, heated: !!c.goalData.heated };
   state.stats.adviceGiven += 1;
   c.thought = null;
@@ -899,6 +1052,7 @@ export function problemFor(c: CustomerState): ProblemDef {
 }
 
 export function resolveProblem(state: GameState, ctx: CustomerContext, c: CustomerState, optionIndex: number): AdviceResult {
+  if (state.idle) return { reply: IDLE_MESSAGE, success: false };
   const prob = problemFor(c);
   const opt = prob.options[optionIndex];
   state.stats.adviceGiven += 1;

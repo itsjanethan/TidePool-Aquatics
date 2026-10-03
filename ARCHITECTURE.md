@@ -47,6 +47,21 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `sim/phenotype.ts` | PhenotypeSystem: fish entity (species, morph, genotype, sex, age, size, pregnancy, health, quality, id) to a plain visual description, plus a quantised cache key. Pure; used by the renderer, portraits and the gallery |
 | `sim/floating.ts` | FloatingPlantSystem: per-tank surface coverage per floating species, logistic growth, shade, nitrate uptake, fry cover, scoop/store/sell/buy |
 | `sim/save.ts` | SaveSystem: versioned serialise/deserialise, migrations, IndexedDB/localStorage/memory storage |
+| `sim/tankDiagnostics.ts` | Tank Diagnostics: one structured report per tank (status, scores, issues with severity, value, recommended, affected fish, consequences, actions, help id); `tankAlert` for overworld icons; habitat suggestions |
+| `sim/preview.ts` | Action previews: runs a maintenance fix on a `structuredClone` of the state and diffs player-facing metrics (`previewFix`, `previewLine`); `FIXES` maps each fix to its sim function |
+| `sim/habitat.ts` | Habitat needs per species (`habitatOf`), cover percent, a tank's combined needs (cover %, cave spaces, open space, sand, wood) |
+| `sim/idle.ts` | Idle Mode flag, lock kinds and messages, `idleRefusal` |
+| `sim/walker.ts` | Shared movement for customers and staff: paths on a floor grid, multi-floor trips via stairs (`walkTo`, `hopStairs`, `stepPath`) |
+| `sim/staff.ts` | StaffSystem: applicants, hiring, roles, wages, skills and practice, job choice from diagnostics, till and advice work, proposals (stock, aquascape) with approval, off-duty hours |
+| `sim/expansion.ts` | Shop progression: requirement checks, building an expansion (floor, tanks, unlocks), expansion rent |
+| `sim/marine.ts` | Marine water: salinity drift, SG display, top-off, salt-mix water changes, salinity damage |
+| `sim/retail.ts` | Equipment retail: stock space, buying in, prices, reservations |
+| `sim/playtest.ts` | Builds the plain-text playtest report (no network) |
+| `data/floors.ts` | Floor registry (`FLOORS`, `getFloorLayout`, `floorOfTank`, `findProp`, `floorRoute`, `stairsArrival`) |
+| `data/expansions.ts` | Shop levels 2 to 4: cost, rent, requirements, unlock list, starting tanks |
+| `data/staff.ts` | Personalities (trade-offs), roles, names, lines |
+| `data/retail.ts` | Equipment and bundles, stock space, what equipment customers come in for |
+| `data/glossary.ts` | Help sections and every glossary entry (body, ranges, affected by, affects) |
 | `sim/newGame.ts` | Starter shop factory and `SAVE_VERSION` |
 | `data/genetics.ts` | Per-species loci (alleles with dominance ranks) and ordered morph rules |
 | `render/res.ts` | `RES` (2), logical 480x320 and canvas 960x640 sizes |
@@ -70,10 +85,21 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `ui/menu.ts` | Keyboard/gamepad/mouse menu component |
 | `ui/hud.ts` | HUD (date, clock, money, stars, goal, interaction prompt) |
 | `ui/screens/*` | Title, pause (settings, save slots, export/import), tank menu (livestock, fish detail, breeding, plants, prices), office PC (save hub, orders, stockroom, stats), till/advice flows, tank view overlay, aquascape editor with previews, day report, help, dev panel |
+| `ui/screens/diagnostics.ts` | Tank overview block, issue rows and issue detail screens with predicted effects, Tank Status page with habitat numbers |
+| `ui/screens/help.ts` | How to Play, Help sections, glossary entries, `helpLink` (mouse) and `helpItem` (keyboard) |
+| `ui/screens/staff.ts` | Staff hub, applicants, employee detail, suggestions list and the in-person Approve / Review / Not now prompt |
+| `ui/screens/progression.ts`, `retail.ts`, `playtest.ts`, `locks.ts` | Shop Progression, equipment retail, Copy Playtest Report, Idle Mode menu locks |
 | `ui/screens/gallery.ts` | Developer morph gallery (`#gallery=<species>`): every morph and single-trait variant by sex and life stage, plus the swim/turn frame strip |
 | `audio/sfx.ts` | Synthesised WebAudio sound effects, per-browser mute |
 | `ui/touch.ts` | On-screen controls for coarse pointers |
 | `game/GameController.ts` | Game loop timing, input routing, pause rules, saves, scene transitions |
+
+## Floors, staff and Idle Mode
+
+- **Floors.** Every layout lives in `data/floors.ts`. `state.player.floor` picks the floor `ShopScene` renders; changing floor restarts the scene so only the active floor is ever drawn. The simulation keeps a walk grid per floor; customers and staff carry `floor` and move between floors with `sim/walker.ts` (stairs props link floors; `floorRoute` finds the chain through built floors). Off-screen floors keep simulating.
+- **Diagnostics are the single source of truth** for "what is wrong with this tank". The tank menu, overworld bubbles (`tankAlert`), the tank view status line and maintenance staff all read `diagnoseTank`. Previews never estimate: they run the real action on a cloned state.
+- **Idle Mode** (`state.idle`, runtime only) stops `Simulation.advance` and `skipToNextMorning`, refuses `spend`, `earn` and every business action at the sim level, and UI rows built with `locked()` stay visible with the reason. Renderers keep animating (fish do not eat in Idle Mode). A future "Live Simulation" option would add a separate flag that lets `advance` run while the transaction guards stay on.
+- **Staff** are persistent entities in `state.staff`, ticked after customers each sim step. They use diagnostics to choose jobs and the same sim actions as the player. Proposals are stored in `state.proposals`; the `proposal` sim event tells the controller to show the in-person prompt when no blocking screen is open.
 
 ## Game loop
 
@@ -123,7 +149,11 @@ HTML screens sit in `#ui`, sized exactly over the canvas. `--px` is the CSS pixe
 
 **Change GameState:** follow `SAVE_SCHEMA.md` (bump `SAVE_VERSION`, add a migration, add a test).
 
-**Add a floor:** add a `FloorLayout` in `data/shopLayout.ts`. `Simulation.layout` and `ShopScene` currently assume `FLOOR1`; generalising this is a Milestone 3 task.
+**Add a floor:** add a `FloorLayout` to `data/floors.ts` (tiles, props, stairs props with `to` pointing at a neighbour floor, and a matching stairs prop on that floor), register it in `FLOORS`, add a theme in `render/art/shopArt.ts` if needed, and an expansion in `data/expansions.ts` that unlocks it. Tank prop ids must be unique across floors. `tests/floors.test.ts` checks stairs are reciprocal and every prop is reachable.
+
+**Add a diagnostic:** add an `add({...})` block in `diagnoseTank` with a stable id, severity, icon, numbers and at least one action (a `fix` from `FIXES` for things that can be done in one step, or a `nav` to a screen). Add a glossary entry and set `help`. Add a test in `tests/diagnostics.test.ts`.
+
+**Add a staff behaviour:** add a task kind in `StaffTask`, a `start...` function that walks there with `walkTo`, and a `work...` function in `tickStaff`. Use existing sim actions so the effect is identical to the player doing it. Never spend money without a proposal.
 
 ## Fish rendering architecture
 
@@ -138,7 +168,7 @@ Two simulation levels still apply: the persistent fish, plants and floating cove
 
 ## Build targets
 
-- `npm run build`: static multi-file site in `dist/` with PWA manifest and service worker (`public/sw.js`). The `tidepool-sw-version` Vite plugin stamps the worker with a unique build id and the list of built files: every deploy installs into a fresh `tidepool-<id>` cache, precaches the game for offline play and deletes old caches on activate. Pages and unhashed files are network first; hashed `assets/` are cache first. Saves live in IndexedDB and are never touched by updates.
+- `npm run build`: static multi-file site in `dist/` with PWA manifest and service worker (`public/sw.js`). The base path is relative (`./`) unless `BASE_PATH` is set (the GitHub Pages workflow sets `/<repo>/`). The `tidepool-sw-version` Vite plugin stamps the worker with a unique build id and the list of built files: every deploy installs into a fresh cache named per scope (`tidepool-<scope>-<id>`), precaches the game for offline play and deletes old caches on activate. Pages and unhashed files are network first; hashed `assets/` are cache first. Saves live in IndexedDB and are never touched by updates.
 - `npm run build:artifact`: single-file build reshaped for the hosted claude.ai artifact (`dist-artifact/`).
 - `npm run build:single`: one self-contained HTML (`dist-single/index.html`) for hosts that want a single file. Service worker registration is skipped in this mode.
 - Desktop/Steam/mobile packaging later can wrap `dist/` (Electron, Tauri or Capacitor) without code changes; keep the game free of server dependencies.

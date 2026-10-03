@@ -10,6 +10,9 @@ import { fishCard, specimen, speciesSummary, tankStatusLine } from './common';
 import { openFishDetail, openTankMenu } from './tankMenu';
 import { phenotypeKey, phenotypeOf } from '../../sim/phenotype';
 
+/** Seconds without input before Idle Mode hides the tank view UI. */
+export const IDLE_HIDE_AFTER = 6;
+
 export class TankViewScreen implements Screen {
   el: HTMLElement;
   blocking = false;
@@ -19,6 +22,12 @@ export class TankViewScreen implements Screen {
   private portraitKey = '';
   private portrait: HTMLElement | null = null;
   private zBtn: HTMLElement;
+  private hideBtn: HTMLElement;
+  /** UI hidden by the player (Hide UI button). */
+  private hidden = false;
+  /** Seconds since the last input; in Idle Mode the UI fades away after IDLE_HIDE_AFTER. */
+  private quiet = 0;
+  private onPointer = () => this.wake();
 
   constructor(private c: GameController, private scene: TankScene) {
     this.top = h('div', { class: 'tv-top' });
@@ -26,13 +35,16 @@ export class TankViewScreen implements Screen {
     const btn = (label: string, key: string, fn: () => void) => h('button', { class: 'tv-btn', onclick: (e: Event) => { e.stopPropagation(); fn(); } }, h('span', { class: 'key' }, key), label);
     this.zBtn = btn('Tank menu', 'Z', () => this.handle('confirm'));
     const bar = h('div', { class: 'tv-bar' },
-      btn('Feed', 'F', () => this.handle('feed')),
+      h('span', { class: 'tv-lockable' }, btn('Feed', 'F', () => this.handle('feed'))),
       btn('Next fish', 'E', () => this.handle('tab')),
       this.zBtn,
-      btn('Aquascape', 'R', () => this.scene.openAquascape()),
+      h('span', { class: 'tv-lockable' }, btn('Aquascape', 'R', () => this.scene.openAquascape())),
       btn('Back', 'X', () => this.handle('back')),
     );
-    this.el = h('div', { class: 'tank-view-ui' }, this.top, this.card, bar);
+    this.hideBtn = h('button', { class: 'tv-btn tv-hide', title: 'Hide or show the tank view UI', onclick: (e: Event) => { e.stopPropagation(); this.toggleHidden(); } }, 'Hide UI');
+    this.el = h('div', { class: 'tank-view-ui' }, this.top, this.card, bar, this.hideBtn);
+    window.addEventListener('pointermove', this.onPointer);
+    window.addEventListener('pointerdown', this.onPointer);
     this.refreshTop();
     this.refreshFish();
   }
@@ -56,6 +68,8 @@ export class TankViewScreen implements Screen {
       help ? h('span', { class: 'tv-waiting' }, `${help} need help`) : null,
       h('span', { class: 'tv-clock' }, `${clockString(s.minute)}${t.lightOn ? '' : ' (lights off)'}`),
     ];
+    if (this.c.idle) parts.splice(1, 0, h('span', { class: 'tv-idle' }, 'IDLE MODE · BUSINESS PAUSED'));
+    this.el.classList.toggle('tv-is-idle', this.c.idle);
     for (const p of parts) if (p) this.top.appendChild(p);
   }
 
@@ -78,7 +92,32 @@ export class TankViewScreen implements Screen {
     if (label) label.textContent = f ? 'Fish details' : 'Tank menu';
   }
 
-  tick(): void {
+  private toggleHidden(): void {
+    this.hidden = !this.hidden;
+    this.quiet = 0;
+    this.applyHidden();
+  }
+
+  private wake(): void {
+    this.quiet = 0;
+    this.applyHidden();
+  }
+
+  private applyHidden(): void {
+    const auto = this.c.idle && this.quiet > IDLE_HIDE_AFTER;
+    this.el.classList.toggle('tv-hidden', this.hidden || auto);
+    this.hideBtn.textContent = this.hidden ? 'Show UI' : 'Hide UI';
+  }
+
+  onClose(): void {
+    window.removeEventListener('pointermove', this.onPointer);
+    window.removeEventListener('pointerdown', this.onPointer);
+  }
+
+  tick(dt = 1 / 60): void {
+    const wasAuto = this.c.idle && this.quiet > IDLE_HIDE_AFTER;
+    this.quiet += dt;
+    if (wasAuto !== (this.c.idle && this.quiet > IDLE_HIDE_AFTER)) this.applyHidden();
     this.acc += 1;
     if (this.acc % 20 === 0) {
       this.refreshTop();
@@ -87,6 +126,10 @@ export class TankViewScreen implements Screen {
   }
 
   handle(a: Action): boolean {
+    // Any key brings the UI back; the first press after an auto-hide only reveals it.
+    const autoHidden = this.c.idle && this.quiet > IDLE_HIDE_AFTER && !this.hidden;
+    this.wake();
+    if (autoHidden && a !== 'back' && a !== 'menu') return true;
     switch (a) {
       case 'tab':
       case 'right':

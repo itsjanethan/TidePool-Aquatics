@@ -3,6 +3,7 @@
  * value (adjusted by demand). A safety valve for overpopulated tanks, never
  * as profitable as selling to customers.
  */
+import { idleRefusal } from './idle';
 import { round } from '../core/math';
 import { demandFor, earn, noteSold } from './economy';
 import { fishValue } from './fish';
@@ -20,6 +21,7 @@ export function tradeValue(state: GameState, fishId: string): number {
 }
 
 export function sellFishToTrade(state: GameState, ids: string[]): ActionResult {
+  if (state.idle) return idleRefusal();
   let total = 0;
   let n = 0;
   for (const id of ids) {

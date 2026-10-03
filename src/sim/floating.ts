@@ -5,6 +5,7 @@
  * shades the tank (slowing submerged plants and algae), soaks up nitrate and
  * gives fry somewhere to hide. Left alone, duckweed carpets the surface.
  */
+import { idleRefusal } from './idle';
 import { clamp, round } from '../core/math';
 import { FLOATING, FLOATING_PORTION, getFloating } from '../data/catalog';
 import { canAfford, earn, spend } from './economy';
@@ -75,6 +76,7 @@ export function addFloatingCover(tank: TankState, id: string, amount: number): v
 
 /** Buys one portion straight into a tank. */
 export function buyFloating(state: GameState, tank: TankState, id: string): ActionResult {
+  if (state.idle) return idleRefusal();
   const def = getFloating(id);
   if (totalFloating(tank) >= 0.98) return fail('The surface is already covered.');
   if (!canAfford(state, def.cost)) return fail(`You need £${def.cost.toFixed(2)}.`);
@@ -85,6 +87,7 @@ export function buyFloating(state: GameState, tank: TankState, id: string): Acti
 
 /** Moves one stored portion into a tank. */
 export function plantFloatingFromStorage(state: GameState, tank: TankState, id: string): ActionResult {
+  if (state.idle) return idleRefusal();
   const store = (state.storage.floating ??= {});
   if (!store[id]) return fail('None in the stockroom.');
   if (totalFloating(tank) >= 0.98) return fail('The surface is already covered.');
@@ -100,6 +103,7 @@ export function plantFloatingFromStorage(state: GameState, tank: TankState, id: 
  * they are thrown away.
  */
 export function scoopFloating(state: GameState, tank: TankState, id: string, fraction: number, keep: boolean): ActionResult {
+  if (state.idle) return idleRefusal();
   const cover = floatingCover(tank);
   const c = cover[id] ?? 0;
   if (c < MIN_COVER) return fail('There is nothing to scoop.');
@@ -116,6 +120,7 @@ export function scoopFloating(state: GameState, tank: TankState, id: string, fra
 
 /** Sells stored portions to the trade buyer. */
 export function sellFloatingToTrade(state: GameState, id: string): ActionResult {
+  if (state.idle) return idleRefusal();
   const store = state.storage.floating ?? {};
   const n = store[id] ?? 0;
   if (!n) return fail('None in the stockroom.');
