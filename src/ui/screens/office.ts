@@ -3,20 +3,21 @@ import type { GameController } from '../../game/GameController';
 import { formatMoney, round } from '../../core/math';
 import { DRY_GOODS, FOOD_TUB } from '../../data/catalog';
 import { getSpecies } from '../../data/species';
-import { assessSpeciesForSetup } from '../../sim/compat';
+import { lineWarnings, orderWarnings, projectedStocking } from '../../sim/orderCheck';
 import { dailyRunningCosts } from '../../sim/economy';
 import { fishInTank } from '../../sim/fish';
 import { OBJECTIVES, markObjective } from '../../sim/progression';
 import { overallReputation, REP_DIMENSIONS, REP_LABELS, repStars } from '../../sim/reputation';
 import { buyDryGood, buyFoodTub, getSupplier, placeOrder, SUPPLIERS } from '../../sim/supplier';
-import { dayOf, isShopOpen, minuteOfDay, OPEN_HOUR } from '../../sim/time';
+import { dateString, dayOf, isShopOpen, minuteOfDay, OPEN_HOUR } from '../../sim/time';
 
 const beforeOpening = (m: number) => minuteOfDay(m) < OPEN_HOUR * 60;
 import { h, meter } from '../dom';
 import type { MenuItem } from '../menu';
 import { openPrices } from './tankMenu';
 import { speciesSummary } from './common';
-import { openSaveSlots } from './pause';
+import { exportSave, openImport, openLoad, openSaveSlots, openSettings, openStats } from './pause';
+import { AUTOSAVE_TEXT } from '../../game/GameController';
 import { pottedPlantItems } from './plants';
 import { sellStoredDecor } from '../../sim/plants';
 import { getDecor } from '../../data/catalog';
@@ -47,16 +48,24 @@ export function openOffice(c: GameController): void {
         h('div', { class: 'row' }, h('span', null, 'Pending deliveries'), h('span', null, String(s.orders.length))),
         h('div', { class: 'small save-status' }, c.lastSaveText())),
     items: [
-      { label: 'Save game', hint: 'Save to one of three slots. The game also autosaves every morning at 09:00.', action: () => void openSaveSlots(c, 'save', false, () => scr.renderBody()) },
+      { label: 'Game', header: true },
+      { label: 'Save game', hint: `Save to one of three slots. ${AUTOSAVE_TEXT}`, action: () => void openSaveSlots(c, 'save', false, () => scr.renderBody()) },
+      { label: 'Load game', hint: 'Load a slot or the autosave.', action: () => void openLoad(c) },
+      { label: 'Export save', hint: 'Make a backup copy you can import on any device or browser.', action: () => exportSave(c) },
+      { label: 'Import save', hint: 'Restore a backup made with Export save.', action: () => void openImport(c) },
+      { label: 'Settings', hint: 'Game speed and sound.', action: () => openSettings(c) },
+      { label: 'Shop', header: true },
       { label: 'Order livestock', hint: 'Buy fish from suppliers. Delivered at opening time.', action: () => openSuppliers(c) },
-      { label: 'Stockroom', hint: 'Fish food and dry goods to sell.', action: () => openStockroom(c) },
+      { label: 'Stockroom', hint: 'Food, dry goods, potted plants and stored decor.', action: () => openStockroom(c) },
       { label: 'Prices', action: () => openPrices(c, null) },
       { label: 'Accounts', action: () => openLedger(c) },
       { label: 'Reputation', action: () => openReputation(c) },
       { label: 'Goals', action: () => openGoals(c) },
+      { label: 'Statistics', action: () => openStats(c) },
+      { label: 'Day', header: true },
       beforeOpening(s.minute)
-        ? { label: 'Wait until opening (09:00)', action: () => c.endDay() }
-        : { label: isShopOpen(s.minute) ? 'Close early & end day' : 'End day', hint: 'Sleep until opening time tomorrow. Tanks keep running overnight.', action: () => {
+        ? { label: 'Wait until opening (09:00)', hint: 'The shop opens and the game autosaves.', action: () => c.endDay() }
+        : { label: isShopOpen(s.minute) ? 'Close early & end day' : 'End day', hint: 'Sleep until opening time tomorrow. Tanks keep running overnight. The game autosaves when the shop opens.', action: () => {
             void c.ui.confirm('End the day and skip to tomorrow morning?').then((y) => y && c.endDay());
           } },
       { label: 'Log off', action: () => c.ui.remove(scr) },
@@ -94,10 +103,11 @@ function openOrder(c: GameController, supplierId: string): void {
     const list: MenuItem[] = [{ label: cart.length ? `Your order (${cart.length} line${cart.length > 1 ? 's' : ''})` : 'Your order is empty', header: true }];
     for (const line of cart) {
       const sp = getSpecies(line.speciesId);
+      const warns = lineWarnings(s, line, cart).filter((w) => w.severity === 'warn');
       list.push({
-        label: `${line.quantity} x ${sp.commonName} to ${s.tanks[line.tankId].name}`,
+        label: `${line.quantity} x ${sp.commonName} to ${s.tanks[line.tankId].name}${warns.length ? ' ⚠' : ''}`,
         right: formatMoney(line.quantity * unitCost(line.speciesId)),
-        hint: 'Confirm to change the quantity or destination, or remove this line.',
+        hint: warns.length ? `${warns[0].text}${warns.length > 1 ? ` (+${warns.length - 1} more)` : ''} Confirm to edit.` : 'No problems spotted. Confirm to change the quantity or destination, or remove this line.',
         action: () => editLine(c, supplierId, line, cart, () => scr.refresh(items())),
       });
     }
@@ -121,7 +131,13 @@ function openOrder(c: GameController, supplierId: string): void {
       label: `Place order (${formatMoney(total())})`,
       disabled: !cart.length,
       hint: `Charged now. Delivered ${sup.deliveryDays === 1 ? 'tomorrow' : `in ${sup.deliveryDays} days`} at opening time, straight into each line's tank.`,
-      action: () => {
+      action: async () => {
+        const warns = orderWarnings(s, cart).filter((w) => w.severity === 'warn');
+        if (warns.length) {
+          const shown = warns.slice(0, 4).map((w) => `- ${w.text}`).join('\n');
+          const more = warns.length > 4 ? `\n(and ${warns.length - 4} more)` : '';
+          if (!(await c.ui.confirm(`Before you order:\n${shown}${more}\nPlace the order anyway?`))) return;
+        }
         const r = placeOrder(s, supplierId, cart, dayOf(s.minute));
         c.ui.toast(r.message, r.ok ? 'good' : 'warn');
         if (r.ok) {
@@ -135,7 +151,18 @@ function openOrder(c: GameController, supplierId: string): void {
   };
   const scr = c.ui.menu({
     title: sup.name,
-    body: () => h('div', null, `${sup.blurb} Balance ${formatMoney(s.money)}. Order total ${formatMoney(total())}.`),
+    body: () => {
+      const fish = cart.reduce((n, l) => n + l.quantity, 0);
+      const tanks = [...new Set(cart.map((l) => l.tankId))];
+      const warns = orderWarnings(s, cart).filter((w) => w.severity === 'warn').length;
+      const arrive = dateString((dayOf(s.minute) - 1 + sup.deliveryDays) * 1440 + OPEN_HOUR * 60);
+      return h('div', null,
+        h('div', { class: 'small' }, sup.blurb),
+        h('div', { class: 'row' }, h('span', null, `${fish} fish to ${tanks.length} tank${tanks.length === 1 ? '' : 's'}`), h('b', null, `Total ${formatMoney(total())}`)),
+        h('div', { class: 'row small' }, h('span', null, `Arrives ${arrive}, 09:00`), h('span', null, `Balance ${formatMoney(s.money)}`)),
+        tanks.length ? h('div', { class: 'small' }, tanks.map((id) => `${s.tanks[id].name} ${Math.round(projectedStocking(s, id, cart) * 100)}%`).join(' · ') + ' stocked after delivery') : null,
+        warns ? h('div', { class: 'warn small' }, `${warns} warning${warns > 1 ? 's' : ''}. Lines marked ⚠ have problems.`) : null);
+    },
     items: items(),
     className: 'tall wide',
   });
@@ -147,17 +174,17 @@ function editLine(c: GameController, supplierId: string, line: CartLine, cart: C
   const sp = getSpecies(line.speciesId);
   const draft = { ...line };
   const maxQty = () => st.available - cart.filter((l) => l.speciesId === line.speciesId && l !== line).reduce((n, l) => n + l.quantity, 0);
-  const assess = () => {
-    const t = s.tanks[draft.tankId];
-    const resident = [...new Set(fishInTank(s, t.id).map((f) => f.speciesId))];
-    const incoming = cart.filter((l) => l !== line && l.tankId === t.id).map((l) => l.speciesId);
-    return assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: t.water.temperature, residentSpecies: [...resident, ...incoming] });
-  };
+  const assess = () => lineWarnings(s, draft, [...cart.filter((l) => l !== line), draft]);
   const items = (): MenuItem[] => {
     const t = s.tanks[draft.tankId];
     const res = assess();
+    const warns = res.filter((w) => w.severity === 'warn');
     const step = (d: number) => {
       draft.quantity = Math.max(1, Math.min(maxQty(), draft.quantity + d));
+      scr.refresh(items());
+    };
+    const jump = () => {
+      draft.quantity = draft.quantity >= maxQty() ? 1 : Math.min(maxQty(), draft.quantity < 5 ? 5 : draft.quantity + 5);
       scr.refresh(items());
     };
     const cycle = (d: number) => {
@@ -166,11 +193,11 @@ function editLine(c: GameController, supplierId: string, line: CartLine, cart: C
       scr.refresh(items());
     };
     const list: MenuItem[] = [
-      { label: 'Quantity', right: `${draft.quantity} x ${formatMoney(st.unitCost)}`, hint: `Up to ${maxQty()} available.`, onLeft: () => step(-1), onRight: () => step(1) },
+      { label: 'Quantity', right: `${draft.quantity} x ${formatMoney(st.unitCost)}`, hint: `Left / Right: 1 at a time. Confirm: jump by 5. Up to ${maxQty()} available.`, onLeft: () => step(-1), onRight: () => step(1), action: jump },
       {
-        label: `Deliver to ${t.name}${res.score < 0.75 ? ' ⚠' : ''}`,
+        label: `Deliver to ${t.name}${warns.length ? ' ⚠' : ''}`,
         right: `${t.litres}L ${t.water.temperature.toFixed(0)}°C`,
-        hint: res.issues[0] ?? `Looks suitable. Currently: ${speciesSummary(s, t.id)}.`,
+        hint: warns[0]?.text ?? `Looks suitable. Currently: ${speciesSummary(s, t.id) || 'empty'}.`,
         onLeft: () => cycle(-1),
         onRight: () => cycle(1),
       },
@@ -194,8 +221,11 @@ function editLine(c: GameController, supplierId: string, line: CartLine, cart: C
     body: () => {
       const res = assess();
       return h('div', null,
-        h('div', { class: 'small' }, `${sp.description} Needs ${sp.temperature.min}-${sp.temperature.max}°C, ${sp.minTankLitres}L+, groups of ${sp.minGroupSize}+.`),
-        res.issues.length ? h('div', { class: 'warn small' }, res.issues.join(' ')) : h('div', { class: 'good small' }, 'Suitable for the chosen tank.'));
+        h('div', { class: 'small' }, `${sp.description} Needs ${sp.temperature.min}-${sp.temperature.max}°C, pH ${sp.ph.min}-${sp.ph.max}, ${sp.minTankLitres}L+, groups of ${sp.minGroupSize}+.`),
+        res.length
+          ? h('div', null, ...res.map((w) => h('div', { class: `${w.severity === 'warn' ? 'warn' : 'dim'} small` }, `${w.severity === 'warn' ? '⚠ ' : ''}${w.text}`)))
+          : h('div', { class: 'good small' }, 'Suitable for the chosen tank.'),
+        h('div', { class: 'dim small' }, 'Warnings are advice only. You can still order.'));
     },
     items: items(),
     className: 'wide',

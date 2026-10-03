@@ -58,13 +58,17 @@ input:focus { border-color: var(--accent); }
   font-weight: 700; color: var(--accent); font-size: 1.15em; padding: 0 calc(var(--px) * 2) calc(var(--px) * 2);
   border-bottom: calc(var(--px) * 1) solid var(--edge-in); margin-bottom: calc(var(--px) * 2); text-shadow: calc(var(--px) * 1) calc(var(--px) * 1) 0 #000;
 }
-.panel-body { padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 3); color: var(--ink); flex-shrink: 0; max-height: 55%; overflow-y: auto; }
+.panel-body { padding: calc(var(--px) * 1) calc(var(--px) * 2) calc(var(--px) * 3); color: var(--ink); flex: 0 0 auto; max-height: calc(var(--px) * 150); overflow-y: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+.panel > .menu { flex: 0 1 auto; }
+.panel-scroll-hint { color: var(--ink-dim); font-size: 0.8em; text-align: right; padding: 0 calc(var(--px) * 2); }
 .panel-footer { color: var(--ink-dim); font-size: 0.85em; padding-top: calc(var(--px) * 2); }
 .row { display: flex; align-items: center; gap: calc(var(--px) * 4); justify-content: space-between; padding: calc(var(--px) * 0.5) 0; }
 .small { font-size: 0.85em; color: var(--ink-dim); }
 .good { color: var(--good); }
 .bad { color: var(--bad); }
 .warn { color: var(--warn); }
+.dim { color: var(--ink-dim); }
+.dialogue-text { white-space: pre-line; }
 .section-title { color: var(--accent); margin-top: calc(var(--px) * 3); font-weight: 600; }
 
 /* Menus ------------------------------------------------------------------ */
@@ -132,6 +136,9 @@ input:focus { border-color: var(--accent); }
 .hud-shop { color: var(--accent); font-weight: 600; }
 .hud-money { color: var(--good); font-weight: 700; font-size: 1.1em; }
 .hud-money.neg { color: var(--bad); }
+.hud-saved { position: absolute; right: calc(var(--px) * 4); top: calc(var(--px) * 27); color: var(--ink-dim); font-size: 0.8em; opacity: 0; transition: opacity 0.4s; text-shadow: calc(var(--px) * 1) calc(var(--px) * 1) 0 #000; }
+.hud-saved.on { opacity: 1; }
+.hud-saved::before { content: ''; display: inline-block; width: calc(var(--px) * 4); height: calc(var(--px) * 4); margin-right: calc(var(--px) * 2); background: var(--good); vertical-align: middle; }
 .stars { color: var(--accent); letter-spacing: calc(var(--px) * 0.5); }
 .hud-goal {
   position: absolute; left: calc(var(--px) * 3); bottom: calc(var(--px) * 3); background: rgba(18, 16, 36, 0.78); padding: calc(var(--px) * 1.5) calc(var(--px) * 4);
@@ -143,7 +150,7 @@ input:focus { border-color: var(--accent); }
 }
 
 /* Toasts ----------------------------------------------------------------- */
-#toasts { display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; padding: calc(var(--px) * 26) calc(var(--px) * 4) 0; gap: calc(var(--px) * 2); pointer-events: none !important; }
+#toasts { display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; padding: calc(var(--px) * 34) calc(var(--px) * 4) 0; gap: calc(var(--px) * 2); pointer-events: none !important; }
 .toast {
   background: rgba(18, 16, 36, 0.92); padding: calc(var(--px) * 2) calc(var(--px) * 4); max-width: calc(var(--px) * 220); font-size: 0.85em;
   border-left: calc(var(--px) * 2) solid var(--blue); transition: opacity 0.4s; pointer-events: none;

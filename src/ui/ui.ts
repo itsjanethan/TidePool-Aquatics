@@ -120,6 +120,13 @@ export class UIManager {
     });
   }
 
+  /** Text entry with Confirm / Cancel. Resolves with the text, or null if cancelled. */
+  prompt(title: string, label: string, initial = '', maxLength = 28): Promise<string | null> {
+    return new Promise((resolve) => {
+      this.push(new PromptScreen(this, title, label, initial, maxLength, resolve));
+    });
+  }
+
   confirm(text: string): Promise<boolean> {
     return this.ask(null, text, ['Yes', 'No']).then((i) => i === 0);
   }
@@ -143,15 +150,19 @@ export class MenuScreen implements Screen {
   blocking: boolean;
   menu: Menu;
   private bodyEl: HTMLElement;
+  private scrollHint: HTMLElement;
   constructor(private ui: UIManager, public opts: MenuScreenOptions) {
     this.blocking = opts.blocking ?? true;
     this.menu = new Menu(opts.items, { columns: opts.columns, startIndex: opts.startIndex });
     this.bodyEl = h('div', { class: 'panel-body' });
+    this.scrollHint = h('div', { class: 'panel-scroll-hint' }, 'Q / E scroll details');
+    this.scrollHint.style.display = 'none';
     this.el = h(
       'div',
       { class: `panel ${opts.className ?? ''}` },
       h('div', { class: 'panel-title' }, opts.title),
       this.bodyEl,
+      this.scrollHint,
       this.menu.el,
       opts.footer ? h('div', { class: 'panel-footer' }, opts.footer) : null,
     );
@@ -162,6 +173,14 @@ export class MenuScreen implements Screen {
     const b = typeof this.opts.body === 'function' ? this.opts.body() : this.opts.body;
     if (b) this.bodyEl.appendChild(b);
     this.bodyEl.style.display = b ? '' : 'none';
+    this.updateScrollHint();
+  }
+  onOpen(): void {
+    requestAnimationFrame(() => this.updateScrollHint());
+  }
+  private updateScrollHint(): void {
+    const over = this.bodyEl.scrollHeight > this.bodyEl.clientHeight + 2;
+    this.scrollHint.style.display = over ? '' : 'none';
   }
   refresh(items?: MenuItem[]): void {
     if (items) this.opts.items = items;
@@ -170,6 +189,10 @@ export class MenuScreen implements Screen {
   }
   handle(a: Action): boolean {
     if (this.menu.handle(a)) return true;
+    if ((a === 'tab' || a === 'tabPrev') && this.bodyEl.scrollHeight > this.bodyEl.clientHeight) {
+      this.bodyEl.scrollTop += (a === 'tab' ? 1 : -1) * this.bodyEl.clientHeight * 0.6;
+      return true;
+    }
     if (a === 'back' || a === 'menu') {
       if (this.opts.onBack) this.opts.onBack();
       else this.ui.remove(this);
@@ -245,6 +268,54 @@ export class DialogueScreen implements Screen {
       return true;
     }
     if (a === 'confirm' || a === 'back' || a === 'menu') this.finish();
+    return true;
+  }
+}
+
+export class PromptScreen implements Screen {
+  el: HTMLElement;
+  blocking = true;
+  private input: HTMLInputElement;
+  private menu: Menu;
+  private done = false;
+  constructor(private ui: UIManager, title: string, label: string, initial: string, maxLength: number, private resolve: (v: string | null) => void) {
+    this.input = h('input', { type: 'text', maxlength: String(maxLength), value: initial, id: 'prompt-input' }) as HTMLInputElement;
+    this.input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.finish(this.input.value.trim() || null);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this.finish(null);
+      }
+    });
+    this.menu = new Menu([
+      { label: 'Confirm', action: () => this.finish(this.input.value.trim() || null) },
+      { label: 'Cancel', action: () => this.finish(null) },
+    ]);
+    this.el = h('div', { class: 'panel' }, h('div', { class: 'panel-title' }, title), h('div', { class: 'panel-body' }, h('label', null, label, this.input)), this.menu.el);
+  }
+  onOpen(): void {
+    setTimeout(() => {
+      this.input.focus();
+      this.input.select();
+    }, 30);
+  }
+  private finish(v: string | null): void {
+    if (this.done) return;
+    this.done = true;
+    this.ui.remove(this);
+    this.resolve(v);
+  }
+  handle(a: Action): boolean {
+    // While typing, the text box owns the keyboard (Enter/Escape handled there).
+    if (document.activeElement === this.input) return true;
+    if (a === 'up' && this.menu.index === 0) {
+      this.input.focus();
+      return true;
+    }
+    if (this.menu.handle(a)) return true;
+    if (a === 'back' || a === 'menu') this.finish(null);
     return true;
   }
 }

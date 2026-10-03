@@ -28,6 +28,9 @@ export const SPEEDS = [1, 2, 4];
 
 type WorldInput = (a: Action) => void;
 
+/** Shared wording so every screen describes autosave the same way. */
+export const AUTOSAVE_TEXT = 'Autosave is on: the game saves to the Autosave slot every morning at opening (09:00).';
+
 export class GameController {
   game!: Phaser.Game;
   ui!: UIManager;
@@ -161,13 +164,14 @@ export class GameController {
   }
 
   async autosave(): Promise<void> {
-    if (await this.save('auto')) this.ui.toast(`Game autosaved (${dateString(this.state.minute)}, ${clockString(this.state.minute)})`, 'good', 3500);
+    this.hud.flashSaved('Autosaving...');
+    if (await this.save('auto')) this.hud.flashSaved(`Autosaved ${clockString(this.state.minute)}`);
   }
 
   /** Plain-language description of the last save, for menus. */
   lastSaveText(): string {
     const ls = this.sim ? this.state.lastSave : undefined;
-    if (!ls) return 'Not saved yet. Save at the office PC. The game also autosaves every morning at 09:00.';
+    if (!ls) return `Not saved yet. Save at the office PC. ${AUTOSAVE_TEXT}`;
     const mins = Math.round((Date.now() - ls.at) / 60000);
     const ago = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} h ago`;
     return `Last saved: ${slotLabel(ls.slot)}, ${dateString(ls.minute)} ${clockString(ls.minute)} (${ago}).`;

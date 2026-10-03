@@ -6,7 +6,10 @@ import { openTankPlants } from './plants';
 import { getSpecies } from '../../data/species';
 import { assessSpeciesForSetup } from '../../sim/compat';
 import { fishPrice, priceRatio } from '../../sim/customers';
-import { displayName, fishInTank, moveFish } from '../../sim/fish';
+import { fishInTank, moveFish } from '../../sim/fish';
+import { breedingConditions, isFry, lifeStage } from '../../sim/breeding';
+import { establishStrain, strainEligibility } from '../../sim/genetics';
+import { sellFishToTrade, tradeValue } from '../../sim/trade';
 import {
   buyFilter, buyHeater, cleanFilter, cleanGlass, doWaterChange, feedingNeed, feedTank, removeDead, removeHeater,
   scrubAlgae, setHeater, toggleAirStone, useBacteriaStarter, vacuumSubstrate, type ActionResult,
@@ -15,7 +18,7 @@ import type { FishEntity } from '../../sim/types';
 import { h } from '../dom';
 import type { MenuItem } from '../menu';
 import type { MenuScreen } from '../ui';
-import { fishCard, tankHeader, waterReportEl } from './common';
+import { fishCard, fishLabel, tankHeader, waterReportEl } from './common';
 
 export function openTankMenu(c: GameController, tankId: string): void {
   const s = c.state;
@@ -31,7 +34,16 @@ export function openTankMenu(c: GameController, tankId: string): void {
       { label: 'Equipment', action: () => openEquipment(c, tankId, screen) },
       { label: 'Aquascape', hint: 'Decorate with a live preview: plants, rocks, wood, substrate and background.', action: () => c.openTankView(tankId, 'aquascape') },
       { label: `Plants (${tank.decor.filter((d) => getDecor(d.defId).kind === 'plant').length})`, hint: 'See how your plants are growing and take cuttings.', action: () => openTankPlants(c, tank) },
+      { label: 'Breeding', hint: 'Who can breed here, what is stopping them, and any eggs or pregnancies.', action: () => openBreeding(c, tankId) },
       { label: 'Prices', action: () => openPrices(c, tankId) },
+      {
+        label: 'Customers can buy',
+        right: tank.forSale === false ? 'No' : 'Yes',
+        hint: 'Set to No for breeding, grow-out or display tanks so customers leave them alone.',
+        action: () => { tank.forSale = tank.forSale === false ? undefined : false; screen.refresh(items()); },
+        onLeft: () => { tank.forSale = tank.forSale === false ? undefined : false; screen.refresh(items()); },
+        onRight: () => { tank.forSale = tank.forSale === false ? undefined : false; screen.refresh(items()); },
+      },
       { label: 'Close', action: () => c.ui.remove(screen) },
     ];
   };
@@ -173,9 +185,9 @@ export function openLivestock(c: GameController, tankId: string): void {
   const items = (): MenuItem[] => {
     const fish = fishInTank(s, tankId, true).sort((a, b) => a.speciesId.localeCompare(b.speciesId) || b.sizeCm - a.sizeCm);
     const list: MenuItem[] = fish.map((f) => ({
-      label: `${f.alive ? '' : '✝ '}${displayName(f)} ${f.sex === 'male' ? '♂' : f.sex === 'female' ? '♀' : ''}`,
-      right: f.alive ? formatMoney(fishPrice(s, f)) : 'dead',
-      hint: `${f.sizeCm.toFixed(1)}cm · health ${Math.round(f.health)} · stress ${Math.round(f.stress)}${f.reservedBy ? ' · reserved by a customer' : ''}`,
+      label: `${f.alive ? '' : '✝ '}${fishLabel(s, f)} ${f.sex === 'male' ? '♂' : f.sex === 'female' ? '♀' : ''}${f.pregnancy ? ' (pregnant)' : ''}`,
+      right: !f.alive ? 'dead' : isFry(f) ? 'fry' : formatMoney(fishPrice(s, f)),
+      hint: `${lifeStage(f)} · ${f.sizeCm.toFixed(1)}cm · health ${Math.round(f.health)} · stress ${Math.round(f.stress)}${f.origin === 'bred' ? ` · bred F${f.generation}` : ''}${f.reservedBy ? ' · reserved by a customer' : ''}`,
       action: () => openFishDetail(c, f, () => scr.refresh(items())),
     }));
     if (!list.length) list.push({ label: 'This tank is empty.', disabled: true });
@@ -188,16 +200,89 @@ export function openLivestock(c: GameController, tankId: string): void {
 function openFishDetail(c: GameController, f: FishEntity, onChange: () => void): void {
   const s = c.state;
   const sameSpecies = () => (f.tankId ? fishInTank(s, f.tankId).filter((x) => x.speciesId === f.speciesId && !x.reservedBy) : []);
-  const scr = c.ui.menu({
-    title: displayName(f),
-    body: () => fishCard(s, f, true),
-    className: 'wide',
-    items: [
+  const fryOfSpecies = () => sameSpecies().filter((x) => isFry(x));
+  const items = (): MenuItem[] => {
+    const elig = strainEligibility(s, f);
+    const strain = f.strainName ? s.strains?.[f.strainName] : null;
+    return [
       { label: 'Move this fish', disabled: !f.alive || !!f.reservedBy, action: () => openMoveFish(c, [f], () => { c.ui.remove(scr); onChange(); }) },
       { label: `Move all ${getSpecies(f.speciesId).commonName} (${sameSpecies().length})`, disabled: !f.alive, action: () => openMoveFish(c, sameSpecies(), () => { c.ui.remove(scr); onChange(); }) },
+      { label: `Move ${getSpecies(f.speciesId).commonName} fry (${fryOfSpecies().length})`, disabled: !fryOfSpecies().length, hint: 'Move fry to a grow-out tank where adults cannot eat them.', action: () => openMoveFish(c, fryOfSpecies(), () => { c.ui.remove(scr); onChange(); }) },
+      strain
+        ? { label: `Strain: ${strain.name}`, disabled: true, hint: `Founded day ${strain.foundedDay}. Fry from two parents of this strain that show its look stay in the line.` }
+        : {
+            label: 'Name a strain from this line',
+            disabled: !elig.ok,
+            hint: elig.reason,
+            action: () => {
+              const sp = getSpecies(f.speciesId);
+              const morph = sp.morphs.find((m) => m.id === f.morphId)?.name ?? '';
+              void c.ui.prompt('Name your strain', `${elig.reason} Strain name:`, `${s.playerName} ${morph}`).then((name) => {
+                if (!name) return;
+                const st = establishStrain(s, f, name);
+                if (st) c.ui.toast(`Strain founded: ${st.name}. Related fish of this line now carry its name.`, 'good', 4000);
+                scr.refresh(items());
+                onChange();
+              });
+            },
+          },
+      {
+        label: 'Sell to the trade buyer',
+        right: f.alive ? formatMoney(tradeValue(s, f.id)) : '',
+        disabled: !f.alive || !!f.reservedBy,
+        hint: 'The wholesaler takes surplus fish at a fraction of shop price. Useful when a breeding tank gets crowded.',
+        action: () => void c.ui.confirm(`Sell ${fishLabel(s, f)} to the trade buyer for ${formatMoney(tradeValue(s, f.id))}?`).then((y) => {
+          if (!y) return;
+          c.perform(sellFishToTrade(s, [f.id]));
+          c.ui.remove(scr);
+          onChange();
+        }),
+      },
       { label: 'Back', action: () => c.ui.remove(scr) },
-    ],
-  });
+    ];
+  };
+  const scr = c.ui.menu({ title: fishLabel(s, f), body: () => fishCard(s, f, true), className: 'wide tall', items: items() });
+}
+
+/** Breeding overview for a tank: who can breed, what is stopping them, pregnancies and eggs. */
+export function openBreeding(c: GameController, tankId: string): void {
+  const s = c.state;
+  const t = s.tanks[tankId];
+  const body = () => {
+    const species = [...new Set(fishInTank(s, tankId).map((f) => f.speciesId))];
+    const blocks: HTMLElement[] = [];
+    if (!species.length) blocks.push(h('div', { class: 'small' }, 'No fish in this tank.'));
+    for (const sid of species) {
+      const sp = getSpecies(sid);
+      const r = breedingConditions(s, t, sid);
+      const chance = r.factor <= 0 ? 'Not possible right now' : r.factor < 0.3 ? 'Unlikely' : r.factor < 0.8 ? 'Possible' : 'Likely';
+      const fish = fishInTank(s, tankId).filter((f) => f.speciesId === sid);
+      const pregnant = fish.filter((f) => f.pregnancy);
+      const fry = fish.filter((f) => isFry(f)).length;
+      const broods = (t.broods ?? []).filter((b) => b.speciesId === sid);
+      blocks.push(
+        h('div', { class: 'section-title' }, `${sp.commonName}: ${chance}`),
+        h('div', { class: 'small' }, `${methodText(sp.breeding.method)} Adults: ${r.males} male, ${r.females} female. Fry: ${fry}.`),
+        ...r.good.map((g) => h('div', { class: 'small good' }, `✔ ${g}`)),
+        ...r.reasons.slice(0, 3).map((g) => h('div', { class: 'small warn' }, `✘ ${g}`)),
+        ...pregnant.map((f) => h('div', { class: 'small good' }, `${fishLabel(s, f)} is pregnant: about ${Math.max(1, Math.ceil(f.pregnancy!.daysRemaining))} day(s).`)),
+        ...broods.map((b) => h('div', { class: 'small good' }, `About ${b.count} eggs, hatching in ${Math.max(1, Math.ceil(b.daysLeft))} day(s).`)),
+      );
+    }
+    blocks.push(h('div', { class: 'small' }, 'Tip: adult fish eat fry. Dense plants help, or move fry to their own grow-out tank.'));
+    return h('div', null, ...blocks);
+  };
+  const scr = c.ui.menu({ title: `Breeding: ${t.name}`, body, items: [{ label: 'Back', action: () => c.ui.remove(scr) }], className: 'wide tall' });
+}
+
+function methodText(m: string): string {
+  switch (m) {
+    case 'livebearer': return 'Livebearer: gives birth to live fry.';
+    case 'egg_scatterer': return 'Egg scatterer: eggs are often eaten unless hidden in plants.';
+    case 'adhesive_eggs': return 'Lays sticky eggs, often after a cool water change.';
+    case 'cave_spawner': return 'Cave spawner: the male guards eggs in a cave.';
+    default: return '';
+  }
 }
 
 function openMoveFish(c: GameController, fish: FishEntity[], done: () => void): void {

@@ -1,6 +1,6 @@
 /** Pause menu with save/load/export. */
 import type { GameController } from '../../game/GameController';
-import { SPEEDS } from '../../game/GameController';
+import { AUTOSAVE_TEXT, SPEEDS } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
 import { SLOTS, slotLabel } from '../../sim/save';
 import { clockString, dateString } from '../../sim/time';
@@ -14,12 +14,9 @@ export function openPauseMenu(c: GameController): void {
   const s = c.state;
   const items = (): MenuItem[] => [
       { label: 'Resume', action: () => c.ui.remove(scr) },
-      { label: 'Save game', right: 'at office PC', hint: 'Walk to the office PC (top right) to save. The game also autosaves every morning at 09:00.', disabled: true },
-      { label: 'Load game', action: () => openSaveSlots(c, 'load') },
+      { label: 'Save game', right: 'at office PC', hint: `Walk to the office PC (top right) to save, load, export or import. ${AUTOSAVE_TEXT}`, disabled: true },
       { label: 'Goals', action: () => openGoals(c) },
-      { label: 'Game speed', right: `${s.settings.speed}x`, onLeft: () => { s.settings.speed = SPEEDS[Math.max(0, SPEEDS.indexOf(s.settings.speed) - 1)]; scr.refresh(items()); }, onRight: () => { s.settings.speed = SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(s.settings.speed) + 1)]; scr.refresh(items()); } },
-      { label: 'Sound', right: isMuted() ? 'off' : 'on', action: () => { setMuted(!isMuted()); scr.refresh(items()); } },
-      { label: 'Export save file', hint: 'Download a backup you can import on any device.', action: () => exportSave(c) },
+      ...settingsItems(c, () => scr.refresh(items())),
       { label: 'How to play', action: () => showHelp(c) },
       { label: 'Quit to title', action: () => void c.ui.confirm(`Quit to the title screen? ${c.lastSaveText()} Anything since then will be lost.`).then((y) => y && c.toTitle()) },
   ];
@@ -29,6 +26,63 @@ export function openPauseMenu(c: GameController): void {
     items: items(),
     className: 'wide',
   });
+}
+
+/** Speed and sound rows, shared by the pause menu and the PC settings screen. */
+export function settingsItems(c: GameController, refresh: () => void): MenuItem[] {
+  const s = c.state;
+  const step = (d: number) => {
+    s.settings.speed = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, SPEEDS.indexOf(s.settings.speed) + d))];
+    refresh();
+  };
+  return [
+    { label: 'Game speed', right: `${s.settings.speed}x`, hint: 'Left / Right to change. T also cycles speed in the shop.', onLeft: () => step(-1), onRight: () => step(1), action: () => step(s.settings.speed === SPEEDS[SPEEDS.length - 1] ? -99 : 1) },
+    { label: 'Sound', right: isMuted() ? 'Off' : 'On', onLeft: () => { setMuted(!isMuted()); refresh(); }, onRight: () => { setMuted(!isMuted()); refresh(); }, action: () => { setMuted(!isMuted()); refresh(); } },
+  ];
+}
+
+export function openSettings(c: GameController): void {
+  const items = (): MenuItem[] => [...settingsItems(c, () => scr.refresh(items())), { label: 'Back', action: () => c.ui.remove(scr) }];
+  const scr = c.ui.menu({ title: 'Settings', body: h('div', { class: 'small' }, AUTOSAVE_TEXT), items: items() });
+}
+
+export function openStats(c: GameController): void {
+  const s = c.state;
+  const st = s.stats;
+  const row = (k: string, v: string) => h('div', { class: 'row' }, h('span', null, k), h('b', null, v));
+  const strains = Object.values(s.strains ?? {});
+  const scr = c.ui.menu({
+    title: 'Shop Statistics',
+    body: h(
+      'div',
+      null,
+      row('Days trading', String(Math.floor(s.minute / 1440) + 1)),
+      row('Total sales', formatMoney(st.totalSales)),
+      row('Customers served', String(st.customersServed)),
+      row('Fish sold', String(st.totalFishSold)),
+      row('Plants sold', String(st.plantsSold ?? 0)),
+      row('Fish bred', String(st.fishBred)),
+      row('Fry lost to adults', String(st.fryEaten ?? 0)),
+      row('Fish lost', String(st.fishDied)),
+      row('Advice given (good)', `${st.adviceGiven} (${st.goodAdvice})`),
+      row('Named strains', strains.length ? strains.map((x) => x.name).join(', ') : 'none yet'),
+    ),
+    items: [{ label: 'Back', action: () => c.ui.remove(scr) }],
+    className: 'wide',
+  });
+}
+
+/** Load from a slot, warning first when a game is running. */
+export async function openLoad(c: GameController): Promise<void> {
+  if (c.inGame && !(await c.ui.confirm(`Load a different save? ${c.lastSaveText()} Unsaved progress will be lost.`))) return;
+  await openSaveSlots(c, 'load');
+}
+
+/** Import from a file or pasted text, warning first when a game is running. */
+export async function openImport(c: GameController): Promise<void> {
+  if (c.inGame && !(await c.ui.confirm(`Import a save and replace the current game? ${c.lastSaveText()} Unsaved progress will be lost.`))) return;
+  if (DOWNLOADS_BLOCKED) importSaveText(c);
+  else importSave(c);
 }
 
 export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fromTitle = false, onDone?: () => void): Promise<void> {
@@ -51,7 +105,10 @@ export async function openSaveSlots(c: GameController, mode: 'save' | 'load', fr
               if (sum && !(await c.ui.confirm('Overwrite this save?'))) return;
               const ok = await c.save(sl);
               c.ui.remove(scr);
-              if (ok) await c.ui.say(null, `Game saved to ${slotLabel(sl)} (${dateString(c.state.minute)}, ${clockString(c.state.minute)}).`);
+              if (ok) {
+                c.hud.flashSaved(`Saved ${clockString(c.state.minute)}`);
+                await c.ui.say(null, `Game saved. ${slotLabel(sl)}, ${dateString(c.state.minute)} ${clockString(c.state.minute)}.`);
+              }
               onDone?.();
             } else {
               c.ui.remove(scr);

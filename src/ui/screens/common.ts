@@ -5,7 +5,9 @@ import { getSpecies } from '../../data/species';
 import { summarizeAquascape } from '../../sim/aquascape';
 import { stockingRatio, stressTarget } from '../../sim/compat';
 import { fishPrice } from '../../sim/customers';
-import { displayName, fishInTank, getMorph, sizeLabel } from '../../sim/fish';
+import { displayName, fishInTank, getMorph, isMature } from '../../sim/fish';
+import { isFry, lifeStage } from '../../sim/breeding';
+import { genotypeKnown, strainLabel, traitView } from '../../sim/genetics';
 import { cycleStatus } from '../../sim/water';
 import type { FishEntity, GameState, TankState } from '../../sim/types';
 import { h, meter } from '../dom';
@@ -38,7 +40,7 @@ export function tankHeader(state: GameState, tank: TankState): HTMLElement {
     h('div', { class: 'row' }, h('span', null, `${filter.name} · ${heater}`)),
     h('div', { class: 'row' }, h('span', null, 'Stocking'), meter(Math.min(1, ratio), ratio > 1 ? 'bad' : ratio > 0.8 ? 'warn' : 'good'), h('span', null, `${Math.round(ratio * 100)}%`)),
     h('div', { class: 'row' }, h('span', null, 'Aquascape'), meter(scape.beauty / 100, 'blue'), h('span', null, `${Math.round(scape.beauty)}`)),
-    h('div', { class: 'row' }, h('span', { class: `tag tag-${cyc}` }, cyc.toUpperCase()), h('span', { class: 'status' }, tankStatusLine(state, tank))),
+    h('div', { class: 'row' }, h('span', { class: `tag tag-${cyc}` }, cyc.toUpperCase()), tank.forSale === false ? h('span', { class: 'tag tag-closed' }, 'NOT FOR SALE') : h('span', null, ''), h('span', { class: 'status' }, tankStatusLine(state, tank))),
   );
 }
 
@@ -110,33 +112,74 @@ export function waterReportEl(state: GameState, tank: TankState): HTMLElement {
   return h('div', { class: 'readings' }, ...rows);
 }
 
+/** Name shown for a fish: strain line, or morph and species. */
+export function fishLabel(state: GameState, f: FishEntity): string {
+  const strain = strainLabel(state, f);
+  return strain ? `${strain} ${getSpecies(f.speciesId).commonName}` : displayName(f);
+}
+
+function stars(q: number): string {
+  const n = Math.max(1, Math.min(5, Math.round(q * 5)));
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+
+function relative(state: GameState, id: string | null): string {
+  if (!id) return 'unknown';
+  const r = state.fish[id];
+  if (!r) return 'no longer in the shop';
+  const where = r.tankId ? state.tanks[r.tankId]?.name ?? '' : r.alive ? 'sold' : 'died';
+  return `${fishLabel(state, r)}${where ? ` (${where})` : ''}`;
+}
+
+/**
+ * Fish information with progressive disclosure: the compact card answers
+ * "is this fish OK and what is it worth"; the detailed card adds life stage,
+ * breeding, family, inherited traits and history.
+ */
 export function fishCard(state: GameState, f: FishEntity, detailed = false): HTMLElement {
   const sp = getSpecies(f.speciesId);
   const morph = getMorph(sp, f.morphId);
   const tank = f.tankId ? state.tanks[f.tankId] : null;
+  const sexText = f.sex === 'male' ? '♂ Male' : f.sex === 'female' ? '♀ Female' : 'Unsexed';
   const rows: HTMLElement[] = [
-    h('div', { class: 'fish-name' }, displayName(f), f.alive ? '' : ' (dead)'),
-    h('div', { class: 'fish-sci' }, sp.scientificName),
-    h('div', { class: 'row' }, h('span', null, `${f.sex === 'male' ? '♂ Male' : f.sex === 'female' ? '♀ Female' : 'Unsexed'} · ${sizeLabel(f)}`), h('span', null, `${f.sizeCm.toFixed(1)}cm`)),
+    h('div', { class: 'fish-name' }, fishLabel(state, f), f.alive ? '' : ' (dead)'),
+    h('div', { class: 'fish-sci' }, `${sp.commonName} · ${sp.scientificName}`),
+    h('div', { class: 'row' }, h('span', null, `${sexText} · ${lifeStage(f)}`), h('span', null, `${f.sizeCm.toFixed(1)}cm`)),
     h('div', { class: 'row' }, h('span', null, 'Health'), meter(f.health / 100, f.health < 40 ? 'bad' : f.health < 70 ? 'warn' : 'good')),
     h('div', { class: 'row' }, h('span', null, 'Fullness'), meter(1 - f.hunger / 100, f.hunger > 70 ? 'bad' : f.hunger > 45 ? 'warn' : 'good')),
     h('div', { class: 'row' }, h('span', null, 'Stress'), meter(f.stress / 100, f.stress > 60 ? 'bad' : f.stress > 35 ? 'warn' : 'good')),
   ];
-  if (f.alive) rows.push(h('div', { class: 'row' }, h('span', null, 'Price'), h('b', null, formatMoney(fishPrice(state, f)))));
+  if (f.alive) rows.push(h('div', { class: 'row' }, h('span', null, `Quality ${stars(f.quality)}`), h('b', null, isFry(f) ? 'Too young to sell' : formatMoney(fishPrice(state, f)))));
+  if (f.pregnancy) rows.push(h('div', { class: 'good small' }, `Pregnant: about ${Math.max(1, Math.ceil(f.pregnancy.daysRemaining))} day(s) to go.`));
   if (tank && f.alive) {
     const st = stressTarget(f, tank, fishInTank(state, tank.id), summarizeAquascape(tank));
     if (st.reasons.length) rows.push(h('div', { class: 'fish-issues' }, 'Bothered by: ', st.reasons.slice(0, 3).map((r) => r.reason).join(', ')));
   }
   if (detailed) {
-    rows.push(
-      h('div', { class: 'row small' }, h('span', null, `Age ${round(f.ageDays, 0)} days · Adult ~${f.adultSizeCm.toFixed(1)}cm`)),
-      h('div', { class: 'row small' }, h('span', null, `Morph: ${morph.name} · Quality ${Math.round(f.quality * 100)}`)),
-      h('div', { class: 'row small' }, h('span', null, `Origin: ${f.originDetail || f.origin} · Gen F${f.generation}`)),
-      h('div', { class: 'row small' }, h('span', null, `Tanks: ${f.tankHistory.join(' → ')}`)),
-      h('div', { class: 'fish-desc' }, sp.description),
-      h('div', { class: 'fish-desc tip' }, `Care: ${sp.careTip}`),
-      h('div', { class: 'row small' }, h('span', null, `Needs ${sp.temperature.min}-${sp.temperature.max}°C, pH ${sp.ph.min}-${sp.ph.max}, ${sp.minTankLitres}L+, groups of ${sp.minGroupSize}+`)),
-    );
+    const sec = (t: string) => h('div', { class: 'section-title' }, t);
+    const line = (t: string) => h('div', { class: 'small' }, t);
+    rows.push(sec('About'));
+    rows.push(line(`Age ${round(f.ageDays, 0)} days. Grows to about ${f.adultSizeCm.toFixed(1)}cm. Look: ${morph.name}.`));
+    rows.push(line(f.origin === 'bred' ? `Bred in your shop (generation F${f.generation}). ${f.originDetail}.` : `Origin: ${f.originDetail || f.origin}.`));
+    if (f.alive && !isFry(f)) {
+      rows.push(sec('Breeding'));
+      rows.push(line(!isMature(f) ? `Not mature yet (matures at about ${sp.maturityDays} days).` : f.breedingReadiness >= 0.5 ? 'In breeding condition.' : 'Not in breeding condition: needs good food, health and calm.'));
+      rows.push(line(`${sp.breeding.notes}`));
+    }
+    rows.push(sec('Family'));
+    rows.push(line(`Mother: ${relative(state, f.parents.motherId)}`));
+    rows.push(line(`Father: ${relative(state, f.parents.fatherId)}`));
+    rows.push(line(`Offspring: ${f.offspringCount}`));
+    const traits = traitView(f);
+    if (traits.length) {
+      rows.push(sec('Traits'));
+      for (const t of traits) rows.push(line(`${t.name}: ${t.shown}${t.carries ? ` (carries ${t.carries})` : ''}`));
+      if (!genotypeKnown(f)) rows.push(line('Hidden traits are revealed once this fish has offspring.'));
+    }
+    rows.push(sec('Care'));
+    rows.push(h('div', { class: 'fish-desc tip' }, sp.careTip));
+    rows.push(line(`Needs ${sp.temperature.min}-${sp.temperature.max}°C, pH ${sp.ph.min}-${sp.ph.max}, ${sp.minTankLitres}L+, groups of ${sp.minGroupSize}+.`));
+    rows.push(line(`Tanks: ${f.tankHistory.join(' > ')}`));
     if (!f.alive) rows.push(h('div', { class: 'fish-issues' }, `Died: ${f.deathCause}`));
   }
   return h('div', { class: 'fish-card' }, ...rows);

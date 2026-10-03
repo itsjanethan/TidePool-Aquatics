@@ -129,6 +129,8 @@ export interface TankState {
   sizeId: string;
   litres: number;
   lengthCm: number;
+  /** Absent means freshwater (all tanks until marine arrives). */
+  waterType?: 'freshwater' | 'brackish' | 'marine';
   water: WaterState;
   filterId: string;
   filterCondition: number; // 0..1

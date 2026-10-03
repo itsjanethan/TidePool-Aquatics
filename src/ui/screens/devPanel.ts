@@ -7,7 +7,12 @@ import { DEV_ALLOWED } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
 import { SPECIES } from '../../data/species';
 import { spawnCustomer } from '../../sim/customers';
-import { createFish, fishInTank } from '../../sim/fish';
+import { createFish, fishInTank, isMature } from '../../sim/fish';
+import { birthFry } from '../../sim/breeding';
+import { morphFromGenes } from '../../sim/genetics';
+import { GENETICS } from '../../data/genetics';
+import { getSpecies } from '../../data/species';
+import type { FishEntity } from '../../sim/types';
 import { OBJECTIVES } from '../../sim/progression';
 import { REP_DIMENSIONS } from '../../sim/reputation';
 import type { CustomerGoal } from '../../sim/types';
@@ -42,7 +47,16 @@ export function toggleDevPanel(c: GameController): void {
       scr.refresh(items());
     },
   });
-  const todo = (label: string): MenuItem => ({ label: `${label} (Milestone 2)`, disabled: true });
+  /** First mature female/male of the chosen species in the target tank, or any pair in the tank. */
+  const pair = (): [FishEntity, FishEntity] | null => {
+    const all = fishInTank(s, tank().id).filter((f) => isMature(f));
+    const sid = SPECIES[speciesIdx].id;
+    const bySp = (id: string) => [all.find((f) => f.speciesId === id && f.sex === 'female'), all.find((f) => f.speciesId === id && f.sex === 'male')] as const;
+    let [m, d] = bySp(sid);
+    if (!m || !d) for (const f of all) { [m, d] = bySp(f.speciesId); if (m && d) break; }
+    return m && d ? [m, d] : null;
+  };
+  const noPair = () => c.ui.toast('[dev] Need a mature male and female in the target tank.', 'warn');
   const items = (): MenuItem[] => [
     { label: 'Money', header: true },
     act('+£100', () => (s.money += 100)),
@@ -76,7 +90,30 @@ export function toggleDevPanel(c: GameController): void {
       const f = fishInTank(s, tank().id)[0];
       if (f) void c.ui.say('Genetics', JSON.stringify({ id: f.id, species: f.speciesId, morph: f.morphId, sex: f.sex, genes: f.genes, gen: f.generation, parents: f.parents }, null, 0));
     }),
-    todo('Force pregnancy'), todo('Force spawning'), todo('Create fry'), todo('Trigger mutation'),
+    act('Force pregnancy / spawn (due in 1 hour)', () => {
+      const p = pair();
+      if (!p) return noPair();
+      const [mum, dad] = p;
+      const sp = getSpecies(mum.speciesId);
+      const n = Math.round((sp.breeding.clutch[0] + sp.breeding.clutch[1]) / 2);
+      if (sp.breeding.method === 'livebearer') mum.pregnancy = { daysRemaining: 1 / 24, fryCount: n, fatherId: dad.id };
+      else (tank().broods ??= []).push({ id: `bdev${Date.now()}`, speciesId: sp.id, motherId: mum.id, fatherId: dad.id, count: n, daysLeft: 1 / 24, laidDay: Math.floor(s.minute / 1440) + 1 });
+    }, 'Uses the chosen species if a pair is present, otherwise any pair in the tank.'),
+    act('Create 6 fry now', () => {
+      const p = pair();
+      if (!p) return noPair();
+      birthFry(s, c.sim!.rng, p[0], p[1], tank(), 6);
+    }),
+    act('Make tank fish breeding-ready', () => { for (const f of fishInTank(s, tank().id)) { f.breedingReadiness = 1; f.health = 100; f.stress = 0; f.hunger = 10; } }),
+    act('Trigger mutation (first fish)', () => {
+      const f = fishInTank(s, tank().id).find((x) => GENETICS[x.speciesId]);
+      if (!f) return;
+      const g = GENETICS[f.speciesId];
+      const locus = c.sim!.rng.pick(g.loci);
+      const allele = c.sim!.rng.pick(locus.alleles).id;
+      f.genes.loci[locus.id] = [allele, allele];
+      f.morphId = morphFromGenes(f.speciesId, f.genes.loci) ?? f.morphId;
+    }, 'Sets one locus of the first fish to a random homozygous allele.'),
     { label: 'Customers', header: true },
     { label: `Goal: ${GOALS[goalIdx]}`, onLeft: () => { goalIdx = (goalIdx - 1 + GOALS.length) % GOALS.length; scr.refresh(items()); }, onRight: () => { goalIdx = (goalIdx + 1) % GOALS.length; scr.refresh(items()); } },
     act('Spawn customer with goal', () => spawnCustomer(s, c.sim!.customerCtx, { goal: GOALS[goalIdx] })),

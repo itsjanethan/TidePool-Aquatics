@@ -12,6 +12,8 @@ export class Hud {
   private right: HTMLElement;
   private goal: HTMLElement;
   private prompt: HTMLElement;
+  private saved: HTMLElement;
+  private savedTimer: ReturnType<typeof setTimeout> | null = null;
   private last = '';
   private promptText: string | null = null;
 
@@ -20,7 +22,8 @@ export class Hud {
     this.right = h('div', { class: 'hud-box hud-right' });
     this.goal = h('div', { class: 'hud-goal' });
     this.prompt = h('div', { class: 'hud-prompt' });
-    this.el = h('div', { class: 'hud' }, this.left, this.right, this.goal, this.prompt);
+    this.saved = h('div', { class: 'hud-saved' });
+    this.el = h('div', { class: 'hud' }, this.left, this.right, this.goal, this.prompt, this.saved);
     c.ui.hudLayer.appendChild(this.el);
     this.show(false);
   }
@@ -34,6 +37,14 @@ export class Hud {
     this.promptText = text;
     this.prompt.textContent = text ?? '';
     this.prompt.style.display = text ? '' : 'none';
+  }
+
+  /** Small, unobtrusive save indicator under the money box. */
+  flashSaved(text: string): void {
+    this.saved.textContent = text;
+    this.saved.classList.add('on');
+    if (this.savedTimer) clearTimeout(this.savedTimer);
+    this.savedTimer = setTimeout(() => this.saved.classList.remove('on'), 4000);
   }
 
   setGoalVisible(on: boolean): void {
