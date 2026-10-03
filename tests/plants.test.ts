@@ -91,6 +91,7 @@ describe('plants', () => {
     const s = newGame({ seed: 8 });
     const sim = new Simulation(s);
     const before = fishInTank(s, 'C2').length;
+    for (const st of s.suppliers.riverside.stock) st.available = 50;
     const r = placeOrder(s, 'riverside', [
       { speciesId: 'guppy', quantity: 3, tankId: 'C2' },
       { speciesId: 'platy', quantity: 2, tankId: 'A5' },

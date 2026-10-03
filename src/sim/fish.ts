@@ -6,7 +6,8 @@ import { clamp, clamp01, smooth } from '../core/math';
 import type { Rng } from '../core/rng';
 import { getSpecies } from '../data/species';
 import type { ColourMorph, SpeciesDef } from '../data/speciesTypes';
-import type { FishEntity, FishOrigin, GameState, Sex, TankState } from './types';
+import type { FishEntity, FishGenes, FishOrigin, GameState, Sex, TankState } from './types';
+import { genotypeForMorph, morphFromGenes } from './genetics';
 
 export interface CreateFishOptions {
   speciesId: string;
@@ -23,6 +24,9 @@ export interface CreateFishOptions {
   generation?: number;
   motherId?: string | null;
   fatherId?: string | null;
+  /** Inherited genes (fry). When omitted, a genotype matching the morph is generated. */
+  genes?: FishGenes;
+  strainId?: string | null;
 }
 
 export function newId(state: GameState, prefix: string): string {
@@ -40,15 +44,18 @@ export function getMorph(species: SpeciesDef, morphId: string): ColourMorph {
 
 export function createFish(state: GameState, rng: Rng, opts: CreateFishOptions): FishEntity {
   const sp = getSpecies(opts.speciesId);
-  const morph = opts.morphId ? getMorph(sp, opts.morphId) : pickMorph(sp, rng);
+  let morph = opts.morphId ? getMorph(sp, opts.morphId) : pickMorph(sp, rng);
+  const loci = opts.genes?.loci ?? genotypeForMorph(sp.id, morph.id, rng);
+  const geneMorph = morphFromGenes(sp.id, loci);
+  if (geneMorph) morph = getMorph(sp, geneMorph);
   const sex: Sex = opts.sex ?? (rng.chance(0.5) ? 'male' : 'female');
-  const sizeGene = clamp(1 + rng.gaussian() * 0.05, 0.85, 1.15);
+  const sizeGene = opts.genes?.size ?? clamp(1 + rng.gaussian() * 0.05, 0.85, 1.15);
   const adult = sp.adultSizeCm * sizeGene * (sex === 'female' ? sp.femaleSizeMultiplier : 1) /
     // Normalise so the species' listed adult size is the average across sexes.
     ((1 + sp.femaleSizeMultiplier) / 2);
   const ageDays = opts.ageDays ?? sp.maturityDays * rng.range(0.6, 1.2);
   const frac = opts.sizeFraction ?? clamp(0.35 + (ageDays / sp.maturityDays) * 0.45, 0.2, 0.95);
-  const qualityGene = clamp01(opts.quality ?? rng.range(0.35, 0.7));
+  const qualityGene = clamp01(opts.genes?.quality ?? opts.quality ?? rng.range(0.35, 0.7));
   const day = Math.floor(state.minute / 1440) + 1;
   const fish: FishEntity = {
     id: newId(state, 'f'),
@@ -62,11 +69,11 @@ export function createFish(state: GameState, rng: Rng, opts: CreateFishOptions):
     hunger: rng.range(20, 45),
     stress: 20,
     shock: 0,
-    genes: { loci: {}, quality: qualityGene, size: sizeGene },
+    genes: { loci, quality: qualityGene, size: sizeGene },
     quality: qualityGene,
     temperament: clamp(rng.gaussian() * 0.4, -1, 1),
     disease: null,
-    breedingReadiness: 0,
+    breedingReadiness: ageDays >= sp.maturityDays && opts.origin !== 'bred' ? rng.range(0, 0.6) : 0,
     pregnancy: null,
     generation: opts.generation ?? 0,
     parents: { motherId: opts.motherId ?? null, fatherId: opts.fatherId ?? null },
@@ -82,7 +89,7 @@ export function createFish(state: GameState, rng: Rng, opts: CreateFishOptions):
     deathCause: null,
     reservedBy: null,
     name: null,
-    strainName: null,
+    strainName: opts.strainId ?? null,
   };
   state.fish[fish.id] = fish;
   return fish;
@@ -114,6 +121,7 @@ export function eat(f: FishEntity, available: number): number {
 /** Sizes for UI: juvenile / young adult / adult / large. */
 export function sizeLabel(f: FishEntity): string {
   const r = f.sizeCm / f.adultSizeCm;
+  if (r < 0.3) return 'Fry';
   if (r < 0.45) return 'Juvenile';
   if (r < 0.75) return 'Young';
   if (r < 0.97) return 'Adult';
@@ -132,7 +140,11 @@ export function fishValue(f: FishEntity): number {
   const sizeFactor = 0.45 + 0.6 * r;
   const qualityFactor = 0.7 + f.quality * 0.7;
   const healthFactor = f.health > 70 ? 1 : 0.5 + (f.health / 70) * 0.5;
-  return sp.retailPrice * morph.priceMultiplier * sizeFactor * qualityFactor * healthFactor;
+  // Shop-bred fish are acclimatised and healthier; named strains carry a premium
+  // that grows with the line's generations (capped so values cannot run away).
+  const bredFactor = f.origin === 'bred' ? 1.1 : 1;
+  const strainFactor = f.strainName ? 1 + Math.min(0.4, 0.08 * f.generation) : 1;
+  return sp.retailPrice * morph.priceMultiplier * sizeFactor * qualityFactor * healthFactor * bredFactor * strainFactor;
 }
 
 export function displayName(f: FishEntity): string {
@@ -241,9 +253,9 @@ export function tickFish(f: FishEntity, env: FishEnv, tank: TankState, dtHours: 
 
   // Breeding readiness (consumed by Milestone 2 BreedingSystem).
   if (isMature(f) && f.health > 70 && f.hunger < 60 && f.stress < 50) {
-    f.breedingReadiness = clamp01(f.breedingReadiness + 0.15 * dtDays);
+    f.breedingReadiness = clamp01(f.breedingReadiness + 0.25 * dtDays);
   } else {
-    f.breedingReadiness = clamp01(f.breedingReadiness - 0.3 * dtDays);
+    f.breedingReadiness = clamp01(f.breedingReadiness - 0.2 * dtDays);
   }
 
   // Quality tracks genes with a condition component.

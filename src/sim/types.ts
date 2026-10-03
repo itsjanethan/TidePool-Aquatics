@@ -5,6 +5,28 @@
  */
 
 export type Sex = 'male' | 'female' | 'unknown';
+
+/** A named breeding line created by the player. */
+export interface Strain {
+  id: string;
+  name: string;
+  speciesId: string;
+  morphId: string;
+  foundedDay: number;
+  bestGeneration: number;
+}
+
+/** Eggs (or a guarded spawn) developing in a tank. */
+export interface Brood {
+  id: string;
+  speciesId: string;
+  motherId: string;
+  fatherId: string;
+  count: number;
+  /** In-game days until hatching. */
+  daysLeft: number;
+  laidDay: number;
+}
 export type FishOrigin = 'starter' | 'supplier' | 'bred' | 'dev';
 
 export interface FishGenes {
@@ -37,7 +59,7 @@ export interface FishEntity {
   temperament: number; // -1 timid .. 1 bold
   disease: string | null;
   breedingReadiness: number; // 0..1
-  pregnancy: { daysRemaining: number; fryCount: number } | null;
+  pregnancy: { daysRemaining: number; fryCount: number; fatherId?: string } | null;
   generation: number;
   parents: { motherId: string | null; fatherId: string | null };
   origin: FishOrigin;
@@ -131,6 +153,10 @@ export interface TankState {
   /** Substrates and backgrounds bought for this tank (switching back is free). */
   ownedSubstrates: string[];
   ownedBackgrounds: string[];
+  /** Egg clutches developing in this tank. */
+  broods?: Brood[];
+  /** False for breeding, grow-out or display tanks customers may not buy from. */
+  forSale?: boolean;
 }
 
 export type CustomerGoal = 'browse' | 'buy_specific' | 'advice_stocking' | 'problem';
@@ -283,6 +309,10 @@ export interface GameState {
   prices: Record<string, number>;
   fish: Record<string, FishEntity>;
   storage: ShopStorage;
+  /** Player-named breeding lines. */
+  strains?: Record<string, Strain>;
+  /** Demand per species (1 = normal); selling many lowers it, it recovers daily. */
+  demand?: Record<string, number>;
   tanks: Record<string, TankState>;
   tankOrder: string[];
   customers: CustomerState[];
@@ -305,6 +335,7 @@ export interface GameState {
     adviceGiven: number;
     goodAdvice: number;
     plantsSold?: number;
+    fryEaten?: number;
   };
   settings: { speed: number; tutorialSeen: boolean };
   flags: { devUsed: boolean; tutorialStep: number };

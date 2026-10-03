@@ -42,7 +42,7 @@ describe('water system', () => {
       expect(s.tanks[id].water.ammonia, id).toBeLessThan(0.25);
       expect(s.tanks[id].water.nitrite, id).toBeLessThan(0.25);
     }
-    const alive = Object.values(s.fish).filter((f) => f.alive).length;
+    const alive = Object.values(s.fish).filter((f) => f.alive && f.origin === 'starter').length;
     expect(alive).toBe(65);
   });
 

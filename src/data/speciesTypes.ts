@@ -107,7 +107,23 @@ export interface SpeciesDef {
   /** Relative ammonia production per cm of fish. 1 = typical. */
   wasteFactor: number;
   plantSafe: boolean;
-  breeding: { method: BreedingMethod; difficulty: number; notes: string };
+  breeding: {
+    method: BreedingMethod;
+    difficulty: number;
+    notes: string;
+    /** Young per brood (livebearer fry or eggs laid). */
+    clutch: [number, number];
+    /** Gestation (livebearers) or egg incubation, in in-game days. */
+    incubationDays: number;
+    /** 0..1 how much adults eat eggs and fry. */
+    eggPredation: number;
+    /** 0..1 survival bonus from guarding parents. */
+    parentalCare: number;
+    /** Extra condition that triggers spawning. */
+    trigger?: 'water_change' | 'spring';
+    /** Habitat needs: 'soft_water', 'cave', 'plants'. */
+    needs?: string[];
+  };
   /** Free-form tags used by compatibility rules (see compat.ts). */
   tags: string[];
   /** 0 hardy .. 1 delicate. Scales damage from bad water. */

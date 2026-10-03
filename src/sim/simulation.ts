@@ -14,6 +14,8 @@ import { checkObjectives, type ObjectiveDef } from './progression';
 import { dailyReputationUpdate } from './reputation';
 import { maybeRefreshSuppliers, processDeliveries } from './supplier';
 import { tickTank } from './tank';
+import { tickBreeding } from './breeding';
+import { recoverDemand } from './economy';
 import { ambientTemperature, CLOSE_HOUR, dayOf, hourOf, MINUTES_PER_DAY, OPEN_HOUR } from './time';
 import type { GameState, LedgerDay, LogEntry, RepDimension } from './types';
 
@@ -124,6 +126,7 @@ export class Simulation {
           this.log(`A ${displayName(f)} died in ${tank.name} (${cause}).`, 'bad');
         },
       });
+      tickBreeding(s, t, dtHours, this.rng, { log: (text, kind) => this.log(text, kind) });
     }
   }
 
@@ -133,8 +136,9 @@ export class Simulation {
     spend(s, costs.rent, 'Rent', true);
     spend(s, costs.electricity, 'Electricity', true);
     const repDeltas = dailyReputationUpdate(s);
+    recoverDemand(s);
     const finished = s.today;
-    s.ledger.push(finished);
+    s.ledger.push({ ...finished, notes: finished.notes.slice(-12) });
     if (s.ledger.length > 60) s.ledger.shift();
     s.today = emptyLedger(dayOf(s.minute));
     this.pendingReport = { ledger: finished, rent: costs.rent, electricity: costs.electricity, repDeltas, deliveries: [] };

@@ -5,7 +5,7 @@ import { round } from '../core/math';
 import { AIR_PUMP, getFilter, getHeater } from '../data/catalog';
 import type { GameState, LedgerDay } from './types';
 
-export const DAILY_RENT = 30;
+export const DAILY_RENT = 25;
 export const ELECTRICITY_PER_UNIT = 1; // £ per power unit per day
 export const TANK_BASE_POWER = 0.35; // light + misc per tank
 
@@ -47,6 +47,25 @@ export function dailyRunningCosts(state: GameState): { rent: number; electricity
   }
   const electricity = round(power * ELECTRICITY_PER_UNIT, 2);
   return { rent: DAILY_RENT, electricity, total: round(DAILY_RENT + electricity, 2) };
+}
+
+/** Demand for a species (1 = normal). Selling lots of one species saturates it. */
+export function demandFor(state: GameState, speciesId: string): number {
+  return state.demand?.[speciesId] ?? 1;
+}
+
+export function noteSold(state: GameState, speciesId: string, count: number): void {
+  const d = (state.demand ??= {});
+  d[speciesId] = Math.max(0.5, (d[speciesId] ?? 1) - 0.006 * count);
+}
+
+/** Daily: demand drifts back toward normal. */
+export function recoverDemand(state: GameState): void {
+  for (const k of Object.keys(state.demand ?? {})) {
+    const v = state.demand![k];
+    state.demand![k] = Math.min(1, v + (1 - v) * 0.2 + 0.01);
+    if (state.demand![k] >= 0.999) delete state.demand![k];
+  }
 }
 
 /** Player-set price for a species, falling back to suggested retail. */

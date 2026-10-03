@@ -12,7 +12,7 @@ import { getSpecies, SPECIES } from '../data/species';
 import type { FloorLayout } from '../data/shopLayout';
 import { summarizeAquascape } from './aquascape';
 import { assessSpeciesForSetup } from './compat';
-import { earn, priceFor } from './economy';
+import { demandFor, earn, noteSold, priceFor } from './economy';
 import { fishInTank, fishValue, getMorph, newId } from './fish';
 import { findPath, type Pt } from './pathfinding';
 import { nudgeRep, overallReputation } from './reputation';
@@ -21,6 +21,7 @@ import type { CustomerGoal, CustomerProfile, CustomerState, FishEntity, GameStat
 
 export const WALK_TILES_PER_MINUTE = 1.0;
 export const MAX_CUSTOMERS = 7;
+export const MAX_PROFILES = 80;
 
 export interface CustomerContext {
   layout: FloorLayout;
@@ -94,10 +95,15 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
     };
     state.profiles[profile.id] = profile;
     // Keep the profile list bounded.
+    // Keep the profile list bounded: forget the least attached customers first.
     const ids = Object.keys(state.profiles);
-    if (ids.length > 80) {
-      const worst = ids.map((id) => state.profiles[id]).sort((a, b) => a.loyalty + a.visits * 5 - (b.loyalty + b.visits * 5))[0];
-      if (worst && worst.id !== profile.id) delete state.profiles[worst.id];
+    if (ids.length > MAX_PROFILES) {
+      const inShop = new Set(state.customers.map((c) => c.profileId));
+      const removable = ids
+        .map((id) => state.profiles[id])
+        .filter((p) => p.id !== profile!.id && !inShop.has(p.id) && !p.grievance)
+        .sort((x, y) => x.loyalty + x.visits * 5 - (y.loyalty + y.visits * 5));
+      for (const p of removable.slice(0, ids.length - MAX_PROFILES)) delete state.profiles[p.id];
     }
   }
 
@@ -178,7 +184,7 @@ function planAfterEntering(state: GameState, ctx: CustomerContext, c: CustomerSt
     c.phase = c.browseQueue.length ? 'browsing' : 'seeking_help';
   } else if (c.goal === 'buy_specific') {
     const sid = c.goalData.speciesId!;
-    const withSpecies = state.tankOrder.filter((id) => fishInTank(state, id).some((f) => f.speciesId === sid));
+    const withSpecies = state.tankOrder.filter((id) => tankForSale(state, id) && fishInTank(state, id).some((f) => f.speciesId === sid));
     c.browseQueue = withSpecies.length ? withSpecies.slice(0, 2) : [rng.pick(state.tankOrder)];
     c.phase = 'browsing';
   } else {
@@ -377,7 +383,7 @@ function evaluateTank(state: GameState, ctx: CustomerContext, c: CustomerState, 
 
   const spent = c.basket.reduce((s, l) => s + l.unitPrice * l.fishIds.length, 0);
   let budgetLeft = c.traits.budget - spent;
-  const candidates = alive.filter((f) => !f.reservedBy && f.health > 55 && f.sizeCm / f.adultSizeCm > 0.3);
+  const candidates = tankForSale(state, tankId) ? alive.filter((f) => sellable(f)) : [];
   const bySpecies = new Map<string, FishEntity[]>();
   for (const f of candidates) {
     if (!bySpecies.has(f.speciesId)) bySpecies.set(f.speciesId, []);
@@ -439,7 +445,8 @@ function evaluateTank(state: GameState, ctx: CustomerContext, c: CustomerState, 
       return avgMorph * fav * (0.7 + scape.beauty / 150);
     };
     const best = options.sort((a, b) => appeal(b) - appeal(a))[0];
-    const chance = clamp(0.25 + appeal(best) * 0.25 + c.satisfaction / 300 - (c.basket.length ? 0.35 : 0), 0.05, 0.9);
+    // Demand: when the town is flooded with one species, fewer people want more.
+    const chance = clamp((0.25 + appeal(best) * 0.25 + c.satisfaction / 300 - (c.basket.length ? 0.35 : 0)) * demandFor(state, best), 0.05, 0.9);
     if (rng.chance(chance)) {
       const sp = getSpecies(best);
       const qty = sp.social === 'solitary' ? 1 : sp.social === 'shoal' ? rng.int(3, 6) : rng.int(1, 3);
@@ -698,6 +705,7 @@ export function completeSale(state: GameState, ctx: CustomerContext, c: Customer
       const f = state.fish[id];
       if (!f || !f.alive) continue;
       fishCount++;
+      noteSold(state, f.speciesId, 1);
       // Sold fish leave the simulation. Ancestors with descendants are kept for lineage.
       if (f.offspringCount > 0) {
         f.tankId = null;
@@ -760,11 +768,21 @@ export interface AdviceResult {
 }
 
 /** Species with sellable stock right now. */
+/** Customers may only buy from tanks marked for sale (the default). */
+export function tankForSale(state: GameState, tankId: string): boolean {
+  return state.tanks[tankId]?.forSale !== false;
+}
+
+/** A fish customers could take home: healthy, not fry, not already reserved. */
+export function sellable(f: FishEntity): boolean {
+  return f.alive && !f.reservedBy && f.health > 55 && f.sizeCm / f.adultSizeCm > 0.3;
+}
+
 export function inStockSpecies(state: GameState): string[] {
   const set = new Set<string>();
   for (const id in state.fish) {
     const f = state.fish[id];
-    if (f.alive && f.tankId && !f.reservedBy && f.health > 55 && f.sizeCm / f.adultSizeCm > 0.3) set.add(f.speciesId);
+    if (f.tankId && tankForSale(state, f.tankId) && sellable(f)) set.add(f.speciesId);
   }
   return SPECIES.map((s) => s.id).filter((id) => set.has(id));
 }
@@ -772,7 +790,7 @@ export function inStockSpecies(state: GameState): string[] {
 function reserveForAdvice(state: GameState, c: CustomerState, speciesId: string): number {
   const sp = getSpecies(speciesId);
   const pool = Object.values(state.fish)
-    .filter((f) => f.alive && f.tankId && !f.reservedBy && f.speciesId === speciesId && f.health > 55 && f.sizeCm / f.adultSizeCm > 0.3)
+    .filter((f) => f.tankId && tankForSale(state, f.tankId) && f.speciesId === speciesId && sellable(f))
     .sort((a, b) => b.health - a.health);
   let want = sp.social === 'solitary' ? 1 : sp.social === 'pairs' ? 2 : Math.max(sp.minGroupSize, 2);
   if (c.traits.budget > 60) want += 2;
