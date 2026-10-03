@@ -93,7 +93,9 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `dev/*` | Developer-only code, compiled out of public builds: `devPanel.ts` (Developer Panel), `gallery.ts` (morph gallery), `sandbox.ts` (deterministic Developer Sandbox fixture and presets), `sandboxScreen.ts` (sandbox navigation and tools). Reach it only via `if (__DEV_TOOLS__) import(...)` |
 | `ui/screens/gallery.ts` (moved to `dev/gallery.ts`) | Developer morph gallery (`#gallery=<species>`): every morph and single-trait variant by sex and life stage, plus the swim/turn frame strip |
 | `audio/sfx.ts` | Synthesised WebAudio sound effects, per-browser mute |
-| `ui/touch.ts` | On-screen controls for coarse pointers |
+| `ui/touch.ts` | On-screen controls for coarse pointers: multi-touch, pointer capture, contextual A/B labels |
+| `input/runHint.ts` | "Hold B to run" prompt until the player first runs (per device, localStorage) |
+| `render/walkTiming.ts` | Player step and run times |
 | `game/GameController.ts` | Game loop timing, input routing, pause rules, saves, scene transitions |
 
 ## Floors, staff and Idle Mode
@@ -120,6 +122,8 @@ Scenes render in their own `update` by reading `controller.state`.
 ## Input routing
 
 `InputManager` turns keys and gamepad buttons into `Action`s. On each press the controller offers it to the top UI screen; if no screen consumes it, it goes to `controller.worldInput` (set by the active scene). Movement uses held state, polled by `ShopScene`. Text inputs swallow keys except Enter and Escape.
+
+Running: `ShopScene` asks `input.runHeld()` (the `run` action or a held `back`) only when it starts a step, and `render/walkTiming.ts` halves the step time. B is never consumed as "run": its press still goes to the top screen first, so in menus and the tank view it is Back, and in the store overworld `back` presses do nothing. `controller.walking` (in game, store has input, nothing blocking) drives the touch labels. `InputManager.clearAll()` runs on blur, pagehide and a hidden tab: it empties keyboard, touch and gamepad holds and emits `cleared`; gamepad buttons still physically down are re-adopted on the next poll without a fresh press. Touch controls (`ui/touch.ts`) track each finger by `pointerId` with pointer capture; the d-pad is one zone whose direction follows the finger; pointerup, pointercancel, lostpointercapture, a window-level pointerup and `cleared` all release.
 
 ## Resolution
 

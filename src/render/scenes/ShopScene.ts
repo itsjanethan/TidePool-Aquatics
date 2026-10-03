@@ -28,9 +28,9 @@ import { openPauseMenu } from '../../ui/screens/pause';
 import { openStockroom } from '../../ui/screens/office';
 import { feedTank } from '../../sim/tank';
 import { play } from '../../audio/sfx';
+import { noteRan, runHint } from '../../input/runHint';
+import { stepDuration } from '../walkTiming';
 
-const STEP_TIME = 0.17;
-const RUN_TIME = 0.1;
 const DV: Record<Dir, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
 interface CustomerView {
@@ -202,8 +202,9 @@ export class ShopScene extends Phaser.Scene {
           const nx = Math.round(s.player.x) + dx;
           const ny = Math.round(s.player.y) + dy;
           if (this.walkable(nx, ny)) {
-            const run = c.input.isHeld('run');
-            this.move = { fx: s.player.x, fy: s.player.y, tx: nx, ty: ny, t: 0, dur: run ? RUN_TIME : STEP_TIME };
+            const run = c.input.runHeld();
+            if (run) noteRan();
+            this.move = { fx: s.player.x, fy: s.player.y, tx: nx, ty: ny, t: 0, dur: stepDuration(run) };
           }
         }
       } else {
@@ -231,7 +232,7 @@ export class ShopScene extends Phaser.Scene {
     this.queueLabel.textContent = `${q} waiting`;
     if (till) setLabelPos(this.queueLabel, till.x * TILE + 8, till.y * TILE + 4);
 
-    if (canMove && !this.move) controller.hud.setPrompt(this.promptText());
+    if (canMove && !this.move) controller.hud.setPrompt(this.promptText() ?? runHint(c.input.lastDevice));
     else if (!canMove) controller.hud.setPrompt(null);
   }
 

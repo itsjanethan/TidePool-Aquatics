@@ -88,6 +88,12 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
 
+## 2026-10-03: Hold B to run
+
+- **B runs only while walking the store.** Holding B (on-screen, gamepad B, keyboard X) or the existing Shift / gamepad X doubles the player's pace: one tile per 0.085 s instead of 0.17 s. The press still reaches menus first, so B remains Back and Cancel everywhere else; in the overworld a `back` press had no meaning, so nothing is lost. Running changes only the player's step time, never the simulation clock, and movement stays one grid tile at a time (no diagonals).
+- **Held input never sticks.** Blur, pagehide and a hidden tab clear every held source. Touch uses pointer capture per finger so slight thumb drift does not drop a run, and every end path (up, cancel, lost capture, a lift elsewhere) releases.
+- **The hint lives in the prompt line.** "Hold B to run" ("Hold Shift or X to run" on a keyboard) appears when nothing is in front of the player, until they first run on that device. Stored in localStorage as a convenience, not in the save.
+
 ## 2026-10-03: Developer Sandbox and build separation
 
 - **Developer tools are a build-time switch.** `__DEV_TOOLS__` is `true` only in Vite `development` and `sandbox` modes. Everything developer-only lives in `src/dev/` and is reached only through `if (__DEV_TOOLS__)` dynamic imports, so the production build drops it. The old `?dev=1` / `#dev` URL flags and the unconditional `window.__tidepool` hook are gone. `scripts/verify-public-build.mjs` is part of `npm run check`.

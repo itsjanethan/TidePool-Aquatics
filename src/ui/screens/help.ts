@@ -23,7 +23,7 @@ export function helpBody(): HTMLElement {
   const sec = (title: string, ...items: string[]) => h('div', { class: 'help-sec' }, h('div', { class: 'section-title' }, title), ...items.map((i) => h('div', { class: 'small' }, `• ${i}`)));
   return h('div', { class: 'help' },
     sec('Controls',
-      'Move: arrow keys / WASD / d-pad / left stick. Hold Shift (gamepad X) to run.',
+      'Move: arrow keys / WASD / d-pad / left stick. Hold B to run in the store (X or Shift on a keyboard, B or X on a gamepad, B on screen). In menus B is Back.',
       'Interact / confirm: Z, Enter, Space (gamepad A). Back: X, Backspace (gamepad B). Menu: Esc (Start).',
       'Facing a tank: F feeds it. T changes game speed. In a tank view: Q/E or Tab cycles fish, mouse clicks select.',
       'In menus with long details, Q / E scroll the details.',
