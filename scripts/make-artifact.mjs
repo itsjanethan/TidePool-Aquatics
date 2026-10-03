@@ -2,7 +2,8 @@
 // own <html>/<head>/<body> skeleton (e.g. claude.ai artifacts).
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 const src = readFileSync('dist-single/index.html', 'utf8');
-const title = (src.match(/<title>[\s\S]*?<\/title>/) ?? ['<title>Tidepool Aquatics</title>'])[0];
+// The hosted artifact's title was renamed to "TPA" by its owner; keep it (override with ARTIFACT_TITLE).
+const title = `<title>${process.env.ARTIFACT_TITLE ?? 'TPA'}</title>`;
 const fonts = [...src.matchAll(/<link[^>]+fonts\.googleapis\.com\/css2[^>]*>/g)].map((m) => m[0]).join('\n');
 const styles = [...src.slice(0, src.lastIndexOf('</head>')).matchAll(/<style[^>]*>[\s\S]*?<\/style>/g)].map((m) => m[0]).join('\n');
 const headPart = src.slice(0, src.lastIndexOf('</head>'));
