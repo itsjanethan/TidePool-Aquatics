@@ -54,7 +54,7 @@ Neglect is visible: algae and glass dirt overlays, cloudy water, dimmer overworl
 
 ## Fish
 
-Each fish is an entity with species, morph, sex, age, size, individual adult size, health, hunger, stress, transient shock, genes (quality and size now; allele loci reserved for genetics), temperament, breeding readiness, generation, parents, origin, purchase cost, tank history and more. See `SAVE_SCHEMA.md`.
+Each fish is an entity with species, morph, sex, age, size, individual adult size, health, hunger, stress, transient shock, genes (allele loci, quality and size), temperament, breeding readiness, generation, parents, origin, purchase cost, tank history and more. See `SAVE_SCHEMA.md`.
 
 - **Hunger** rises about 3 points per hour, faster in warm water. Above 70 growth stops; above 75 health drops.
 - **Growth** is logistic toward the individual's adult size, scaled by feeding, health, stress, temperature fit and tank size (undersized tanks stunt).
@@ -64,9 +64,34 @@ Each fish is an entity with species, morph, sex, age, size, individual adult siz
 
 Stocking: capacity is roughly 0.8 effective cm per litre, adjusted for filter rating. Shown as a percentage in the tank menu.
 
+The fish card uses progressive disclosure: name, sex, life stage, size, health, fullness, stress, quality stars and value first, with "Bothered by" when something is wrong; then About (age, look, origin, strain), Breeding (condition, pregnancy, method), Family (mother, father, offspring), Traits (visible genes; carried genes once known) and Care. Q / E scroll.
+
+## Breeding and genetics
+
+Breeding is driven by species data (`breeding.method`) and needs mature, healthy, unstressed, fed adults of both sexes whose `breedingReadiness` has built up over days of good conditions.
+
+- **Livebearers** (guppy, endler, platy, molly): a ready female becomes pregnant (gravid for about 7 to 10 days) and gives birth to free-swimming fry.
+- **Egg scatterers** (neon, danio, white cloud, goldfish): a pair spawns among plants; adults eat many eggs unless there is dense plant cover. Neons also need soft water; goldfish spawn in spring.
+- **Adhesive eggs** (bronze cory): spawning is triggered by a cool water change.
+- **Cave spawners** (bristlenose): need a cave; the male guards the eggs, so survival is high.
+
+Fry are full fish entities with both parents, inherited genes, generation and growth from birth size. Adults hunt small fry each hour; plant cover shields them. Moving fry to their own tank (grow-out) or switching a tank's "Customers can buy" to No (breeding tank) is how the player manages this. The Breeding screen in each tank menu says what is helping and what is stopping each species.
+
+Genetics: each species has a few Mendelian loci (colour, pattern, fins, albinism) with dominance; the visible look (morph) is derived from the genotype. Supplier fish show only their look. Hidden carried genes are revealed for shop-bred fish and for any fish once it has offspring. Quality and size are polygenic: offspring take the parents' mean with noise and mild regression toward average. Rare mutations (0.4% per allele) create surprises.
+
+Strains: a shop-bred F2 or later fish whose two parents are shop-bred and show the same look can found a named strain. Related fish join it, and fry of two strain parents that show the look stay in the line (e.g. "Jan's Red Delta F4"). Bred fish are worth 10% more; strains add 8% per generation, capped at 40%.
+
+## Plants
+
+Plants are living items: each has a size (growth), health and a species growth rate and maximum. They grow with light and nutrients (nitrate) and grow slower as they get big. Stages: Cutting, Small, Medium, Large, Mature, Overgrown (shades the tank). Larger plants give more cover and nitrate uptake.
+
+Propagation: take a small, medium or large cutting (bigger cuttings sell for more but set the parent back further; the parent never drops below a healthy minimum), or trim overgrowth. Cuttings go to the stockroom as potted plants. From there they can be replanted in any tank to grow on, offered to customers at the till (or picked up by browsers from the plant shelf), or sold in bulk to the trade buyer. Home-grown plants cost nothing, so they are pure margin compared with buying stock.
+
 ## Aquascaping
 
 Decor: plants (cover, nitrate uptake, fry cover), rocks, wood (pH, needed by plecos), caves (territories, cave spawners). Substrate and background add to the score.
+
+Every change can be previewed in the tank before confirming: substrate and background swap live, decor and plants show a ghost at the placement spot. Cancel restores the tank exactly. Owned substrates and backgrounds are free to switch back to and show "Owned"; removed decor goes to the stockroom ("Java Fern ×3") and can be placed again in any tank.
 
 The layout score rewards variety, a moderate fill level, horizontal spread, layering and item beauty. The shown score subtracts algae, glass dirt and cloudiness. Layout feeds the Aquascaping reputation; shown beauty affects customer reactions. Goldfish damage soft plants over time.
 
@@ -95,10 +120,18 @@ Seven dimensions: Livestock Quality, Fish Welfare, Customer Service, Cleanliness
 ## Economy
 
 - Start: £400, 600 food portions, a few dry goods.
-- Daily costs: rent £30 plus electricity per tank (filter, heater, air pump).
+- Daily costs: rent £25 plus electricity per tank (filter, heater, air pump).
 - Livestock from suppliers: Riverside Aquatic Wholesale (cheap, next day, variable quality) and Highfield Fish Farm (pricier, better quality, two days, smaller range, minimum order). Stock rotates weekly with occasional shortages.
 - Prices: the player sets a base price per species; each fish's price scales with its size, colour morph, quality and health. Customers judge price against typical retail and the shop's reputation.
 - Dry goods are bought in packs and sold as add-ons or after good advice.
+- Livestock orders are a cart: each line has its own quantity and destination tank. Before ordering, each line is checked (cycled, capacity including other lines to the same tank, temperature, pH, hardness, water type, compatibility, group size). Warnings inform but never block. Deliveries arrive at opening time.
+- Demand: selling many of one species saturates demand (browsers less likely to buy it) until it recovers over days.
+- Trade buyer: takes surplus fish (35% of value, fry less) and potted plants (50%) at any time.
+- Tanks marked "Customers can buy: No" are never sold from (breeding and grow-out tanks).
+
+## Saving
+
+Saving happens at the office PC (Save, Load, Export, Import, Settings, Statistics). The pause menu shows when the game was last saved and points to the PC. The game autosaves every morning at opening (09:00) after the overnight update; a small indicator under the money confirms it. Quitting warns how much progress would be lost.
 
 The balance test bot (tests/balance.test.ts) represents near-perfect play and should earn a moderate profit over three weeks without fish deaths. Real players will earn less.
 
@@ -121,4 +154,4 @@ Ten tanks on one floor:
 
 ## Planned systems (not yet built)
 
-Breeding (livebearers first, then egg scatterers and cave spawners), genetics with Mendelian loci and polygenic quality, lineage and strain naming, disease, staff, shop upgrades, events, more floors, marine and reef. See `ROADMAP.md`.
+Disease, events, more species (each adding a mechanic), breeding tools, plant depth (light, CO2), staff, shop upgrades, more floors, marine and reef. See `ROADMAP.md`.

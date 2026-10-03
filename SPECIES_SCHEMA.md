@@ -44,7 +44,7 @@ Defined in `src/data/speciesTypes.ts`; data in `src/data/species.ts`. Gameplay m
 | `diet` | omnivore, herbivore, carnivore | |
 | `wasteFactor` | number | Ammonia per cm². Goldfish ~2.2, neons ~0.8 |
 | `plantSafe` | boolean | False = damages soft plants |
-| `breeding` | `{method, difficulty, notes}` | Methods: livebearer, egg_scatterer, adhesive_eggs, cave_spawner, substrate_spawner, mouthbrooder, bubble_nest, pair_former |
+| `breeding` | `{method, difficulty, notes, clutch:[min,max], incubationDays, eggPredation 0..1, parentalCare 0..1, trigger?, needs?}` | Implemented methods: livebearer (pregnancy, live fry), egg_scatterer, adhesive_eggs, cave_spawner. Reserved: substrate_spawner, mouthbrooder, bubble_nest, pair_former. `trigger`: `water_change` (cool change), `spring`. `needs`: `plants`, `cave`, `soft_water`. `eggPredation` is how much adults eat eggs/fry; `parentalCare` raises hatch survival. |
 
 ## Economy
 
@@ -81,10 +81,15 @@ Patterns: none, neon, stripes, spots, mosaic, bars, tailspot, calico, speckle. `
 
 Grazers also reduce algae in the background simulation.
 
+## Genetics (optional, `src/data/genetics.ts`)
+
+`GENETICS[speciesId] = { loci: [{id, name, alleles: [{id, name, dom}]}], rules: [{when: {locusId: alleleId}, morph}] }`. Higher `dom` wins; equal ranks are co-dominant by list order. Rules are checked in order and the last rule is the fallback, so put rare combinations first. Every morph in the species should be reachable by some rule (a test checks this). Species without genetics keep randomly picked morphs.
+
 ## Checklist for a new species
 
 1. All ranges valid (`min < ideal < max`), `retailPrice > supplierCost`. The unit test enforces this.
 2. At least one morph with sensible colours; check it in the tank view (dev panel: spawn species).
 3. Tags for any special needs.
 4. Add to a supplier.
-5. Add a line to `GAME_DESIGN.md` if it introduces a new mechanic.
+5. Breeding data filled in (clutch, incubation, predation, care, needs); optional genetics entry.
+6. Add a line to `GAME_DESIGN.md` if it introduces a new mechanic.

@@ -19,6 +19,33 @@ npm run check       # all of the above, in order. Must pass before a task is don
 | `customers.test.ts` | Full buy flow (browse, reserve, queue, sale); good and bad advice; arrivals over a day |
 | `save.test.ts` | Round trip; rejects future and garbage saves; IndexedDB storage (fake-indexeddb); determinism after reload |
 | `balance.test.ts` | A near-perfect bot runs the shop for 21 days: must stay solvent, serve 100+ customers, keep fish alive and improve reputation |
+| `plants.test.ts` | Plant growth, cuttings, trimming, stockroom, replanting, plant sales to customers and trade, substrate ownership, multi-tank orders, v1 save migration |
+| `breeding.test.ts` | Genetics (dominance, recessive ratios, every morph reachable), livebearer births with parents, cave and plant needs, egg broods and cover, strains and value |
+| `order.test.ts` | Order warnings: uncycled tanks, temperature, projected stocking across lines, goldfish with tiny fish, clean orders have no warnings |
+| `menu.test.ts` | (happy-dom) Menu selection and wrapping, headers, disabled rows, refresh, resting mouse, nested screen stack, dialogue choices, capped key repeat, typing in text boxes |
+| `longrun.test.ts` | 30, 100 and 365 day bot runs with breeding tanks; invariants checked every day (see below) |
+
+### Long-run simulation
+
+`tests/helpers/bot.ts` plays the shop: feeds, maintains, serves, restocks from suppliers, takes cuttings, keeps three tanks (A1 guppies, A5, B1) as breeding tanks (not for sale) and sells surplus to the trade buyer. Every simulated day the test checks: no negative money spiral, no NaN anywhere in water or fish, no negative stock or storage counts, no duplicate or colliding ids, every live fish in an existing tank, tank populations under the cap, pregnancies and broods referring to existing parents, order queue bounded, fry with valid parents.
+
+Run with output: `npx vitest run tests/longrun.test.ts --silent=false`.
+
+Results on 2026-10-03 (seeded, v0.2.0):
+
+| Run | Money (start £400) | Revenue | Customers | Fish bred | Fry eaten | Deaths | Fish records | Save size | Runtime |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 30 days | £1,060 | £2,135 | 204 | 50 | 11 | 0 | 90 | 111 KB | 1.8 s |
+| 100 days | £1,379 | £5,913 | 552 | 69 | 16 | 15 | 90 | 121 KB | 4.9 s |
+| 365 days | £5,037 | £24,472 | 2,234 | 153 | 36 | 56 | 175 | 186 KB | 20.6 s |
+
+Balance notes:
+
+- Money grows steadily but slowly (roughly £10 to £15 a day for the bot once established). Income is supply limited: the bot only stocks what suppliers carry, and demand saturation keeps one species from carrying the shop. Human playtests should judge whether mid-game feels too slow; levers are rent (`DAILY_RENT`), demand recovery (`recoverDemand`) and customer rate (`perHour` in `customers.ts`).
+- Breeding income is real but not dominant (about 150 bred fish a year from three tanks). Strain bonuses are capped and quality regresses toward the mean, so there is no infinite-money loop; the trade buyer pays 35% of shop value.
+- Populations stay bounded (largest tank 23 to 24 fish; cap 70). Save size grows slowly (fish records of sold fish are deleted unless they are parents).
+- Maintenance load: the bot does about 2 to 3 chores per tank per week to keep water clean, which matches the intended routine.
+- Earlier issue fixed: customer profiles grew without limit (446 after a year, 1 MB saves). Now capped at 80.
 
 Simulation code is pure, so prefer adding tests at the `sim/` level. If you change balance numbers, run `npx vitest run tests/balance.test.ts --silent=false` and read the printed summary.
 
@@ -41,7 +68,7 @@ Chromium lives at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` in the ag
 
 Available in `npm run dev` builds, or in production with `?dev=1` in the URL. Press backtick (or F9) in game. It never appears in normal play, and any use sets `flags.devUsed` in the save.
 
-Money (add, zero), time (hour, day, week, skip to opening), tank (target selector, instant cycle, ammonia spike, nitrate, pH, temperature, filth, algae bloom, filter and heater failure, clean all), fish (spawn any species, age, set health, feed or starve, inspect genetics), customers (spawn by goal, spawn many, patience), progression (reputation, complete goals, unlock flags). Breeding controls are listed but disabled until Milestone 2.
+Money (add, zero), time (hour, day, week, skip to opening), tank (target selector, instant cycle, ammonia spike, nitrate, pH, temperature, filth, algae bloom, filter and heater failure, clean all), fish (spawn any species, age, set health, feed or starve, inspect genetics), customers (spawn by goal, spawn many, patience), progression (reputation, complete goals, unlock flags). Breeding: force pregnancy or spawn (due in one hour), create 6 fry, make tank fish breeding-ready, trigger a mutation. Uses the chosen species when a pair is present.
 
 ## Manual verification checklist (vertical slice)
 
@@ -57,7 +84,10 @@ Run through this after any change touching gameplay flow:
 8. Serve at the till from behind the counter: ring up, discount, add-on, haggling.
 9. Office PC: order livestock (arrives next opening), stockroom purchases, accounts, reputation, goals.
 10. End the day: daily report, autosave, deliveries.
-11. Save to a slot, reload the page, Continue restores the game.
+11. Office PC: Save game shows "Game saved." and the HUD indicator; reload the page, Continue restores the game. Load, Export and Import work from the PC.
+13. Tank menu > Breeding explains conditions; Livestock > fish shows family and traits (Q / E scroll); Name a strain is offered only for F2+ shop-bred lines.
+14. Aquascape: substrate/background previews restore on Cancel; plants show growth stages; cuttings appear in the stockroom.
+15. Order livestock to two tanks in one order; warnings show for an uncycled or full tank and the order can still be placed.
 12. Production build (`npm run build && npx vite preview`) behaves the same.
 
 ## Definition of done

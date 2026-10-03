@@ -14,7 +14,7 @@ npm run build        # static site in dist/
 npm run build:single # one self-contained HTML file in dist-single/
 ```
 
-Open the production build with `?dev=1` to enable the developer panel.
+Open the production build with `?dev=1` (or `#dev`) to enable the developer panel. `npm run build:artifact` makes the hosted single-file version.
 
 ## For AI agents and contributors
 
@@ -41,3 +41,6 @@ This repository is developed mostly by AI coding agents. Before any task:
 ## Controls
 
 Move: arrow keys or WASD (gamepad d-pad or stick). Interact: Z, Enter or Space (A). Back: X or Backspace (B). Menu: Esc (Start). Facing a tank, F feeds it. T cycles game speed. Mouse works in menus and for selecting fish.
+Q / E scroll long details (and cycle fish in the tank view).
+
+Saving: walk to the office PC (top right) to save, load, export or import. The game also autosaves every morning at opening.

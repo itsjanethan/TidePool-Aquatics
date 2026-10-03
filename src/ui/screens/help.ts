@@ -9,6 +9,7 @@ export function showIntro(c: GameController): void {
     'Walk with the arrow keys or WASD. Press Z, Enter or Space to interact, X to go back, and Esc for the menu.',
     'Feed your fish, keep the water clean, and serve customers at the till. Customers with a "?" want your advice.',
     'Tank C2 is brand new and has not cycled yet. Do not rush fish into it!',
+    'Save at the office PC in the top right. The shop also autosaves every morning when it opens.',
     'Check the goal in the bottom corner if you are not sure what to do next. Good luck!',
   ];
   let chain = Promise.resolve();
@@ -22,6 +23,7 @@ export function helpBody(): HTMLElement {
       'Move: arrow keys / WASD / d-pad / left stick. Hold Shift (gamepad X) to run.',
       'Interact / confirm: Z, Enter, Space (gamepad A). Back: X, Backspace (gamepad B). Menu: Esc (Start).',
       'Facing a tank: F feeds it. T changes game speed. In a tank view: Q/E or Tab cycles fish, mouse clicks select.',
+      'In menus with long details, Q / E scroll the details.',
     ),
     sec('Fishkeeping basics',
       'New tanks must cycle: bacteria grow to turn toxic ammonia into nitrite, then into safer nitrate. This takes days.',
@@ -35,6 +37,18 @@ export function helpBody(): HTMLElement {
       'Good advice builds your Expert Advice reputation. Selling unsuitable fish may come back to haunt you.',
       'Order livestock and supplies from the office PC. Deliveries arrive at opening time.',
       'Each night rent and electricity are charged. At closing time, end the day at the door or the PC.',
+      'Order to several tanks at once: each order line has its own tank. Warnings are advice only.',
+    ),
+    sec('Plants and breeding',
+      'Plants grow with light and nutrients. Take cuttings from a tank menu (Plants) to sell or replant.',
+      'Healthy, well-fed adult pairs breed. Each tank menu has a Breeding page that says what helps.',
+      'Adults eat small fry. Dense plants help; or move fry to their own tank.',
+      'Set "Customers can buy" to No on breeding and grow-out tanks.',
+      'Shop-bred lines can be named as strains from the F2 generation. Strains are worth more.',
+    ),
+    sec('Saving',
+      'Save, load, export and import at the office PC (top right).',
+      'The game autosaves every morning when the shop opens.',
     ),
   );
 }
