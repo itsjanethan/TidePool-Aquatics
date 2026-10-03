@@ -88,6 +88,16 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
 
+## 2026-10-03: Mobile layout
+
+- **The game fills the screen; cameras decide what to show.** The fixed 3:2 stage scaled to fit made phones show a small strip of game with tiny text. The canvas now fills the game rectangle and each scene fits its camera: the store follows the player up close, the tank view fits the tank, the title tank covers the screen. Resolution-independent UI was the bigger win than any single CSS tweak.
+- **UI size is separate from canvas size.** `--px` is now a UI unit with a floor (18 px body text, 16 px smallest) and a per-device text-size setting. Desktop at the original 960x640 keeps the old scale.
+- **Controls get their own space on phones.** Portrait: a band below the game. Landscape: columns either side. The game is never covered by the d-pad. Screens too small to reserve space fall back to translucent overlay controls. The tank view on touch devices is immersive because it already has its own buttons.
+- **Store camera closeness: 2.25 CSS px per world pixel target on touch, rounded to whole canvas pixels** (2.5 at DPR 2). About 10 tiles across in portrait. Map view shows the whole floor. Desktop at 960x640 is unchanged (whole floor).
+- **Tap to move is on by default for touch and pen, never for mouse**, uses the same walk grid and step logic as the d-pad, and is cancelled by any direction input. It is a per-device setting.
+- **Device settings live in localStorage, not the save.** Text size, font, camera and tap to move describe the screen, not the shop; they carry across saves and new games.
+- **Store detail is painted into the floor layer only** (queue markings, staff-only hatching, contact shadows, drains, notice board). The walk grid comes from tiles and props, so paths and saves are unaffected.
+
 ## 2026-10-03: Hold B to run
 
 - **B runs only while walking the store.** Holding B (on-screen, gamepad B, keyboard X) or the existing Shift / gamepad X doubles the player's pace: one tile per 0.085 s instead of 0.17 s. The press still reaches menus first, so B remains Back and Cancel everywhere else; in the overworld a `back` press had no meaning, so nothing is lost. Running changes only the player's step time, never the simulation clock, and movement stays one grid tile at a time (no diagonals).

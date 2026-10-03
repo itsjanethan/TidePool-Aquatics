@@ -13,6 +13,7 @@ import { copyPlaytestReport } from './playtest';
 import { isMuted, setMuted } from '../../audio/sfx';
 import { getQuality, QUALITY_LEVELS, setQuality } from '../../render/quality';
 import { openGoals, reputationEl } from './office';
+import { getPrefs, setPrefs, TEXT_SIZES, type TextSize } from '../displayPrefs';
 
 export function openPauseMenu(c: GameController): void {
   const s = c.state;
@@ -46,6 +47,20 @@ export function settingsItems(c: GameController, refresh: () => void): MenuItem[
   };
   return [
     { label: 'Game speed', right: `${s.settings.speed}x`, hint: 'Left / Right to change. T also cycles speed in the shop.', onLeft: () => step(-1), onRight: () => step(1), action: () => step(s.settings.speed === SPEEDS[SPEEDS.length - 1] ? -99 : 1) },
+    ...deviceSettingsItems(refresh),
+  ];
+}
+
+/** Settings that belong to this device, not the save: picture, sound, text, controls. Also on the title screen. */
+export function deviceSettingsItems(refresh: () => void): MenuItem[] {
+  const p = getPrefs();
+  const touch = typeof document !== 'undefined' && document.body.classList.contains('has-touch');
+  const textLabel = (t: TextSize) => t[0].toUpperCase() + t.slice(1);
+  const text = (d: number) => { setPrefs({ textSize: TEXT_SIZES[Math.max(0, Math.min(TEXT_SIZES.length - 1, TEXT_SIZES.indexOf(p.textSize) + d))] }); refresh(); };
+  const font = () => { setPrefs({ font: p.font === 'pixel' ? 'readable' : 'pixel' }); refresh(); };
+  const cam = () => { setPrefs({ camera: p.camera === 'near' ? 'overview' : 'near' }); refresh(); };
+  const tap = () => { setPrefs({ tapToMove: !p.tapToMove }); refresh(); };
+  const items: MenuItem[] = [
     {
       label: 'Visual quality',
       right: getQuality()[0].toUpperCase() + getQuality().slice(1),
@@ -55,7 +70,18 @@ export function settingsItems(c: GameController, refresh: () => void): MenuItem[
       action: () => { setQuality(QUALITY_LEVELS[(QUALITY_LEVELS.indexOf(getQuality()) + 1) % 3]); refresh(); },
     },
     { label: 'Sound', right: isMuted() ? 'Off' : 'On', onLeft: () => { setMuted(!isMuted()); refresh(); }, onRight: () => { setMuted(!isMuted()); refresh(); }, action: () => { setMuted(!isMuted()); refresh(); } },
+    { label: 'Text size', right: textLabel(p.textSize), hint: 'Size of all menus and labels. Remembered on this device.', onLeft: () => text(-1), onRight: () => text(1), action: () => text(p.textSize === 'larger' ? -99 : 1) },
+    { label: 'Font', right: p.font === 'pixel' ? 'Pixel' : 'Readable', hint: 'Readable uses your device font for long text. Remembered on this device.', onLeft: font, onRight: font, action: font },
+    { label: 'Store camera', right: p.camera === 'near' ? 'Close' : 'Whole floor', hint: 'Close follows you; Whole floor shows the full floor. M or the Map button switches in the store.', onLeft: cam, onRight: cam, action: cam },
   ];
+  if (touch) items.push({ label: 'Tap to move', right: p.tapToMove ? 'On' : 'Off', hint: 'Tap the floor to walk there. Tap what you are facing to use it.', onLeft: tap, onRight: tap, action: tap });
+  return items;
+}
+
+/** Device settings from the title screen (no game loaded). */
+export function openDeviceSettings(c: GameController): void {
+  const items = (): MenuItem[] => [...deviceSettingsItems(() => scr.refresh(items())), { label: 'Back', action: () => c.ui.remove(scr) }];
+  const scr = c.ui.menu({ title: 'Settings', body: h('div', { class: 'small' }, 'These settings are kept on this device.'), items: items() });
 }
 
 export function openSettings(c: GameController): void {

@@ -20,6 +20,9 @@ import { showProposalPrompt } from '../ui/screens/staff';
 import { openHelp, setHelpController, showIntro } from '../ui/screens/help';
 import { play } from '../audio/sfx';
 import { installTouchControls, type TouchControls } from '../ui/touch';
+import type { LayoutManager } from '../ui/layoutManager';
+import type { Layout } from '../ui/viewport';
+import { getPrefs, setPrefs } from '../ui/displayPrefs';
 
 /**
  * Developer tools are a build-time switch only: no URL, storage flag or
@@ -48,6 +51,10 @@ export class GameController {
   worldInput: WorldInput | null = null;
   /** On-screen controls (touch devices only). */
   touch: TouchControls | null = null;
+  /** Responsive page layout (absent in tests). */
+  layout: LayoutManager | null = null;
+  /** What A and F mean in the store right now (set each frame by the store scene). */
+  worldContext: { a?: string; feed?: boolean } = {};
   inGame = false;
   /** Non-blocking overlays (e.g. tank view HUD) can pause time explicitly. */
   extraPause = 0;
@@ -61,14 +68,20 @@ export class GameController {
   /** Resolves once save storage is ready. */
   ready: Promise<void> = Promise.resolve();
 
-  setup(game: Phaser.Game, uiRoot: HTMLElement): void {
+  setup(game: Phaser.Game, uiRoot: HTMLElement, layout?: LayoutManager): void {
     this.game = game;
+    this.layout = layout ?? null;
     this.ui = new UIManager(uiRoot);
     this.input = new InputManager(window);
     this.hud = new Hud(this);
     setHelpController(this);
     this.input.events.on('press', (a) => this.onPress(a));
     this.touch = installTouchControls(this.input);
+    if (this.layout) {
+      const place = (l: Layout) => this.touch?.place(l);
+      this.layout.onChange(place);
+      if (this.layout.layout) place(this.layout.layout);
+    }
     game.events.on(Phaser.Core.Events.STEP, (_t: number, delta: number) => this.step(delta));
     this.ready = createStorage().then((st) => {
       this.saves = new SaveManager(st);
@@ -135,7 +148,15 @@ export class GameController {
     const dt = Math.min(0.1, deltaMs / 1000);
     this.input.poll(performance.now());
     this.ui.update(dt);
-    this.touch?.setContext({ walking: this.walking });
+    if (this.touch) {
+      const top = this.ui.top();
+      this.touch.setContext({
+        walking: this.walking,
+        a: this.worldContext.a,
+        feed: this.worldContext.feed,
+        menuOpen: !!top && !top.el.classList.contains('tank-view-ui'),
+      });
+    }
     if (this.sim && !this.paused) {
       const minutes = dt * GAME_MINUTES_PER_REAL_SECOND * this.state.settings.speed;
       this.sim.advance(minutes);
@@ -154,11 +175,22 @@ export class GameController {
       return;
     }
     if (this.ui.handle(a)) return;
+    if (this.inGame && a === 'map') {
+      this.toggleMap();
+      return;
+    }
     if (this.inGame && a === 'speed') {
       this.cycleSpeed();
       return;
     }
     this.worldInput?.(a);
+  }
+
+  /** Store camera: follow the player up close, or show the whole floor. */
+  toggleMap(): void {
+    const next = getPrefs().camera === 'near' ? 'overview' : 'near';
+    setPrefs({ camera: next });
+    this.ui.toast(next === 'overview' ? 'Map view: whole floor' : 'Close view: following you', 'info', 1600);
   }
 
   cycleSpeed(): void {

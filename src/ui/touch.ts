@@ -10,6 +10,7 @@
  */
 import type { Action, InputManager } from '../input/input';
 import { h } from './dom';
+import type { Layout } from './viewport';
 
 type Dir = 'up' | 'down' | 'left' | 'right';
 
@@ -17,14 +18,29 @@ type Dir = 'up' | 'down' | 'left' | 'right';
 export interface TouchContext {
   /** True while walking in the store (B runs); false in menus and the tank view (B is Back). */
   walking: boolean;
+  /** Short verb for A while walking ("Talk", "Serve", "Open"); defaults to "Use". */
+  a?: string;
+  /** Whether F (feed) does something right now. */
+  feed?: boolean;
+  /** A menu is open over an immersive view (minimal controls show B). */
+  menuOpen?: boolean;
 }
 
 export interface TouchControls {
   root: HTMLElement;
   setContext(ctx: TouchContext): void;
+  /** Positions the controls in the areas the layout reserved for them. */
+  place(layout: Layout): void;
   /** Releases every finger (also triggered by InputManager `cleared`). */
   releaseAll(): void;
 }
+
+/** Button sizes (CSS px). Every target is at least 44 x 44. */
+const SIZE = { A: 70, B: 64, F: 52, MENU: 50 };
+/** Button centres inside a 184 x 184 cluster (scaled down to fit narrow columns). */
+const CLUSTER = 184;
+const POS: Record<'A' | 'B' | 'F' | 'MENU', [number, number]> = { A: [140, 72], B: [62, 128], F: [52, 40], MENU: [146, 152] };
+const PAD = 168;
 
 /** Direction from an offset to the d-pad centre, or null inside the dead zone. */
 export function padDirection(dx: number, dy: number, dead: number): Dir | null {
@@ -151,7 +167,8 @@ export function installTouchControls(input: InputManager, force = false): TouchC
 
   let last = '';
   const setContext = (ctx: TouchContext) => {
-    const key = ctx.walking ? 'w' : 'm';
+    const aText = ctx.walking ? ctx.a ?? 'Use' : 'OK';
+    const key = `${ctx.walking}|${aText}|${!!ctx.feed}|${!!ctx.menuOpen}`;
     if (key === last) return;
     last = key;
     const sub = (a: Action, text: string) => {
@@ -159,11 +176,55 @@ export function installTouchControls(input: InputManager, force = false): TouchC
       if (s) s.textContent = text;
     };
     sub('back', ctx.walking ? 'Run' : 'Back');
-    sub('confirm', ctx.walking ? 'Use' : 'OK');
+    sub('confirm', aText);
+    sub('feed', 'Feed');
     btnEls.get('back')?.setAttribute('aria-label', ctx.walking ? 'B: hold to run' : 'B: back');
-    btnEls.get('confirm')?.setAttribute('aria-label', ctx.walking ? 'A: use' : 'A: confirm');
+    btnEls.get('confirm')?.setAttribute('aria-label', `A: ${aText.toLowerCase()}`);
     root.classList.toggle('walking', ctx.walking);
+    root.classList.toggle('menu-open', !!ctx.menuOpen);
+    btnEls.get('feed')?.classList.toggle('idle', !ctx.feed);
   };
   setContext({ walking: false });
-  return { root, setContext, releaseAll };
+
+  const place = (l: Layout) => {
+    root.dataset.mode = l.controls;
+    root.dataset.placement = l.placement;
+    if (l.controls === 'none') {
+      root.style.display = 'none';
+      return;
+    }
+    root.style.display = '';
+    const box = (el: HTMLElement, x: number, y: number, w: number, hgt: number) =>
+      Object.assign(el.style, { left: `${Math.round(x)}px`, top: `${Math.round(y)}px`, width: `${Math.round(w)}px`, height: `${Math.round(hgt)}px` });
+    if (l.controls === 'minimal' || !l.pad || !l.buttons) {
+      // Immersive view: only B, at the right edge, for leaving menus opened over the view.
+      const b = btnEls.get('back')!;
+      box(actions, l.vw - 84, Math.round(l.vh * 0.5 - 32), 76, 76);
+      box(b, 6, 6, SIZE.B, SIZE.B);
+      return;
+    }
+    const p = l.pad;
+    const r = l.buttons;
+    // D-pad: as large as the area allows (up to PAD), low in the area where the thumb rests.
+    const pd = Math.min(PAD, p.w - 16, p.h - 16);
+    const padX = l.placement === 'sides' ? p.x + (p.w - pd) / 2 : p.x + Math.max(8, Math.min(28, (p.w - pd) / 2));
+    const padY = l.placement === 'sides' ? p.y + p.h - pd - Math.max(16, p.h * 0.12) : p.y + (p.h - pd) / 2;
+    box(pad, padX, padY, pd, pd);
+    // Buttons: a cluster scaled to fit, mirrored low on the other side.
+    const sc = Math.min(1, (r.w - 8) / CLUSTER, (r.h - 8) / CLUSTER);
+    const cw = CLUSTER * sc;
+    const cx = l.placement === 'sides' ? r.x + (r.w - cw) / 2 : r.x + r.w - cw - Math.max(8, Math.min(24, (r.w - cw) / 2));
+    const cy = l.placement === 'sides' ? r.y + r.h - cw - Math.max(16, r.h * 0.12) : r.y + (r.h - cw) / 2;
+    box(actions, cx, cy, cw, cw);
+    const put = (a: Action, k: keyof typeof POS) => {
+      const size = SIZE[k];
+      const [x, y] = POS[k];
+      box(btnEls.get(a)!, x * sc - size / 2, y * sc - size / 2, size, size);
+    };
+    put('confirm', 'A');
+    put('back', 'B');
+    put('feed', 'F');
+    put('menu', 'MENU');
+  };
+  return { root, setContext, place, releaseAll };
 }

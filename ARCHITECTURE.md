@@ -93,7 +93,11 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `dev/*` | Developer-only code, compiled out of public builds: `devPanel.ts` (Developer Panel), `gallery.ts` (morph gallery), `sandbox.ts` (deterministic Developer Sandbox fixture and presets), `sandboxScreen.ts` (sandbox navigation and tools). Reach it only via `if (__DEV_TOOLS__) import(...)` |
 | `ui/screens/gallery.ts` (moved to `dev/gallery.ts`) | Developer morph gallery (`#gallery=<species>`): every morph and single-trait variant by sex and life stage, plus the swim/turn frame strip |
 | `audio/sfx.ts` | Synthesised WebAudio sound effects, per-browser mute |
-| `ui/touch.ts` | On-screen controls for coarse pointers: multi-touch, pointer capture, contextual A/B labels |
+| `ui/touch.ts` | On-screen controls for coarse pointers: multi-touch, pointer capture, contextual A/B/F labels, placed in the areas the layout reserves |
+| `ui/viewport.ts`, `ui/layoutManager.ts` | Responsive layout: game rectangle, safe areas, canvas backing size, UI unit, body classes |
+| `ui/displayPrefs.ts` | Per-device text size, font, store camera, tap to move |
+| `render/view.ts` | Canvas scale, camera fitting helpers, world label transform |
+| `render/tapPath.ts` | Tap-to-move path finding |
 | `input/runHint.ts` | "Hold B to run" prompt until the player first runs (per device, localStorage) |
 | `render/walkTiming.ts` | Player step and run times |
 | `game/GameController.ts` | Game loop timing, input routing, pause rules, saves, scene transitions |
@@ -125,13 +129,23 @@ Scenes render in their own `update` by reading `controller.state`.
 
 Running: `ShopScene` asks `input.runHeld()` (the `run` action or a held `back`) only when it starts a step, and `render/walkTiming.ts` halves the step time. B is never consumed as "run": its press still goes to the top screen first, so in menus and the tank view it is Back, and in the store overworld `back` presses do nothing. `controller.walking` (in game, store has input, nothing blocking) drives the touch labels. `InputManager.clearAll()` runs on blur, pagehide and a hidden tab: it empties keyboard, touch and gamepad holds and emits `cleared`; gamepad buttons still physically down are re-adopted on the next poll without a fresh press. Touch controls (`ui/touch.ts`) track each finger by `pointerId` with pointer capture; the d-pad is one zone whose direction follows the finger; pointerup, pointercancel, lostpointercapture, a window-level pointerup and `cleared` all release.
 
-## Resolution
+## Resolution and layout
 
-The canvas is 960x640 (`RES = 2` in `render/res.ts`). The shop overworld is authored at 480x320 logical pixels and drawn with camera zoom 2, so tiles stay crisp pixel art. The tank view renders natively at 960x640 (fish, plants and effects use the extra resolution). UI is HTML and sized in logical pixels.
+`ui/layoutManager.ts` lays out the page with the pure `computeLayout` (`ui/viewport.ts`): the game rectangle (`#stage`, canvas plus HTML UI) fills the safe area, minus a band below it (portrait) or columns either side (landscape) for touch controls. There is no fixed 3:2 box and no letterboxing. Phaser runs in `Scale.NONE`; the canvas backing store is the game rectangle times `view.k` (device pixel ratio, capped at 2 and at `MAX_BACKING_PIXELS`), resized on window resize, rotation, visual viewport changes and preference changes. While a text field has focus on a touch device the layout is held so the on-screen keyboard does not shrink the game.
+
+Each scene fits its own camera to the canvas (`render/view.ts`):
+
+- **Store:** authored at 480x320 world pixels (16 px tiles). `shopZoom` aims for 2.25 CSS px per world pixel on touch devices and 2 elsewhere (rounded to whole canvas pixels), follows the player with clamping at the floor edges (`clampCentre`), and shows the whole floor when it already fits (the 960x640 desktop window still sees the whole floor) or in map view (`M`, gamepad left stick click, HUD Map button).
+- **Tank view:** the 960x640 tank composition (`RES = 2`) fits the canvas. In portrait it sits under the top bar so the fish card and buttons go below it; it publishes `--tank-top` / `--tank-bottom` for the overlay CSS. On touch devices the tank view is immersive: the layout switches to `minimal` controls (its own on-screen buttons) and the tank gets the whole screen.
+- **Title:** the demo tank covers the screen.
 
 ## UI
 
-HTML screens sit in `#ui`, sized exactly over the canvas. `--px` is the CSS pixels per logical game pixel, so all UI dimensions are written as `calc(var(--px) * n)` and stay aligned with the 480x320 logical game at any window size. Blocking screens pause time. World labels (customer bubbles) are positioned in logical pixel coordinates with `setLabelPos`. Fonts are bundled (`@fontsource/jersey-10` body, `@fontsource/tiny5` logo); there are no runtime network requests.
+HTML screens sit in `#ui` over the game rectangle. `--px` is the UI unit: the UI is authored in units of a 480x320 screen as `calc(var(--px) * n)`, but the unit is no longer tied to the canvas. `uiUnit` keeps body text at 18 CSS px or more (2 px per unit on phones, growing with large windows as before) times the text-size preference, and `--min-text` (16 px) floors every smaller text style. Body classes from the layout (`has-touch`, `portrait` / `landscape`, `compact`, `font-readable`) switch the responsive rules: on compact screens menus become sheets (bottom sheet in portrait, full-height panel in landscape), the HUD compacts, touch targets are at least 44 x 44. Scroll containers allow vertical panning; the stage itself does not scroll. Blocking screens pause time. World labels (bubbles, name tags) are positioned with `setLabelPos` through the store camera's transform, so they track the camera at any zoom.
+
+Display preferences (text size, pixel or readable font, store camera, tap to move) are per device in localStorage (`ui/displayPrefs.ts`), never in the save. They are in Settings on the title screen, the pause menu and the office PC.
+
+Tap to move (`render/tapPath.ts`): a touch or pen tap on the store walks the player along the shortest 4-way path on the same walk grid as the keyboard (to a prop's interaction tile, facing it). Tapping what you already face uses it. Any held direction, a blocking screen or a blocked step cancels the walk. Mouse clicks do not move the player. Fonts are bundled (`@fontsource/jersey-10` body, `@fontsource/tiny5` logo); there are no runtime network requests.
 
 ### Menu and input rules (one system for every menu)
 

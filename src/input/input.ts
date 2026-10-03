@@ -7,7 +7,7 @@ import { Emitter } from '../core/events';
 export type Action =
   | 'up' | 'down' | 'left' | 'right'
   | 'confirm' | 'back' | 'menu'
-  | 'tab' | 'tabPrev' | 'feed' | 'run' | 'dev' | 'speed' | 'remove' | 'help';
+  | 'tab' | 'tabPrev' | 'feed' | 'run' | 'dev' | 'speed' | 'remove' | 'help' | 'map';
 
 const KEYMAP: Record<string, Action> = {
   ArrowUp: 'up', KeyW: 'up',
@@ -23,11 +23,12 @@ const KEYMAP: Record<string, Action> = {
   KeyT: 'speed',
   Delete: 'remove', KeyR: 'remove',
   KeyH: 'help', F1: 'help',
+  KeyM: 'map',
 };
 
 // Standard gamepad mapping.
 const PAD_BUTTONS: Record<number, Action> = {
-  0: 'confirm', 1: 'back', 2: 'run', 3: 'feed', 4: 'tabPrev', 5: 'tab', 6: 'help', 8: 'speed', 9: 'menu', 11: 'help',
+  0: 'confirm', 1: 'back', 2: 'run', 3: 'feed', 4: 'tabPrev', 5: 'tab', 6: 'help', 8: 'speed', 9: 'menu', 10: 'map', 11: 'help',
   12: 'up', 13: 'down', 14: 'left', 15: 'right',
 };
 
@@ -47,7 +48,8 @@ export class InputManager {
   private padHeld = new Set<Action>();
   private repeatAt = new Map<Action, number>();
   private lastKeyEmit = new Map<Action, number>();
-  lastDevice: 'keyboard' | 'gamepad' | 'pointer' = 'keyboard';
+  lastDevice: 'keyboard' | 'gamepad' | 'pointer' =
+    typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 'pointer' : 'keyboard';
 
   constructor(target: Window = window) {
     target.addEventListener('keydown', (e) => this.onKey(e, true));

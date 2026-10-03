@@ -5,6 +5,7 @@ import { newGame } from '../../sim/newGame';
 import type { GameState } from '../../sim/types';
 import { TankRenderer } from '../tankRenderer';
 import { showTitle } from '../../ui/screens/title';
+import { CANVAS_H, CANVAS_W } from '../res';
 
 export class TitleScene extends Phaser.Scene {
   private tankRenderer: TankRenderer | null = null;
@@ -52,7 +53,19 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
+  /** The demo tank fills the screen behind the title menu (cover, centred). */
+  private fit(): void {
+    const cam = this.cameras.main;
+    const cw = this.scale.width;
+    const ch = this.scale.height;
+    if (cam.width !== cw || cam.height !== ch) cam.setSize(cw, ch);
+    const z = Math.max(cw / CANVAS_W, ch / CANVAS_H);
+    if (cam.zoom !== z) cam.setZoom(z);
+    cam.centerOn(CANVAS_W / 2, CANVAS_H / 2);
+  }
+
   override update(_t: number, deltaMs: number): void {
+    this.fit();
     this.tankRenderer?.update(Math.min(0.1, deltaMs / 1000));
   }
 }

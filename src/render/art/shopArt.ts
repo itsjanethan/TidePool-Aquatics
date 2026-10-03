@@ -101,6 +101,7 @@ export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key =
         }
       }
     }
+    drawStoreDetail(ctx, layout);
     if (layout.theme === 'shop') {
       // Window above the shelves and a wall clock + fish plaque.
       drawWindow(ctx, 20 * TILE + 4, 4);
@@ -119,6 +120,78 @@ export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key =
       outlineRect(ctx, 24 * TILE - 1, 2, 8, 7, '#3a3a40');
     }
   });
+}
+
+/**
+ * Purposeful floor and wall detail, painted into the static floor layer only
+ * (the walk grid comes from tiles and props, so paths and saves are unchanged):
+ * queue markings at the till, a hatched staff-only edge behind the counter,
+ * contact shadows under tank stands and furniture, drain grates by the tank
+ * rows (fish rooms get wet) and a notice board on the back wall.
+ */
+function drawStoreDetail(ctx: Ctx, layout: FloorLayout): void {
+  const T = THEMES[layout.theme];
+  const floorAt = (x: number, y: number) => layout.tiles[y]?.[x] === '.';
+  // Contact shadows under stands, counters and shelves.
+  for (const p of layout.props) {
+    if (p.kind === 'plant' || p.kind === 'stairs' || p.kind === 'sign') continue;
+    const y = (p.y + p.h) * TILE;
+    if (!floorAt(p.x, p.y + p.h)) continue;
+    ctx.fillStyle = 'rgba(40, 28, 20, 0.16)';
+    ctx.fillRect(p.x * TILE + 1, y, p.w * TILE - 2, 3);
+    ctx.fillStyle = 'rgba(40, 28, 20, 0.08)';
+    ctx.fillRect(p.x * TILE + 2, y + 3, p.w * TILE - 4, 2);
+  }
+  // Queue markings: footprints on each queue tile, a stop line on the first.
+  layout.queue.forEach((q, i) => {
+    if (!floorAt(q.x, q.y)) return;
+    const ox = q.x * TILE;
+    const oy = q.y * TILE;
+    const c = i === 0 ? '#d8a62c' : '#c9b48a';
+    px(ctx, ox + 4, oy + 5, c, 2, 4);
+    px(ctx, ox + 4, oy + 10, c, 2, 2);
+    px(ctx, ox + 10, oy + 4, c, 2, 4);
+    px(ctx, ox + 10, oy + 9, c, 2, 2);
+    if (i === 0) px(ctx, ox + 1, oy + 1, '#d8a62c', 14, 1);
+  });
+  // Staff-only edge: yellow and dark hatching along the border of the area.
+  for (const a of layout.staffOnly) {
+    for (let x = a.x; x < a.x + a.w; x++) {
+      for (const y of [a.y, a.y + a.h - 1]) {
+        if (!floorAt(x, y)) continue;
+        const oy = y * TILE + (y === a.y ? 0 : 14);
+        for (let i = 0; i < 16; i += 4) px(ctx, x * TILE + i, oy, (x * 4 + i) % 8 === 0 ? '#e0b030' : '#4a4038', 2, 2);
+      }
+    }
+  }
+  // Drain grates in front of tank rows (one per run of stands).
+  const tanks = layout.props.filter((p) => p.kind === 'tank');
+  const rows = new Map<number, number[]>();
+  for (const t of tanks) rows.set(t.y + t.h, [...(rows.get(t.y + t.h) ?? []), t.x + t.w]);
+  for (const [y, ends] of rows) {
+    const x = Math.max(...ends);
+    if (!floorAt(x, y)) continue;
+    const ox = x * TILE + 4;
+    const oy = y * TILE + 4;
+    px(ctx, ox, oy, shade(T.grout, -0.35), 8, 8);
+    for (let i = 1; i < 8; i += 2) px(ctx, ox + i, oy + 1, shade(T.grout, -0.6), 1, 6);
+  }
+  // Notice board on the back wall (opening hours and water-test notes).
+  if (layout.theme !== 'basement') {
+    const bx = 6 * TILE + 2;
+    if (layout.tiles[1]?.[6] && layout.tiles[1][6] !== '.' && layout.tiles[1][7] !== '.') {
+      px(ctx, bx, 5, '#6a4228', 22, 15);
+      px(ctx, bx + 1, 6, '#b88a58', 20, 13);
+      px(ctx, bx + 3, 8, '#f4f0e8', 6, 5);
+      px(ctx, bx + 4, 9, '#8a8aa0', 4, 1);
+      px(ctx, bx + 4, 11, '#8a8aa0', 3, 1);
+      px(ctx, bx + 11, 7, '#ffe08a', 7, 6);
+      px(ctx, bx + 12, 9, '#b07a30', 5, 1);
+      px(ctx, bx + 12, 14, '#cfe8f0', 6, 4);
+      px(ctx, bx + 6, 7, '#d04040', 1, 1);
+      px(ctx, bx + 14, 6, '#4060c0', 1, 1);
+    }
+  }
 }
 
 function drawPorthole(ctx: Ctx, x: number, y: number): void {

@@ -7,46 +7,37 @@ import { BootScene } from './render/scenes/BootScene';
 import { TitleScene } from './render/scenes/TitleScene';
 import { ShopScene } from './render/scenes/ShopScene';
 import { TankScene } from './render/scenes/TankScene';
-import { CANVAS_H, CANVAS_W } from './render/res';
-
-export const GAME_W = 480;
-export const GAME_H = 320;
+import { LayoutManager } from './ui/layoutManager';
+import { shouldInstallTouch } from './ui/touch';
+import { view } from './render/view';
 
 const stage = document.getElementById('stage')!;
 const uiRoot = document.getElementById('ui')!;
 
-/** Fits the stage to the window keeping 3:2, exposing the scale as --px for the HTML UI. */
-function layout(): void {
-  const app = document.getElementById('app');
-  const vw = app?.clientWidth || window.innerWidth;
-  const vh = app?.clientHeight || window.innerHeight;
-  let scale = Math.min(vw / GAME_W, vh / GAME_H);
-  // Prefer crisp integer scaling when it costs little screen space.
-  if (scale >= 2 && scale - Math.floor(scale) < 0.25) scale = Math.floor(scale);
-  stage.style.width = `${Math.floor(GAME_W * scale)}px`;
-  stage.style.height = `${Math.floor(GAME_H * scale)}px`;
-  document.documentElement.style.setProperty('--px', `${scale}px`);
-}
-layout();
-window.addEventListener('resize', layout);
+// Lay the page out first so the canvas starts at its real size.
+const layout = new LayoutManager(stage, null, shouldInstallTouch());
+layout.apply();
+const k = view.k || 1;
+const g0 = layout.layout!.game;
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  width: CANVAS_W,
-  height: CANVAS_H,
+  width: Math.max(1, Math.round(g0.w * k)),
+  height: Math.max(1, Math.round(g0.h * k)),
   pixelArt: true,
   roundPixels: true,
   backgroundColor: '#1b1830',
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  // The canvas fills the game rectangle; scenes fit their own cameras.
+  scale: { mode: Phaser.Scale.NONE },
   input: { keyboard: false, gamepad: false },
   audio: { noAudio: true },
   banner: false,
   scene: [BootScene, TitleScene, ShopScene, TankScene],
 });
 
-controller.setup(game, uiRoot);
-window.addEventListener('resize', () => game.scale.refresh());
+controller.setup(game, uiRoot, layout);
+layout.setGame(game);
 
 // PWA: offline support on the normal static build (not in the single-file build).
 if (import.meta.env.PROD && import.meta.env.MODE !== 'single' && 'serviceWorker' in navigator) {
