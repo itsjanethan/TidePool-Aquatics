@@ -37,6 +37,7 @@ export const MIGRATIONS: Record<number, (s: any) => any> = {
   // v1 -> v2: plant growth sizes, shop storage, owned substrates/backgrounds.
   1: (s) => {
     s.storage ??= { decor: {}, plants: [] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const t of Object.values(s.tanks ?? {}) as Array<Record<string, any>>) {
       for (const d of t.decor ?? []) d.size ??= 1;
       t.ownedSubstrates ??= [t.substrateId];
@@ -94,7 +95,24 @@ export function deserialize(raw: unknown): GameState {
   const st = s as GameState;
   if (!st.tanks || !st.fish || !Array.isArray(st.tankOrder)) throw new Error('Save file is damaged.');
   st.customers = [];
+  normalize(st);
   return st;
+}
+
+/**
+ * Fills optional fields added within a save version (all optional in the
+ * types, so older files of the same version still load cleanly).
+ */
+function normalize(st: GameState): void {
+  st.stats.plantsSold ??= 0;
+  st.stats.fryEaten ??= 0;
+  st.strains ??= {};
+  st.demand ??= {};
+  for (const t of Object.values(st.tanks)) t.broods ??= [];
+  for (const f of Object.values(st.fish)) {
+    f.parents ??= { motherId: null, fatherId: null };
+    f.offspringCount ??= 0;
+  }
 }
 
 // ---------------------------------------------------------------------------

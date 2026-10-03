@@ -10,7 +10,7 @@ import { showHelp } from './help';
 import { importSave, importSaveText, openSaveSlots } from './pause';
 
 export const GAME_TITLE = 'Tidepool Aquatics';
-export const GAME_VERSION = '0.1.0';
+export const GAME_VERSION = __APP_VERSION__;
 
 class TitleScreen implements Screen {
   el: HTMLElement;

@@ -30,6 +30,10 @@ const PAD_BUTTONS: Record<number, Action> = {
   12: 'up', 13: 'down', 14: 'left', 15: 'right',
 };
 
+const DIRECTIONS: Action[] = ['up', 'down', 'left', 'right'];
+/** Minimum gap between auto-repeated direction presses from a held key. */
+export const KEY_REPEAT_MIN_MS = 70;
+
 export interface InputEvents {
   press: Action;
 }
@@ -39,6 +43,7 @@ export class InputManager {
   private held = new Set<Action>();
   private padHeld = new Set<Action>();
   private repeatAt = new Map<Action, number>();
+  private lastKeyEmit = new Map<Action, number>();
   lastDevice: 'keyboard' | 'gamepad' | 'pointer' = 'keyboard';
 
   constructor(target: Window = window) {
@@ -59,7 +64,14 @@ export class InputManager {
     if (down) {
       const isRepeat = e.repeat;
       this.held.add(a);
-      if (!isRepeat || ['up', 'down', 'left', 'right'].includes(a)) this.events.emit('press', a);
+      if (!isRepeat) {
+        this.lastKeyEmit.set(a, e.timeStamp);
+        this.events.emit('press', a);
+      } else if (DIRECTIONS.includes(a) && e.timeStamp - (this.lastKeyEmit.get(a) ?? -Infinity) >= KEY_REPEAT_MIN_MS) {
+        // Held arrows repeat, but never faster than KEY_REPEAT_MIN_MS whatever the OS repeat rate.
+        this.lastKeyEmit.set(a, e.timeStamp);
+        this.events.emit('press', a);
+      }
     } else {
       this.held.delete(a);
     }

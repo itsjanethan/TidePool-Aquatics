@@ -35,7 +35,7 @@ export class TitleScene extends Phaser.Scene {
       f.stress = 0;
     }
     this.tankRenderer = new TankRenderer(this, () => this.demo, 'B1');
-    this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.tankRenderer?.destroy();
       this.tankRenderer = null;
     });

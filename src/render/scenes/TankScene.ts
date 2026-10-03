@@ -47,7 +47,7 @@ export class TankScene extends Phaser.Scene {
     // The overlay screen sits on the UI stack and receives all input.
     c.worldInput = null;
     if (this.registry.get('tankMode') === 'aquascape') this.openAquascape();
-    this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       const t = controller.sim ? controller.state.tanks[this.tankId] : null;
       if (t) t.viewActive = false;
       if (controller.inGame) controller.hud.show(true);

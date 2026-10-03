@@ -1,33 +1,50 @@
-// Offline support: network-first for pages, cache-first for hashed assets.
-const CACHE = 'tidepool-v1';
-self.addEventListener('install', (e) => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+// Offline support.
+// - Pages and unhashed files (manifest, icons): network first, cache fallback.
+// - Hashed build assets (assets/*): cache first; their names change every build.
+// BUILD_ID is replaced at build time, so every deploy gets a fresh cache and old
+// caches are deleted on activate. Saves live in IndexedDB and are never touched.
+const BUILD_ID = '__BUILD_ID__';
+const PRECACHE = /*__PRECACHE__*/ [];
+const CACHE = `tidepool-${BUILD_ID}`;
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(['./', ...PRECACHE]).catch(() => undefined))
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('tidepool-') && k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+const put = (req, res) => {
+  if (res.ok) {
+    const copy = res.clone();
+    caches.open(CACHE).then((c) => c.put(req, copy));
+  }
+  return res;
+};
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  if (req.mode === 'navigate') {
-    e.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req).then((r) => r || caches.match('./'))),
-    );
+  const url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== location.origin) return;
+  const hashed = url.pathname.includes('/assets/');
+  if (hashed) {
+    e.respondWith(caches.match(req, { ignoreVary: true }).then((hit) => hit || fetch(req).then((res) => put(req, res))));
     return;
   }
   e.respondWith(
-    caches.match(req).then(
-      (hit) =>
-        hit ||
-        fetch(req).then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
-          }
-          return res;
-        }),
-    ),
+    fetch(req)
+      .then((res) => put(req, res))
+      .catch(() => caches.match(req, { ignoreVary: true }).then((r) => r || (req.mode === 'navigate' ? caches.match('./', { ignoreVary: true }) : undefined))),
   );
 });

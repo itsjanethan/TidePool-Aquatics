@@ -55,6 +55,6 @@ if (import.meta.env.PROD && import.meta.env.MODE !== 'single' && 'serviceWorker'
   link.href = 'manifest.webmanifest';
   document.head.appendChild(link);
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => undefined);
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => undefined);
   });
 }

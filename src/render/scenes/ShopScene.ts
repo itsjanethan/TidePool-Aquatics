@@ -71,12 +71,20 @@ export class ShopScene extends Phaser.Scene {
     c.ui.worldLayer.appendChild(this.queueLabel);
 
     c.worldInput = (a) => this.onAction(a);
-    this.events.on(Phaser.Scenes.Events.WAKE, () => {
+    // Scene event emitters outlive a stop/start, so every listener added here
+    // is removed on shutdown (otherwise they stack up each time the scene starts).
+    const onWake = () => {
       controller.worldInput = (a) => this.onAction(a);
       controller.hud.setGoalVisible(true);
+    };
+    const onSleep = () => this.hideLabels();
+    this.events.on(Phaser.Scenes.Events.WAKE, onWake);
+    this.events.on(Phaser.Scenes.Events.SLEEP, onSleep);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.events.off(Phaser.Scenes.Events.WAKE, onWake);
+      this.events.off(Phaser.Scenes.Events.SLEEP, onSleep);
+      this.cleanup();
     });
-    this.events.on(Phaser.Scenes.Events.SLEEP, () => this.hideLabels());
-    this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
   }
 
   private cleanup(): void {
