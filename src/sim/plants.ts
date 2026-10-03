@@ -3,7 +3,8 @@
  * sales. Plants are DecorItems with a `size` (1 = mature).
  */
 import { clamp, round } from '../core/math';
-import { getDecor } from '../data/catalog';
+import { getDecor, getSubstrate } from '../data/catalog';
+import { floatingShade } from './floating';
 import { getSpecies } from '../data/species';
 import { earn } from './economy';
 import { fishInTank, newId } from './fish';
@@ -41,8 +42,10 @@ export function sizeLabel(size: number): string {
 export function tickPlants(state: GameState, tank: TankState, dtHours: number): void {
   const alive = fishInTank(state, tank.id);
   const plantEaters = alive.filter((f) => !getSpecies(f.speciesId).plantSafe).length;
-  const lit = tank.lightOn ? 1 : 0;
-  const nutrients = clamp(tank.water.nitrate / 10, 0.15, 1);
+  // Floating plants shade the tank; nutrient-rich soils feed rooted plants.
+  const lit = tank.lightOn ? 1 - floatingShade(tank) * 0.8 : 0;
+  const soil = getSubstrate(tank.substrateId).plantBonus ?? 1;
+  const nutrients = clamp(tank.water.nitrate / 10, 0.15, 1) * soil;
   for (const d of tank.decor) {
     const def = getDecor(d.defId);
     if (def.kind !== 'plant') continue;

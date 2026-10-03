@@ -1,7 +1,8 @@
 /** Plant care UI shared by the tank menu, aquascape editor and stockroom. */
 import type { GameController } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
-import { getDecor } from '../../data/catalog';
+import { getDecor, getFloating, PROPAGATION_TEXT } from '../../data/catalog';
+import { coverLabel, scoopFloating, sellFloatingToTrade, totalFloating } from '../../sim/floating';
 import { plantPrice, PLANT_PRICE_KEY } from '../../sim/customers';
 import {
   availablePlants, CUTTING_AMOUNT, MIN_REMAINING, OVERGROWN, plantValue, removeToStorage, sellPlantsToTrade, sizeLabel, takeCutting, TRADE_RATE, trimPlant,
@@ -36,13 +37,14 @@ export function openPlantActions(c: GameController, tank: TankState, uid: string
   const items = (): MenuItem[] => {
     const d = tank.decor.find((x) => x.uid === uid);
     if (!d) return [{ label: 'Back', action: () => c.ui.remove(scr) }];
-    const list: MenuItem[] = [{ label: 'Take a cutting', header: true }];
+    const prop = PROPAGATION_TEXT[getDecor(d.defId).propagation ?? 'cuttings'];
+    const list: MenuItem[] = [{ label: prop.verb, header: true }];
     for (const size of ['small', 'medium', 'large'] as CuttingSize[]) {
       const amount = CUTTING_AMOUNT[size];
       const possible = d.size - amount >= MIN_REMAINING;
       const value = plantValue({ defId: d.defId, size: amount, health: d.health * 0.95 });
       list.push({
-        label: `${size[0].toUpperCase()}${size.slice(1)} cutting`,
+        label: `${size[0].toUpperCase()}${size.slice(1)} ${prop.piece}`,
         right: possible ? `~${formatMoney(value)}` : 'too small',
         hint: possible
           ? `Leaves the plant at ${Math.round((d.size - amount) * 100)}%. The cutting goes to the stockroom to replant or sell.`
@@ -83,11 +85,29 @@ export function openTankPlants(c: GameController, tank: TankState): void {
       hint: plantStatus(d),
       action: () => openPlantActions(c, tank, d.uid, () => scr.refresh(items())),
     }));
-    if (!list.length) list.push({ label: 'No plants yet. Add some with Aquascape.', disabled: true });
+    if (!list.length) list.push({ label: 'No rooted plants yet. Add some with Aquascape.', disabled: true });
+    const floats = Object.entries(tank.floating ?? {});
+    if (floats.length) {
+      list.push({ label: 'Floating plants', header: true });
+      for (const [id, cov] of floats) {
+        const def = getFloating(id);
+        list.push({ label: `${def.name}: scoop half to stockroom`, right: `${coverLabel(cov)} ${Math.round(cov * 100)}%`, hint: `${def.description} Scooped portions can go in another tank or be sold.`, action: () => { c.perform(scoopFloating(c.state, tank, id, 0.5, true)); scr.refresh(items()); } });
+        list.push({ label: `${def.name}: scoop most and bin it`, hint: 'Clears 80% of the cover. Nothing is kept.', action: () => { c.perform(scoopFloating(c.state, tank, id, 0.8, false)); scr.refresh(items()); } });
+      }
+    }
     list.push({ label: 'Back', action: () => c.ui.remove(scr) });
     return list;
   };
-  const scr = c.ui.menu({ title: `Plants: ${tank.name}`, items: items(), body: h('div', { class: 'small' }, 'Plants grow over time. Take cuttings to propagate them, then replant or sell the cuttings.') });
+  const scr = c.ui.menu({
+    title: `Plants: ${tank.name}`,
+    items: items(),
+    body: () => {
+      const total = totalFloating(tank);
+      return h('div', { class: 'small' },
+        'Plants grow over time. Propagate them, then replant or sell the pieces.',
+        total > 0.75 ? h('div', { class: 'warn' }, `Floating plants cover ${Math.round(total * 100)}% of the surface: the plants below are starved of light.`) : null);
+    },
+  });
 }
 
 /** Groups loose potted plants by species and growth stage. */
@@ -124,6 +144,19 @@ export function pottedPlantItems(c: GameController, refresh: () => void): MenuIt
       hint: `Confirm to sell one to the trade buyer for ${formatMoney(plantValue(g.items[0]) * TRADE_RATE)}. Customers usually pay the full shelf price.`,
       action: () => { c.perform(sellPlantsToTrade(s, [g.items[0].uid])); refresh(); },
     });
+  }
+  const floats = Object.entries(s.storage.floating ?? {}).filter(([, n]) => n > 0);
+  if (floats.length) {
+    list.push({ label: 'Floating plants', header: true });
+    for (const [id, n] of floats) {
+      const def = getFloating(id);
+      list.push({
+        label: `${def.name} ×${n} portions`,
+        right: formatMoney(n * def.tradeValue),
+        hint: `Float them in a tank from its Aquascape menu, or confirm to sell them all to the trade buyer.`,
+        action: () => { c.perform(sellFloatingToTrade(s, id)); refresh(); },
+      });
+    }
   }
   return list;
 }

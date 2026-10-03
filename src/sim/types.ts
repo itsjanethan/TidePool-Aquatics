@@ -121,6 +121,8 @@ export interface ShopStorage {
   /** Hardscape items in the stockroom by decor id. */
   decor: Record<string, number>;
   plants: PottedPlant[];
+  /** Floating plant portions by floating-plant id. */
+  floating?: Record<string, number>;
 }
 
 export interface TankState {
@@ -129,6 +131,8 @@ export interface TankState {
   sizeId: string;
   litres: number;
   lengthCm: number;
+  /** Floating plant surface coverage by floating-plant id (0..1 each, total <= 1). */
+  floating?: Record<string, number>;
   /** Absent means freshwater (all tanks until marine arrives). */
   waterType?: 'freshwater' | 'brackish' | 'marine';
   water: WaterState;

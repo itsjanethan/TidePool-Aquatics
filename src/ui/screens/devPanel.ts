@@ -9,7 +9,8 @@ import { SPECIES } from '../../data/species';
 import { spawnCustomer } from '../../sim/customers';
 import { createFish, fishInTank, isMature } from '../../sim/fish';
 import { birthFry } from '../../sim/breeding';
-import { morphFromGenes } from '../../sim/genetics';
+import { genotypeForMorph, morphFromGenes } from '../../sim/genetics';
+import { galleryCells, openGallery } from './gallery';
 import { GENETICS } from '../../data/genetics';
 import { getSpecies } from '../../data/species';
 import type { FishEntity } from '../../sim/types';
@@ -24,6 +25,17 @@ let open: MenuScreen | null = null;
 let tankIdx = 0;
 let speciesIdx = 0;
 let goalIdx = 0;
+let sexIdx = 0;
+let stageIdx = 2;
+let locusIdx = 0;
+let alleleIdx = 0;
+const SEXES = ['random', 'male', 'female'] as const;
+const STAGES = [
+  { name: 'fry', frac: 0.2, ageK: 0.05 },
+  { name: 'juvenile', frac: 0.5, ageK: 0.5 },
+  { name: 'adult', frac: 1, ageK: 3 },
+  { name: 'gravid adult', frac: 1, ageK: 3 },
+] as const;
 const GOALS: CustomerGoal[] = ['browse', 'buy_specific', 'advice_stocking', 'problem'];
 
 export function toggleDevPanel(c: GameController): void {
@@ -56,6 +68,35 @@ export function toggleDevPanel(c: GameController): void {
     if (!m || !d) for (const f of all) { [m, d] = bySp(f.speciesId); if (m && d) break; }
     return m && d ? [m, d] : null;
   };
+  const spawnStaged = () => {
+    const sp = SPECIES[speciesIdx];
+    const st = STAGES[stageIdx];
+    const f = createFish(s, c.sim!.rng, { speciesId: sp.id, origin: 'dev', originDetail: 'Dev spawn', tankId: tank().id, sizeFraction: st.frac, ageDays: Math.round(sp.maturityDays * st.ageK) });
+    if (SEXES[sexIdx] !== 'random') f.sex = SEXES[sexIdx] as 'male' | 'female';
+    if (st.name === 'gravid adult') {
+      f.sex = 'female';
+      if (sp.breeding.method === 'livebearer') f.pregnancy = { daysRemaining: sp.breeding.incubationDays * 0.1, fryCount: 6 };
+      else f.breedingReadiness = 1;
+    }
+  };
+  /** Rows to pick a locus and allele and apply it (homozygous) to the chosen species in the target tank. */
+  const traitSetter = (): MenuItem[] => {
+    const g = GENETICS[SPECIES[speciesIdx].id];
+    if (!g) return [];
+    const locus = g.loci[locusIdx % g.loci.length];
+    const allele = locus.alleles[alleleIdx % locus.alleles.length];
+    return [
+      { label: `Trait: ${locus.name}`, onLeft: () => { locusIdx = (locusIdx + g.loci.length - 1) % g.loci.length; alleleIdx = 0; scr.refresh(items()); }, onRight: () => { locusIdx = (locusIdx + 1) % g.loci.length; alleleIdx = 0; scr.refresh(items()); } },
+      { label: `Allele: ${allele.name}`, onLeft: () => { alleleIdx = (alleleIdx + locus.alleles.length - 1) % locus.alleles.length; scr.refresh(items()); }, onRight: () => { alleleIdx = (alleleIdx + 1) % locus.alleles.length; scr.refresh(items()); } },
+      act('Apply trait to that species in tank', () => {
+        for (const f of fishInTank(s, tank().id)) {
+          if (f.speciesId !== SPECIES[speciesIdx].id) continue;
+          f.genes.loci[locus.id] = [allele.id, allele.id];
+          f.morphId = morphFromGenes(f.speciesId, f.genes.loci) ?? f.morphId;
+        }
+      }),
+    ];
+  };
   const noPair = () => c.ui.toast('[dev] Need a mature male and female in the target tank.', 'warn');
   const items = (): MenuItem[] => [
     { label: 'Money', header: true },
@@ -86,6 +127,38 @@ export function toggleDevPanel(c: GameController): void {
     act('Tank fish health 20', () => { for (const f of fishInTank(s, tank().id)) f.health = 20; }),
     act('Tank fish fully healthy & fed', () => { for (const f of fishInTank(s, tank().id)) { f.health = 100; f.hunger = 0; f.stress = 0; f.shock = 0; } }),
     act('Make tank fish starving', () => { for (const f of fishInTank(s, tank().id)) f.hunger = 95; }),
+    { label: 'Visual genetics', header: true },
+    { label: `Sex: ${SEXES[sexIdx]}`, onLeft: () => { sexIdx = (sexIdx + SEXES.length - 1) % SEXES.length; scr.refresh(items()); }, onRight: () => { sexIdx = (sexIdx + 1) % SEXES.length; scr.refresh(items()); } },
+    { label: `Stage: ${STAGES[stageIdx].name}`, onLeft: () => { stageIdx = (stageIdx + STAGES.length - 1) % STAGES.length; scr.refresh(items()); }, onRight: () => { stageIdx = (stageIdx + 1) % STAGES.length; scr.refresh(items()); } },
+    act('Spawn 3 (species, sex, stage)', () => { for (let i = 0; i < 3; i++) spawnStaged(); }),
+    act('Spawn morph sampler (every morph and trait, both sexes)', () => {
+      const sp = SPECIES[speciesIdx];
+      for (const row of galleryCells(sp.id)) {
+        for (const sex of ['male', 'female'] as const) {
+          const f = createFish(s, c.sim!.rng, { speciesId: sp.id, morphId: row[0].input.morphId, genes: { loci: { ...row[0].input.loci }, quality: row[0].input.quality, size: 1 }, origin: 'dev', originDetail: 'Morph sampler', tankId: tank().id, sizeFraction: 1, ageDays: sp.maturityDays * 3 });
+          f.sex = sex;
+        }
+      }
+    }, 'Adults of every morph and single-trait variant of the chosen species.'),
+    act('Spawn 10 siblings from a pair (adults)', () => {
+      const p = pair();
+      if (!p) return noPair();
+      for (const k of birthFry(s, c.sim!.rng, p[0], p[1], tank(), 10)) { k.ageDays = getSpecies(k.speciesId).maturityDays * 3; k.sizeCm = k.adultSizeCm; }
+    }, 'Shows inherited variation between brothers and sisters.'),
+    act('Age tank fry and juveniles +10 days', () => {
+      for (const f of fishInTank(s, tank().id)) if (f.sizeCm < f.adultSizeCm * 0.95) { f.ageDays += 10; f.sizeCm += (f.adultSizeCm - f.sizeCm) * 0.35; }
+    }),
+    act('Randomise genes of tank fish', () => {
+      for (const f of fishInTank(s, tank().id)) {
+        const g = GENETICS[f.speciesId];
+        if (!g) continue;
+        const morph = c.sim!.rng.pick(getSpecies(f.speciesId).morphs).id;
+        f.genes.loci = genotypeForMorph(f.speciesId, morph, c.sim!.rng);
+        f.morphId = morphFromGenes(f.speciesId, f.genes.loci) ?? f.morphId;
+      }
+    }),
+    ...traitSetter(),
+    act('Open morph gallery', () => openGallery(c, SPECIES[speciesIdx].id)),
     act('Inspect genetics (first fish)', () => {
       const f = fishInTank(s, tank().id)[0];
       if (f) void c.ui.say('Genetics', JSON.stringify({ id: f.id, species: f.speciesId, morph: f.morphId, sex: f.sex, genes: f.genes, gen: f.generation, parents: f.parents }, null, 0));

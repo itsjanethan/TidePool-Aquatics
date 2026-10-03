@@ -5,6 +5,7 @@
 import { clamp, clamp01 } from '../core/math';
 import { getBackground, getDecor, getSubstrate } from '../data/catalog';
 import type { TankState } from './types';
+import { floatingFryCover, floatingShade, totalFloating } from './floating';
 
 export interface AquascapeSummary {
   cover: number; // 0..1+
@@ -20,6 +21,8 @@ export interface AquascapeSummary {
   beauty: number;
   /** 0..100 layout score ignoring cleanliness. */
   layout: number;
+  /** 0..0.85 light blocked by floating plants. */
+  shade: number;
 }
 
 export function summarizeAquascape(tank: TankState): AquascapeSummary {
@@ -79,11 +82,16 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
     0,
     100,
   );
+  // A little floating cover looks natural; a carpet hides the tank.
+  const floatTotal = totalFloating(tank);
+  const floatLook = floatTotal < 0.4 ? floatTotal * 10 : Math.max(-12, 4 - (floatTotal - 0.4) * 26);
   const dirt = tank.algae * 30 + tank.glassDirt * 25 + tank.water.cloudiness * 35;
-  const beauty = clamp(layout - dirt, 0, 100);
+  const beauty = clamp(layout + floatLook - dirt, 0, 100);
+  if (floatTotal > 0.05) provides.add('plants');
 
   return {
-    cover,
+    cover: cover + floatingFryCover(tank),
+    shade: floatingShade(tank),
     caves,
     plants,
     plantHealth: plants ? plantHealthSum / plants : 0,

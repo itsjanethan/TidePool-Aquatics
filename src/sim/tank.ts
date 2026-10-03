@@ -2,6 +2,7 @@
  * TankSimulation: background tick for one tank plus player maintenance,
  * equipment and aquascaping actions.
  */
+import { tickFloating } from './floating';
 import { clamp, clamp01, round } from '../core/math';
 import { AIR_PUMP, getDecor, getFilter, getHeater, getTankSize, getSubstrate, getBackground } from '../data/catalog';
 import { getSpecies } from '../data/species';
@@ -111,6 +112,7 @@ export function tickTank(state: GameState, tank: TankState, dtHours: number, ctx
 
   // Plants grow, get eaten by plant-unsafe fish, and recover.
   tickPlants(state, tank, dtHours);
+  tickFloating(tank, dtHours);
 
   for (const f of alive) {
     const st = stressTarget(f, tank, alive, scape);

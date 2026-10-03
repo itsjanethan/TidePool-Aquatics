@@ -156,7 +156,7 @@ export function tickWater(tank: TankState, inp: WaterInputs, dtHours: number): v
   const lit = inp.daylight && tank.lightOn;
   const nutrients = Math.min(1.6, w.nitrate / 25 + 0.25);
   const competition = Math.min(0.8, inp.scape.nutrientUptake * 0.12);
-  const growthPerHour = lit ? (0.03 * nutrients * (1 - competition)) / 10 : 0;
+  const growthPerHour = lit ? (0.03 * nutrients * (1 - competition) * (1 - inp.scape.shade * 0.6)) / 10 : 0;
   const grazingPerHour = (inp.grazers * 0.012 * (0.5 + tank.algae)) / 24;
   tank.algae = clamp01(tank.algae + (growthPerHour - grazingPerHour) * dtHours);
   tank.glassDirt = clamp01(tank.glassDirt + (0.035 + tank.algae * 0.04) * dtDays);

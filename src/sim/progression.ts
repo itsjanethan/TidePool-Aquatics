@@ -22,7 +22,7 @@ export const OBJECTIVES: ObjectiveDef[] = [
   { id: 'good_advice', title: 'Give good advice', hint: 'Customers with a "?" want help. Talk to them and recommend suitable fish.', reward: 25, check: (s) => s.stats.goodAdvice >= 1 },
   { id: 'order_stock', title: 'Order new livestock', hint: 'Use the office PC (top right) to order fish from a supplier.', reward: 0, check: (s) => !!s.objectives.order_stock?.progress },
   { id: 'cycle_c2', title: 'Cycle the new tank (C2)', hint: 'C2 is brand new. Add a little food or bacteria starter, then wait and test the water.', reward: 40, check: (s) => !!s.tanks.C2 && cycleStatus(s.tanks.C2.water) === 'cycled' },
-  { id: 'aquascape', title: 'Create a beautiful tank', hint: 'Use Aquascape to add plants, wood and rocks until a tank layout scores 70+.', reward: 40, check: (s) => s.tankOrder.some((id) => summarizeAquascape(s.tanks[id]).layout >= 70) },
+  { id: 'aquascape', title: 'Create a beautiful tank', hint: 'Use Aquascape to add plants, wood and rocks until a tank layout scores 85+.', reward: 40, check: (s) => s.tankOrder.some((id) => summarizeAquascape(s.tanks[id]).layout >= 85) },
   { id: 'serve_10', title: 'Serve 10 customers', hint: 'Keep tanks clean and stocked to bring in more customers.', reward: 50, check: (s) => s.stats.customersServed >= 10 },
   { id: 'rep_50', title: 'Reach 2.5 stars reputation', hint: 'Clean tanks, healthy fish, good advice and fair prices all count.', reward: 75, check: (s) => overallReputation(s) >= 50 },
   { id: 'money_1500', title: 'Save up £1,500', hint: 'Future expansions will need capital.', reward: 0, check: (s) => s.money >= 1500 },

@@ -25,18 +25,19 @@ interface StarterTank {
   decor: Array<[string, number, 0 | 1 | 2]>;
   stock: Array<[string, number]>;
   mature: boolean;
+  floating?: Record<string, number>;
 }
 
 const STARTER_TANKS: StarterTank[] = [
-  { id: 'A1', sizeId: 't40', heater: 'heater_50', setpoint: 25, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['java_fern', 0.25, 0], ['river_stone', 0.7, 2]], stock: [['guppy', 7]], mature: true },
-  { id: 'A2', sizeId: 't40', heater: 'heater_50', setpoint: 26, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['hornwort', 0.8, 0]], stock: [['endler', 8]], mature: true },
-  { id: 'A3', sizeId: 't40', heater: null, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['vallisneria', 0.2, 0], ['river_stone', 0.6, 1]], stock: [['white_cloud', 9]], mature: true },
-  { id: 'A4', sizeId: 't60', heater: 'heater_50', setpoint: 24, filter: 'sponge', substrate: 'gravel', background: 'black', decor: [['amazon_sword', 0.3, 0], ['coconut_cave', 0.75, 1]], stock: [['neon_tetra', 12]], mature: true },
-  { id: 'A5', sizeId: 't60', heater: 'heater_50', setpoint: 24, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['anubias', 0.6, 1]], stock: [['platy', 6]], mature: true },
-  { id: 'A6', sizeId: 't60', heater: null, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['river_stone', 0.4, 1]], stock: [['zebra_danio', 8]], mature: true },
-  { id: 'B1', sizeId: 't120', heater: 'heater_150', setpoint: 24.5, filter: 'hang_on', substrate: 'sand', background: 'rocky', decor: [['mopani', 0.35, 1], ['clay_cave', 0.7, 1], ['java_fern', 0.15, 0], ['amazon_sword', 0.85, 0]], stock: [['bronze_cory', 6], ['bristlenose', 2]], mature: true },
-  { id: 'B2', sizeId: 't120', heater: null, filter: 'hang_on', substrate: 'gravel', background: 'blue', decor: [['anubias', 0.2, 1], ['river_stone', 0.75, 2]], stock: [['fancy_goldfish', 3]], mature: true },
-  { id: 'C1', sizeId: 't60', heater: 'heater_50', setpoint: 26, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['limestone', 0.5, 1]], stock: [['molly', 4]], mature: true },
+  { id: 'A1', sizeId: 't40', heater: 'heater_50', setpoint: 25, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['vallisneria', 0.12, 0], ['java_fern', 0.3, 0], ['hornwort', 0.85, 0], ['cryptocoryne', 0.55, 2], ['river_stone', 0.72, 2], ['java_moss', 0.38, 2]], floating: { duckweed: 0.12 }, stock: [['guppy', 7]], mature: true },
+  { id: 'A2', sizeId: 't40', heater: 'heater_50', setpoint: 26, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['hornwort', 0.8, 0], ['rotala', 0.2, 0], ['java_moss', 0.5, 2]], floating: { frogbit: 0.1 }, stock: [['endler', 8]], mature: true },
+  { id: 'A3', sizeId: 't40', heater: null, filter: 'sponge', substrate: 'fine_gravel', background: 'none', decor: [['vallisneria', 0.2, 0], ['vallisneria', 0.75, 0], ['river_stone', 0.6, 1]], stock: [['white_cloud', 9]], mature: true },
+  { id: 'A4', sizeId: 't60', heater: 'heater_50', setpoint: 24, filter: 'sponge', substrate: 'aqua_soil', background: 'black', decor: [['spider_wood', 0.42, 0], ['amazon_sword', 0.2, 0], ['rotala', 0.85, 0], ['cryptocoryne', 0.65, 2], ['java_fern', 0.5, 1], ['coconut_cave', 0.78, 1]], floating: { red_root: 0.1 }, stock: [['neon_tetra', 12]], mature: true },
+  { id: 'A5', sizeId: 't60', heater: 'heater_50', setpoint: 24, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['anubias', 0.6, 1], ['java_fern', 0.25, 0], ['hornwort', 0.85, 0]], stock: [['platy', 6]], mature: true },
+  { id: 'A6', sizeId: 't60', heater: null, filter: 'sponge', substrate: 'river_pebbles', background: 'none', decor: [['river_stone', 0.3, 1], ['river_stone', 0.68, 2], ['vallisneria', 0.9, 0]], stock: [['zebra_danio', 8]], mature: true },
+  { id: 'B1', sizeId: 't120', heater: 'heater_150', setpoint: 24.5, filter: 'hang_on', substrate: 'sand', background: 'rocky', decor: [['mopani', 0.35, 1], ['clay_cave', 0.7, 1], ['java_fern', 0.15, 0], ['amazon_sword', 0.85, 0], ['cryptocoryne', 0.55, 2], ['java_moss', 0.3, 2]], stock: [['bronze_cory', 6], ['bristlenose', 2]], mature: true },
+  { id: 'B2', sizeId: 't120', heater: null, filter: 'hang_on', substrate: 'gravel', background: 'blue', decor: [['anubias', 0.2, 1], ['river_stone', 0.75, 2], ['river_stone', 0.45, 2], ['slate_stack', 0.85, 0]], stock: [['fancy_goldfish', 3]], mature: true },
+  { id: 'C1', sizeId: 't60', heater: 'heater_50', setpoint: 26, filter: 'sponge', substrate: 'gravel', background: 'none', decor: [['limestone', 0.5, 1], ['vallisneria', 0.15, 0]], stock: [['molly', 4]], mature: true },
   { id: 'C2', sizeId: 't60', heater: 'heater_50', setpoint: 25, filter: 'sponge', substrate: 'bare', background: 'none', decor: [], stock: [], mature: false },
 ];
 
@@ -86,6 +87,7 @@ export function newGame(opts: { seed?: number; playerName?: string; shopName?: s
       backgroundId: st.background,
     });
     t.decor = st.decor.map(([defId, x, layer], i): DecorItem => ({ uid: `d_${st.id}_${i}`, defId, x, layer, flip: x > 0.5, health: 0.9, size: getDecor(defId).kind === 'plant' ? rng.range(0.85, 1.15) : 1 }));
+    if (st.floating) t.floating = { ...st.floating };
     t.ownedSubstrates = [st.substrate];
     t.ownedBackgrounds = [st.background];
     t.water.temperature = st.heater ? (st.setpoint ?? 25) : 19.5;

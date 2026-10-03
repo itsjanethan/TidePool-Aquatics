@@ -8,7 +8,8 @@ import type Phaser from 'phaser';
 import type { GameController } from '../../game/GameController';
 import type { Action } from '../../input/input';
 import { clamp, formatMoney } from '../../core/math';
-import { BACKGROUNDS, DECOR, getBackground, getDecor, getSubstrate, SUBSTRATES } from '../../data/catalog';
+import { BACKGROUNDS, DECOR, FLOATING, getBackground, getDecor, getFloating, getSubstrate, SUBSTRATES } from '../../data/catalog';
+import { buyFloating, plantFloatingFromStorage } from '../../sim/floating';
 import { getSpecies } from '../../data/species';
 import type { TankScene } from '../../render/scenes/TankScene';
 import { RES } from '../../render/res';
@@ -78,6 +79,7 @@ export class AquascapeScreen implements Screen {
     this.placing = null;
     this.renderer.setLook({});
     this.renderer.setGhost(null);
+    this.renderer.setFloatingPreview(null);
     this.panel.style.display = '';
     this.title.textContent = 'Aquascape';
     this.menu.setItems(this.mainItems(), index);
@@ -117,7 +119,26 @@ export class AquascapeScreen implements Screen {
         preview: { defId, x: 0.5, layer: 1, size: 1, source: 'storage-decor' },
       } as MenuItem);
     }
+    const floatStore = Object.entries(s.storage.floating ?? {}).filter(([, n]) => n > 0);
+    for (const [id, n] of floatStore) {
+      list.push({
+        label: `${getFloating(id).name} ×${n} portions`,
+        right: 'Owned',
+        hint: 'Float one portion on this tank\'s surface. It spreads by itself.',
+        action: () => { this.c.perform(plantFloatingFromStorage(s, t, id)); this.refreshMain(); },
+        floatPreview: id,
+      } as MenuItem);
+    }
     list.push({ label: 'Buy new', header: true });
+    for (const f of FLOATING) {
+      list.push({
+        label: `${f.name} (floating, 1 portion)`,
+        right: formatMoney(f.cost),
+        hint: `${f.description} Shown on the surface now; confirm to buy.`,
+        action: () => { this.c.perform(buyFloating(s, t, f.id)); this.refreshMain(); },
+        floatPreview: f.id,
+      } as MenuItem);
+    }
     for (const d of DECOR) {
       list.push({
         label: d.name,
@@ -129,11 +150,19 @@ export class AquascapeScreen implements Screen {
     }
     list.push({ label: 'Done', action: () => this.close() });
     this.previews = list.map((it) => (it as MenuItem & { preview?: Placing }).preview ?? null);
+    this.floatPreviews = list.map((it) => (it as MenuItem & { floatPreview?: string }).floatPreview ?? null);
     return list;
   }
 
   /** Preview for each main-list row (null for rows without one). */
   private previews: Array<Placing | null> = [];
+  private floatPreviews: Array<string | null> = [];
+
+  private refreshMain(): void {
+    const i = this.menu.index;
+    this.menu.setItems(this.mainItems(), i);
+    this.onBrowse();
+  }
 
   /** Item currently highlighted in the main list, for the live ghost preview. */
   private browsePreview(): Placing | null {
@@ -144,7 +173,9 @@ export class AquascapeScreen implements Screen {
     if (this.mode === 'main') {
       const p = this.browsePreview();
       this.renderer.setGhost(p ? { defId: p.defId, x: p.x, layer: p.layer, size: p.size } : null);
-      this.setHint(p ? 'Preview shown in the tank. Confirm to position it.' : undefined);
+      const fp = this.floatPreviews[this.menu.index] ?? null;
+      this.renderer.setFloatingPreview(fp);
+      this.setHint(p ? 'Preview shown in the tank. Confirm to position it.' : fp ? 'Preview shown on the surface.' : undefined);
     } else if (this.mode === 'substrate') {
       const id = SUBSTRATES[this.menu.index]?.id;
       if (id) this.renderer.setLook({ substrateId: id });
@@ -158,6 +189,7 @@ export class AquascapeScreen implements Screen {
     this.mainIndex = this.menu.index;
     this.mode = kind;
     this.renderer.setGhost(null);
+    this.renderer.setFloatingPreview(null);
     const t = this.tank;
     this.title.textContent = kind === 'substrate' ? 'Substrate' : 'Background';
     const list = kind === 'substrate' ? SUBSTRATES : BACKGROUNDS;
@@ -256,6 +288,7 @@ export class AquascapeScreen implements Screen {
     this.mode = 'edit';
     this.placing = null;
     this.renderer.setGhost(null);
+    this.renderer.setFloatingPreview(null);
     this.panel.style.display = 'none';
     this.editIndex = clamp(this.editIndex, 0, this.tank.decor.length - 1);
     this.setHint();
@@ -394,6 +427,7 @@ export class AquascapeScreen implements Screen {
   onClose(): void {
     this.renderer.setLook({});
     this.renderer.setGhost(null);
+    this.renderer.setFloatingPreview(null);
     if (this.cursor.active) this.cursor.destroy();
   }
 }
