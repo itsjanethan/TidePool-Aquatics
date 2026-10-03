@@ -35,6 +35,8 @@ Saves live in each player's browser (IndexedDB) and survive new deploys. Players
 
 ## For AI agents and contributors
 
+See [MAINTAINING.md](MAINTAINING.md) for the product-owner/maintainer roles, pull-request checks and release process. Use Node 22 and `npm ci` for reproducible validation.
+
 This repository is developed mostly by AI coding agents. Before any task:
 
 1. Read `TASKS.md` and `ROADMAP.md` to find the highest-priority incomplete work.
