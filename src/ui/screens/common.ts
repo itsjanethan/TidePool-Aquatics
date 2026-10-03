@@ -149,14 +149,14 @@ export function fishCard(state: GameState, f: FishEntity, detailed = false): HTM
   const tank = f.tankId ? state.tanks[f.tankId] : null;
   const sexText = f.sex === 'male' ? '♂ Male' : f.sex === 'female' ? '♀ Female' : 'Unsexed';
   const rows: HTMLElement[] = [
-    h('div', { class: 'fish-name' }, fishLabel(state, f), f.alive ? '' : ' (dead)'),
+    h('div', { class: 'fish-name' }, fishLabel(state, f), f.alive ? '' : ' (dead)', f.notForSale ? h('span', { class: 'nfs-badge' }, 'NOT FOR SALE') : null),
     h('div', { class: 'fish-sci' }, `${sp.commonName} · ${sp.scientificName}`),
     h('div', { class: 'row' }, h('span', null, `${sexText} · ${lifeStage(f)}`), h('span', null, `${f.sizeCm.toFixed(1)}cm`)),
     h('div', { class: 'row' }, h('span', null, 'Health'), meter(f.health / 100, f.health < 40 ? 'bad' : f.health < 70 ? 'warn' : 'good')),
     h('div', { class: 'row' }, h('span', null, 'Fullness'), meter(1 - f.hunger / 100, f.hunger > 70 ? 'bad' : f.hunger > 45 ? 'warn' : 'good')),
     h('div', { class: 'row' }, h('span', null, 'Stress'), meter(f.stress / 100, f.stress > 60 ? 'bad' : f.stress > 35 ? 'warn' : 'good')),
   ];
-  if (f.alive) rows.push(h('div', { class: 'row' }, h('span', null, `Quality ${stars(f.quality)}`), h('b', null, isFry(f) ? 'Too young to sell' : formatMoney(fishPrice(state, f)))));
+  if (f.alive) rows.push(h('div', { class: 'row' }, h('span', null, `Quality ${stars(f.quality)}`), h('b', null, f.notForSale ? `Kept (worth ${formatMoney(fishPrice(state, f))})` : isFry(f) ? 'Too young to sell' : formatMoney(fishPrice(state, f)))));
   if (f.pregnancy) rows.push(h('div', { class: 'good small' }, `Pregnant: about ${Math.max(1, Math.ceil(f.pregnancy.daysRemaining))} day(s) to go.`));
   if (tank && f.alive) {
     const st = stressTarget(f, tank, fishInTank(state, tank.id), summarizeAquascape(tank));

@@ -10,6 +10,7 @@ import { fishInTank, moveFish } from '../../sim/fish';
 import { breedingConditions, isFry, lifeStage } from '../../sim/breeding';
 import { establishStrain, strainEligibility } from '../../sim/genetics';
 import { sellFishToTrade, tradeValue } from '../../sim/trade';
+import { setNotForSale } from '../../sim/protection';
 import {
   buyFilter, buyHeater, feedingNeed, feedTank, removeDead, removeHeater, setHeater, SKIMMER_COST, toggleAirStone, toggleSkimmer, useBacteriaStarter, type ActionResult,
 } from '../../sim/tank';
@@ -218,13 +219,16 @@ export function openLivestock(c: GameController, tankId: string): void {
   const s = c.state;
   const items = (): MenuItem[] => {
     const fish = fishInTank(s, tankId, true).sort((a, b) => a.speciesId.localeCompare(b.speciesId) || b.sizeCm - a.sizeCm);
+    const kept = fish.filter((f) => f.notForSale).length;
     const list: MenuItem[] = fish.map((f) => ({
       label: `${f.alive ? '' : '✝ '}${fishLabel(s, f)} ${f.sex === 'male' ? '♂' : f.sex === 'female' ? '♀' : ''}${f.pregnancy ? ' (pregnant)' : ''}`,
-      right: !f.alive ? 'dead' : isFry(f) ? 'fry' : formatMoney(fishPrice(s, f)),
-      hint: `${lifeStage(f)} · ${f.sizeCm.toFixed(1)}cm · health ${Math.round(f.health)} · stress ${Math.round(f.stress)}${f.origin === 'bred' ? ` · bred F${f.generation}` : ''}${f.reservedBy ? ' · reserved by a customer' : ''}`,
+      right: !f.alive ? 'dead' : f.notForSale ? NFS_TAG : isFry(f) ? 'fry' : formatMoney(fishPrice(s, f)),
+      className: f.notForSale ? 'nfs' : undefined,
+      hint: `${lifeStage(f)} · ${f.sizeCm.toFixed(1)}cm · health ${Math.round(f.health)} · stress ${Math.round(f.stress)}${f.origin === 'bred' ? ` · bred F${f.generation}` : ''}${f.reservedBy ? ' · reserved by a customer' : ''}${f.notForSale ? ' · not for sale: kept by you' : ''}`,
       action: () => openFishDetail(c, f, () => scr.refresh(items())),
     }));
     if (!list.length) list.push({ label: 'This tank is empty.', disabled: true });
+    else list.unshift({ label: 'Select fish: not for sale', right: kept ? `${kept} kept` : '', hint: 'Pick several fish and mark them not for sale (or for sale again) in one go.', action: () => openProtectSelect(c, tankId, () => scr.refresh(items())) });
     list.push({ label: 'Back', action: () => c.ui.remove(scr) });
     return list;
   };
@@ -260,11 +264,34 @@ export function openFishDetail(c: GameController, f: FishEntity, onChange: () =>
               });
             },
           }),
+      {
+        label: 'Not for sale',
+        right: f.notForSale ? 'On' : 'Off',
+        disabled: !f.alive,
+        hint: f.notForSale
+          ? 'Kept by you: customers cannot reserve or buy this fish, staff will not sell it and the trade buyer will not take it. Feeding, moving and breeding are unaffected.'
+          : 'Keep this fish (a breeder or a favourite): customers, staff and the trade buyer will leave it alone.',
+        action: () => {
+          if (!f.notForSale) {
+            const res = setNotForSale(s, [f.id], true, c.sim?.customerCtx);
+            c.ui.toast(res.message, 'good', 3500);
+            scr.refresh(items());
+            onChange();
+            return;
+          }
+          void c.ui.confirm(`Put ${fishLabel(s, f)} up for sale again? Customers, staff and the trade buyer will be able to sell it.`).then((y) => {
+            if (!y) return;
+            c.ui.toast(setNotForSale(s, [f.id], false).message, 'info', 3500);
+            scr.refresh(items());
+            onChange();
+          });
+        },
+      },
       locked(c, 'sell', {
         label: 'Sell to the trade buyer',
-        right: f.alive ? formatMoney(tradeValue(s, f.id)) : '',
-        disabled: !f.alive || !!f.reservedBy,
-        hint: 'The wholesaler takes surplus fish at a fraction of shop price. Useful when a breeding tank gets crowded.',
+        right: f.notForSale ? NFS_TAG : f.alive ? formatMoney(tradeValue(s, f.id)) : '',
+        disabled: !f.alive || !!f.reservedBy || !!f.notForSale,
+        hint: f.notForSale ? 'This fish is marked not for sale. Turn that off first to sell it.' : 'The wholesaler takes surplus fish at a fraction of shop price. Useful when a breeding tank gets crowded.',
         action: () => void c.ui.confirm(`Sell ${fishLabel(s, f)} to the trade buyer for ${formatMoney(tradeValue(s, f.id))}?`).then((y) => {
           if (!y) return;
           c.perform(sellFishToTrade(s, [f.id]));
@@ -277,6 +304,70 @@ export function openFishDetail(c: GameController, f: FishEntity, onChange: () =>
     ];
   };
   const scr = c.ui.menu({ title: fishLabel(s, f), body: () => fishCard(s, f, true), className: 'wide tall', items: items() });
+}
+
+const NFS_TAG = 'Not for sale';
+
+/**
+ * Bulk "not for sale": tick fish, then protect or unprotect them together.
+ * Unprotecting always asks first, so protection is never removed silently.
+ */
+export function openProtectSelect(c: GameController, tankId: string, onChange: () => void): void {
+  const s = c.state;
+  const picked = new Set<string>();
+  const fish = () => fishInTank(s, tankId).sort((a, b) => a.speciesId.localeCompare(b.speciesId) || b.sizeCm - a.sizeCm);
+  const done = (msg: string, kind: 'good' | 'info') => {
+    c.ui.toast(msg, kind, 4000);
+    picked.clear();
+    scr.refresh(items());
+    onChange();
+  };
+  const items = (): MenuItem[] => {
+    const list = fish();
+    const sel = list.filter((f) => picked.has(f.id));
+    const keptSel = sel.filter((f) => f.notForSale).length;
+    const species = [...new Set(list.map((f) => f.speciesId))];
+    return [
+      { label: 'Selected', header: true },
+      {
+        label: `Mark ${sel.length || ''} not for sale`.replace('  ', ' '),
+        disabled: !sel.length || keptSel === sel.length,
+        hint: sel.length ? `${sel.length - keptSel} will be protected; ${keptSel} already are. Reserved fish are taken out of the customer's basket.` : 'Tick some fish below first.',
+        action: () => done(setNotForSale(s, sel.map((f) => f.id), true, c.sim?.customerCtx).message, 'good'),
+      },
+      {
+        label: `Put ${keptSel || ''} up for sale again`.replace('  ', ' '),
+        disabled: !keptSel,
+        hint: keptSel ? `Removes protection from ${keptSel} selected fish (asks first).` : 'None of the selected fish are protected.',
+        action: () =>
+          void c.ui.confirm(`Put ${keptSel} fish up for sale again? Customers, staff and the trade buyer will be able to sell them.`).then((y) => {
+            if (y) done(setNotForSale(s, sel.filter((f) => f.notForSale).map((f) => f.id), false).message, 'info');
+          }),
+      },
+      { label: 'Select none', disabled: !sel.length, action: () => { picked.clear(); scr.refresh(items()); } },
+      ...species.map((sid) => ({
+        label: `Select all ${getSpecies(sid).commonName}`,
+        action: () => {
+          for (const f of list) if (f.speciesId === sid) picked.add(f.id);
+          scr.refresh(items());
+        },
+      })),
+      { label: `Fish (${sel.length} selected)`, header: true },
+      ...list.map((f) => ({
+        label: `${picked.has(f.id) ? '☑' : '☐'} ${fishLabel(s, f)} ${f.sex === 'male' ? '♂' : f.sex === 'female' ? '♀' : ''}`,
+        right: f.notForSale ? NFS_TAG : isFry(f) ? 'fry' : formatMoney(fishPrice(s, f)),
+        className: f.notForSale ? 'nfs' : undefined,
+        hint: `${lifeStage(f)} · ${f.sizeCm.toFixed(1)}cm${f.reservedBy ? ' · reserved by a customer' : ''}${f.notForSale ? ' · not for sale' : ''}`,
+        action: () => {
+          if (picked.has(f.id)) picked.delete(f.id);
+          else picked.add(f.id);
+          scr.refresh(items());
+        },
+      })),
+      { label: 'Done', action: () => c.ui.remove(scr) },
+    ];
+  };
+  const scr = c.ui.menu({ title: `Not for sale: ${s.tanks[tankId].name}`, body: h('div', { class: 'small' }, 'Kept fish are never reserved, sold at the till, sold by staff or sold to the trade buyer.'), items: items(), className: 'tall' });
 }
 
 /** Breeding overview for a tank: who can breed, what is stopping them, pregnancies and eggs. */

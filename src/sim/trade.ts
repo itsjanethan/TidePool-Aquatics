@@ -24,8 +24,13 @@ export function sellFishToTrade(state: GameState, ids: string[]): ActionResult {
   if (state.idle) return idleRefusal();
   let total = 0;
   let n = 0;
+  let kept = 0;
   for (const id of ids) {
     const f = state.fish[id];
+    if (f?.notForSale) {
+      kept++;
+      continue;
+    }
     if (!f || !f.alive || f.reservedBy) continue;
     total += tradeValue(state, id);
     noteSold(state, f.speciesId, 1);
@@ -35,8 +40,9 @@ export function sellFishToTrade(state: GameState, ids: string[]): ActionResult {
     } else delete state.fish[id];
     n++;
   }
-  if (!n) return { ok: false, message: 'No fish to sell.', minutes: 0 };
+  if (!n) return { ok: false, message: kept ? 'Not for sale: protected fish cannot be sold to the trade.' : 'No fish to sell.', minutes: 0 };
   earn(state, round(total, 2), `${n} fish to trade`);
   state.stats.totalFishSold += n;
-  return { ok: true, message: `Sold ${n} fish to the trade buyer for £${total.toFixed(2)}.`, minutes: 3 + n };
+  const skipped = kept ? ` ${kept} not-for-sale fish kept.` : '';
+  return { ok: true, message: `Sold ${n} fish to the trade buyer for £${total.toFixed(2)}.${skipped}`, minutes: 3 + n };
 }

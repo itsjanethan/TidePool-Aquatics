@@ -41,6 +41,7 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 
 ## Done
 
+- 2026-10-03: Not for sale for individual fish: enforced in `sellable`, `completeSale` and `sellFishToTrade`; protecting releases reservations and updates the order; fish details toggle, badges in livestock lists and the fish card, bulk select with feedback; unprotect always confirms. Tests in `tests/protection.test.ts`.
 - 2026-10-03: Aquarium visuals tied to tank state (pearling, mulm, surface film, hardscape shade and algae, light ramp, surface reflections on High), Auto quality (steps down only), reduced motion setting, staggered plant redraws, bounded per-tank texture caches. Profiling tools and before/after numbers in TESTING.md (headless, CPU-rasterised; no real-device numbers). Tests in `tests/visuals.test.ts`.
 - 2026-10-03: Mobile layout: full-screen responsive game rectangle with safe areas, controls below (portrait) or beside (landscape), UI unit separate from canvas (16 px minimum text, 44 px targets, text size and readable font settings), menus as sheets, store camera following the player with map view, immersive tank view, tap to move, contextual A/B/F labels, store floor detail. Tests in `tests/layout.test.ts`; emulated checks in `scripts/mobile-check.mjs`. Not yet checked on a real phone.
 - 2026-10-03: Hold B to run (2x, store only; on-screen B, gamepad B, keyboard X, Shift kept), contextual touch B label, "Hold B to run" hint, held input cleared on blur/hidden/pagehide, multi-touch d-pad with pointer capture. Tests in `tests/input.test.ts`.

@@ -410,3 +410,10 @@ body.compact.landscape .aq-panel { left: auto; right: 0; top: 0; bottom: 0; tran
 body.compact .aq-hint { bottom: auto; top: calc(var(--tank-top, 60px) + 4px); left: 6px; right: 6px; }
 .tv-card.tv-card-empty { display: none !important; }
 body.compact.portrait .tv-card.tv-card-empty { display: grid !important; gap: 6px; align-content: start; }
+
+/* Not for sale ------------------------------------------------------------ */
+.nfs-badge {
+  display: inline-block; margin-left: calc(var(--px) * 3); padding: 0 calc(var(--px) * 2); font-size: max(var(--min-text), 0.75em);
+  color: #1b1830; background: var(--blue); border: calc(var(--px) * 0.5) solid #0b0d1a; vertical-align: middle; letter-spacing: 0.04em;
+}
+.menu-item.nfs .menu-right, .menu-item.nfs.selected .menu-right { color: var(--blue); }
