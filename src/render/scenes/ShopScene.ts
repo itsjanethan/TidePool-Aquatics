@@ -436,7 +436,9 @@ export class ShopScene extends Phaser.Scene {
     const s = controller.state;
     const tx = clampCentre(s.player.x * TILE + 8, worldW, vw);
     const ty = clampCentre(s.player.y * TILE + 8, worldH, vh);
-    if (snap || Number.isNaN(this.camX)) {
+    // Reduced motion: the camera cuts to the player instead of gliding.
+    const calm = typeof document !== 'undefined' && document.body.classList.contains('reduce-motion');
+    if (snap || calm || Number.isNaN(this.camX)) {
       this.camX = tx;
       this.camY = ty;
     } else {

@@ -11,9 +11,9 @@ import { showHelp } from './help';
 import { APP_VERSION } from '../../version';
 import { copyPlaytestReport } from './playtest';
 import { isMuted, setMuted } from '../../audio/sfx';
-import { getQuality, QUALITY_LEVELS, setQuality } from '../../render/quality';
+import { getQuality, QUALITY_LEVELS, qualityLabel, setQuality } from '../../render/quality';
 import { openGoals, reputationEl } from './office';
-import { getPrefs, setPrefs, TEXT_SIZES, type TextSize } from '../displayPrefs';
+import { cycle, getPrefs, MOTION_MODES, setPrefs, TEXT_SIZES, type TextSize } from '../displayPrefs';
 
 export function openPauseMenu(c: GameController): void {
   const s = c.state;
@@ -60,14 +60,21 @@ export function deviceSettingsItems(refresh: () => void): MenuItem[] {
   const font = () => { setPrefs({ font: p.font === 'pixel' ? 'readable' : 'pixel' }); refresh(); };
   const cam = () => { setPrefs({ camera: p.camera === 'near' ? 'overview' : 'near' }); refresh(); };
   const tap = () => { setPrefs({ tapToMove: !p.tapToMove }); refresh(); };
+  const motion = (d: number) => { setPrefs({ motion: cycle(MOTION_MODES, p.motion, d) }); refresh(); };
   const items: MenuItem[] = [
     {
       label: 'Visual quality',
-      right: getQuality()[0].toUpperCase() + getQuality().slice(1),
-      hint: 'Tank view effects (particles, caustics, shadows, plant animation). Fish detail is the same at every setting. Applies next time you open a tank.',
+      right: qualityLabel(),
+      hint: 'Tank view effects (particles, caustics, shadows, pearling, reflections, plant animation rate). Fish detail is the same at every setting. Auto starts at Standard and steps down if the tank view runs slowly.',
       onLeft: () => { setQuality(QUALITY_LEVELS[Math.max(0, QUALITY_LEVELS.indexOf(getQuality()) - 1)]); refresh(); },
-      onRight: () => { setQuality(QUALITY_LEVELS[Math.min(2, QUALITY_LEVELS.indexOf(getQuality()) + 1)]); refresh(); },
-      action: () => { setQuality(QUALITY_LEVELS[(QUALITY_LEVELS.indexOf(getQuality()) + 1) % 3]); refresh(); },
+      onRight: () => { setQuality(QUALITY_LEVELS[Math.min(QUALITY_LEVELS.length - 1, QUALITY_LEVELS.indexOf(getQuality()) + 1)]); refresh(); },
+      action: () => { setQuality(QUALITY_LEVELS[(QUALITY_LEVELS.indexOf(getQuality()) + 1) % QUALITY_LEVELS.length]); refresh(); },
+    },
+    {
+      label: 'Motion',
+      right: p.motion === 'system' ? 'Follow device' : p.motion === 'reduced' ? 'Reduced' : 'Full',
+      hint: 'Reduced: calmer water, light and plants, and the store camera cuts instead of gliding. Follow device uses your system setting.',
+      onLeft: () => motion(-1), onRight: () => motion(1), action: () => motion(1),
     },
     { label: 'Sound', right: isMuted() ? 'Off' : 'On', onLeft: () => { setMuted(!isMuted()); refresh(); }, onRight: () => { setMuted(!isMuted()); refresh(); }, action: () => { setMuted(!isMuted()); refresh(); } },
     { label: 'Text size', right: textLabel(p.textSize), hint: 'Size of all menus and labels. Remembered on this device.', onLeft: () => text(-1), onRight: () => text(1), action: () => text(p.textSize === 'larger' ? -99 : 1) },

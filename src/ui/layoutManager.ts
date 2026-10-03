@@ -5,7 +5,7 @@
  * changes (browser bars), preference changes and controls-mode changes.
  */
 import type Phaser from 'phaser';
-import { getPrefs, onPrefsChange } from './displayPrefs';
+import { getPrefs, onPrefsChange, reducedMotion } from './displayPrefs';
 import { backingScale, computeLayout, readSafeInsets, uiUnit, type ControlsMode, type Layout } from './viewport';
 import { view } from '../render/view';
 
@@ -29,6 +29,11 @@ export class LayoutManager {
     // Re-apply once the on-screen keyboard closes (resizes are held while typing).
     document.addEventListener('focusout', () => setTimeout(queue, 50));
     onPrefsChange(queue);
+    try {
+      matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', queue);
+    } catch {
+      /* older browsers */
+    }
   }
 
   setGame(game: Phaser.Game): void {
@@ -88,6 +93,7 @@ export class LayoutManager {
     body.toggle('landscape', l.orientation === 'landscape');
     body.toggle('compact', l.compact);
     body.toggle('font-readable', prefs.font === 'readable');
+    body.toggle('reduce-motion', reducedMotion(prefs));
     for (const m of ['full', 'minimal', 'none'] as const) body.toggle(`controls-${m}`, l.controls === m);
     for (const p of ['below', 'sides', 'overlay'] as const) body.toggle(`place-${p}`, l.placement === p);
 
