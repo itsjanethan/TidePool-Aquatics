@@ -157,12 +157,12 @@ describe('Display preferences', () => {
   });
 
   it('defaults, persistence and bad data', () => {
-    expect(getPrefs()).toEqual({ textSize: 'normal', font: 'pixel', camera: 'near', tapToMove: true });
+    expect(getPrefs()).toEqual({ textSize: 'normal', font: 'pixel', camera: 'near', tapToMove: true, motion: 'system' });
     setPrefs({ textSize: 'large', font: 'readable' });
     resetPrefsCache();
     expect(getPrefs().textSize).toBe('large');
     expect(getPrefs().font).toBe('readable');
-    expect(sanitizePrefs({ textSize: 'huge', font: 3, camera: 'x', tapToMove: 'yes' })).toEqual({ textSize: 'normal', font: 'pixel', camera: 'near', tapToMove: true });
+    expect(sanitizePrefs({ textSize: 'huge', font: 3, camera: 'x', tapToMove: 'yes' })).toEqual({ textSize: 'normal', font: 'pixel', camera: 'near', tapToMove: true, motion: 'system' });
     localStorage.setItem('tidepool.display', '{broken');
     resetPrefsCache();
     expect(getPrefs().textSize).toBe('normal');

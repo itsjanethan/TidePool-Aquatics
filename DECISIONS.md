@@ -88,6 +88,15 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
 
+## 2026-10-03: Aquarium visuals pass
+
+- **Every new effect reads the simulation; none is decoration for its own sake.** Mulm on the bed follows detritus (a gravel vac clears it). Surface film needs detritus and a still surface (filter flow, air stone). Oxygen pearls come only from healthy plants (health above 0.6) under light, fewer when there is no nitrate. Hardscape darkens under floating cover and canopies (the light map) and greens with the tank's algae. Lights ramp over about a second when the tank's light switches. Fish near the top mirror on the underside of the surface (High only). The formulas live in `render/stateVisuals.ts` and are unit tested.
+- **Pay for the effects first.** Profiling showed plant redraws (procedural Graphics every frame) were most of the update time in planted and capped tanks. Plants now redraw every 2 frames at Standard and every 3 at Low, in staggered buckets so the work is even across frames. At Standard that more than pays for the new effects.
+- **Auto quality is the new default and only steps down.** It starts at Standard, ignores the first 2.5 seconds of a tank view (texture painting), and after a 3-second window with a median frame over 34 ms drops one level for the session. It never steps up by itself, to avoid oscillation; choosing a level turns it off. Fish detail is never a quality knob.
+- **Reduced motion is a device setting** (Follow device / Reduced / Full). Reduced: calmer surface and caustics, no ray sway, slower and smaller plant and root sway, no CSS animations, the store camera cuts instead of gliding. Fish behaviour is content and stays the same.
+- **Per-tank generated textures are bounded.** Substrate beds and mulm keep the 6 most recent tanks (the current one is never evicted); fish sheets already had an LRU of 160. Visiting every tank no longer keeps every bed in memory.
+- **No photorealism claims.** This is a pixel-art game; the goal is a tank that reads its own state at a glance.
+
 ## 2026-10-03: Mobile layout
 
 - **The game fills the screen; cameras decide what to show.** The fixed 3:2 stage scaled to fit made phones show a small strip of game with tiny text. The canvas now fills the game rectangle and each scene fits its camera: the store follows the player up close, the tank view fits the tank, the title tank covers the screen. Resolution-independent UI was the bigger win than any single CSS tweak.

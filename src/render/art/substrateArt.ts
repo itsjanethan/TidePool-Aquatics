@@ -136,6 +136,35 @@ export function ensureSubstrate(scene: Phaser.Scene, id: string, tankId: string,
   return key;
 }
 
+/**
+ * Mulm: fine brown detritus settling on the bed. Same size and origin as the
+ * substrate texture so it follows the contour; the renderer sets its alpha
+ * from the water's detritus, so a gravel vac visibly clears it.
+ */
+export function ensureMulm(scene: Phaser.Scene, tankId: string, W: number, res: number): string {
+  const key = `mulm1:${tankId}:${W}`;
+  if (scene.textures.exists(key)) return key;
+  const contour = substrateContour(tankId, W, res);
+  const pad = 10 * res;
+  const HH = pad + 8 * res;
+  const rng = new Rng(seedOf(`mulm${tankId}`));
+  const tex = scene.textures.createCanvas(key, W, HH)!;
+  const ctx = tex.getContext();
+  const front = (x: number) => pad - contour(x);
+  const cols = ['rgba(74,58,36,0.85)', 'rgba(92,74,44,0.75)', 'rgba(60,66,40,0.7)', 'rgba(110,92,60,0.6)'];
+  for (let i = 0; i < W * 0.9; i++) {
+    const x = rng.range(0, W);
+    // Settles on the top band, thicker in the hollows (where the bed dips).
+    const hollow = Math.max(0, 1 - contour(x) / (4 * res));
+    if (!rng.chance(0.45 + hollow * 0.5)) continue;
+    const y = front(x) - rng.range(0, TOP_BAND * res) + res;
+    ctx.fillStyle = cols[rng.int(0, cols.length - 1)];
+    ctx.fillRect(Math.round(x), Math.round(y), res * rng.int(1, 2), res);
+  }
+  tex.refresh();
+  return key;
+}
+
 /** Extra canvas pixels the substrate texture extends above its nominal top. */
 export function substratePad(res: number): number {
   return 10 * res;

@@ -14,7 +14,7 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 7. **Plant depth.** Light level per tank, fertiliser dry good, runners and rhizome splits as propagation methods, three more plant species.
 8. **Staff depth.** Dialogue pools per personality, training at the PC, morale and breaks, receiving deliveries as a Stock task, a staff room on a floor.
 9. **Marine depth.** Alkalinity and calcium, corals with light needs, cleaner shrimp, quarantine and acclimation for marine deliveries.
-10. **Accessibility pass.** High-contrast UI, key rebinding (text size and a readable font shipped with the mobile layout; reduced motion is part of the aquarium visuals work).
+10. **Accessibility pass.** High-contrast UI, key rebinding (text size and a readable font shipped with the mobile layout; reduced motion shipped with the aquarium visuals pass).
 
 ## Backlog
 
@@ -41,6 +41,7 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 
 ## Done
 
+- 2026-10-03: Aquarium visuals tied to tank state (pearling, mulm, surface film, hardscape shade and algae, light ramp, surface reflections on High), Auto quality (steps down only), reduced motion setting, staggered plant redraws, bounded per-tank texture caches. Profiling tools and before/after numbers in TESTING.md (headless, CPU-rasterised; no real-device numbers). Tests in `tests/visuals.test.ts`.
 - 2026-10-03: Mobile layout: full-screen responsive game rectangle with safe areas, controls below (portrait) or beside (landscape), UI unit separate from canvas (16 px minimum text, 44 px targets, text size and readable font settings), menus as sheets, store camera following the player with map view, immersive tank view, tap to move, contextual A/B/F labels, store floor detail. Tests in `tests/layout.test.ts`; emulated checks in `scripts/mobile-check.mjs`. Not yet checked on a real phone.
 - 2026-10-03: Hold B to run (2x, store only; on-screen B, gamepad B, keyboard X, Shift kept), contextual touch B label, "Hold B to run" hint, held input cleared on blur/hidden/pagehide, multi-touch d-pad with pointer capture. Tests in `tests/input.test.ts`.
 - 2026-10-03: Developer Sandbox (local only) with presets, separate save namespace and build-time removal of all developer tools from the public build (verified in `npm run check`).

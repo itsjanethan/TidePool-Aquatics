@@ -98,6 +98,9 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `ui/displayPrefs.ts` | Per-device text size, font, store camera, tap to move |
 | `render/view.ts` | Canvas scale, camera fitting helpers, world label transform |
 | `render/tapPath.ts` | Tap-to-move path finding |
+| `render/quality.ts` | Quality levels, Auto (adaptive, steps down only) |
+| `render/stateVisuals.ts` | Pure mapping from tank state to effects (mulm, surface film, pearling, hardscape tint, light ramp) |
+| `render/textureCache.ts` | Bounded caches for per-tank generated textures |
 | `input/runHint.ts` | "Hold B to run" prompt until the player first runs (per device, localStorage) |
 | `render/walkTiming.ts` | Player step and run times |
 | `game/GameController.ts` | Game loop timing, input routing, pause rules, saves, scene transitions |

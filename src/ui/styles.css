@@ -237,6 +237,8 @@ input:focus { border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .menu-item.selected::before, .bubble.help, .dialogue-arrow.blink { animation: none; }
 }
+body.reduce-motion .menu-item.selected::before, body.reduce-motion .bubble.help, body.reduce-motion .dialogue-arrow.blink { animation: none; }
+body.reduce-motion .toast, body.reduce-motion .hud-saved, body.reduce-motion .tank-view-ui .tv-top, body.reduce-motion .tank-view-ui .tv-card, body.reduce-motion .tank-view-ui .tv-bar { transition: none; }
 
 /* Overlays that must let clicks reach the canvas (fish selection). */
 #screens > .tank-view-ui { pointer-events: none; }
