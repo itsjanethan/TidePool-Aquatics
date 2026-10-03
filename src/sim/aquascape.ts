@@ -26,7 +26,44 @@ export interface AquascapeSummary {
   layout: number;
   /** 0..0.85 light blocked by floating plants. */
   shade: number;
+  /** The layout score's components (they add up to `layout` before clamping). */
+  parts: LayoutParts;
+  /** Beauty adjustments on top of layout. */
+  floatLook: number;
+  dirt: number;
+  /** 0..1 how full the tank looks (0.55 is the sweet spot). */
+  density: number;
+  /** Sum of item looks before the cap (4 = full marks). */
+  looksSum: number;
 }
+
+/** Layout score components, each with its maximum. */
+export interface LayoutParts {
+  substrate: number;
+  background: number;
+  variety: number;
+  count: number;
+  density: number;
+  spread: number;
+  depth: number;
+  looks: number;
+}
+
+/** What each layout component means and its ceiling (shared by the UI and tests). */
+export const LAYOUT_PARTS: Record<keyof LayoutParts, { label: string; max: number; explain: string }> = {
+  substrate: { label: 'Substrate', max: 14, explain: 'how good the substrate looks' },
+  background: { label: 'Background', max: 14, explain: 'how good the background looks' },
+  variety: { label: 'Variety', max: 24, explain: 'kinds of item (plants, rock, wood, caves): up to 4 count' },
+  count: { label: 'Number of items', max: 17.6, explain: 'up to 8 items count' },
+  density: { label: 'Fullness', max: 16, explain: 'best at about half full; emptier or more crowded scores less' },
+  spread: { label: 'Spread', max: 10, explain: 'items spread from side to side' },
+  depth: { label: 'Depth', max: 8, explain: 'using back, middle and front' },
+  looks: { label: 'Item looks', max: 10, explain: 'healthy, attractive items; full marks once enough are in' },
+};
+/** Variety counts up to this many kinds; items up to this many. */
+export const VARIETY_CAP = 4;
+export const COUNT_CAP = 8;
+export const DENSITY_SWEET_SPOT = 0.55;
 
 export function summarizeAquascape(tank: TankState): AquascapeSummary {
   const provides = new Set<string>();
@@ -73,22 +110,21 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
   // Layout: variety, density sweet spot, horizontal balance.
   const n = tank.decor.length;
   const density = clamp01(footprint / 0.9);
-  const densityScore = n === 0 ? 0 : 1 - Math.abs(density - 0.55) * 1.3;
+  const densityScore = n === 0 ? 0 : 1 - Math.abs(density - DENSITY_SWEET_SPOT) * 1.3;
   const xs = tank.decor.map((d) => d.x);
   const spread = n > 1 ? Math.max(...xs) - Math.min(...xs) : 0;
   const layers = new Set(tank.decor.map((d) => d.layer)).size;
-  const layout = clamp(
-    sub.beauty * 14 +
-      bg.beauty * 14 +
-      Math.min(4, kinds.size) * 6 +
-      Math.min(n, 8) * 2.2 +
-      clamp01(densityScore) * 16 +
-      spread * 10 +
-      (layers - 1) * 4 +
-      Math.min(1, beautySum / 4) * 10,
-    0,
-    100,
-  );
+  const parts: LayoutParts = {
+    substrate: sub.beauty * 14,
+    background: bg.beauty * 14,
+    variety: Math.min(VARIETY_CAP, kinds.size) * 6,
+    count: Math.min(n, COUNT_CAP) * 2.2,
+    density: clamp01(densityScore) * 16,
+    spread: spread * 10,
+    depth: (layers - 1) * 4,
+    looks: Math.min(1, beautySum / 4) * 10,
+  };
+  const layout = clamp(Object.values(parts).reduce((a, b) => a + b, 0), 0, 100);
   // A little floating cover looks natural; a carpet hides the tank.
   const floatTotal = totalFloating(tank);
   const floatLook = floatTotal < 0.4 ? floatTotal * 10 : Math.max(-12, 4 - (floatTotal - 0.4) * 26);
@@ -109,5 +145,10 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
     openSpace: clamp01(1 - density * 0.9),
     beauty,
     layout,
+    parts,
+    floatLook,
+    dirt,
+    density,
+    looksSum: beautySum,
   };
 }

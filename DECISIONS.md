@@ -88,6 +88,14 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
 
+## 2026-10-04: Aquascape explanations come from the real scoring
+
+- **No second set of numbers.** `summarizeAquascape` now returns its layout components (substrate, background, variety, number of items, fullness, spread, depth, item looks) with their maxima; the score is still their sum. Previews run the real placement (`addDecor`, `plantFromStorage`, `placeDecorFromStorage`, or the move) on a copy of the game and score it with the same function, so an explanation can never disagree with the result. Tested for every decor item at several positions.
+- **Score and fish care are separate.** "Score" lines are the layout score customers and reputation react to. "Fish care" lines compare cover, caves, wood, sand and open water against what the fish in that tank need (`tankNeeds`), and say when nothing changes. Trade-offs (open water lost, shade) are listed on their own.
+- **Short while browsing, full while placing.** The list shows score before and after, what the item gives, the biggest score changes and one care line; placement adds limits and every care line and updates as the item moves or changes depth. Landscape phones get the short version so the buttons stay on screen.
+- **On-screen placement buttons** (◀ ▶ ▲ Back ▼ Front Place Cancel): touch screens have no d-pad in the immersive tank view, so placing was impossible on phones before.
+- In portrait the floating B no longer appears over the tank view (it covered sheet text); the screens there have their own Back, Cancel and Done.
+
 ## 2026-10-04: Rapid taps never zoom the page
 
 - **Two layers.** CSS `touch-action` (`none` on the controls, `manipulation` on buttons and rows, `pan-y` on lists; per the spec double-tap zoom needs `auto`) plus touch-event guards, because iOS Safari has honoured `touch-action` inconsistently.
