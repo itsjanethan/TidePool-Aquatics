@@ -77,14 +77,6 @@ export interface CritterSheet {
   frames: Array<Uint8ClampedArray<ArrayBuffer>>;
 }
 
-function patternAt(c: CritterColours, x: number, y: number, seed: number): boolean {
-  const n = Math.sin(x * 0.9 + seed) * Math.sin(y * 1.1 + seed * 0.7) + Math.sin(x * 0.37 - y * 0.53 + seed);
-  if (c.pattern === 'spots') return n > 1.15;
-  if (c.pattern === 'blotch') return n > 0.6;
-  if (c.pattern === 'stripes') return Math.sin(y * 0.9 + Math.sin(x * 0.15) * 2) > 0.55;
-  if (c.pattern === 'speckle') return n > 1.4;
-  return false;
-}
 
 // ---------------------------------------------------------------------------
 // Soft-body painting (v0.7): anti-aliased ellipsoids and limb capsules shaded
@@ -363,6 +355,13 @@ function paintFrog(b: Buf, L: number, c: CritterColours, frame: number, dead: bo
   if (dead) for (let i = 0; i < b.data.length; i += 4) b.data[i + 3] *= 0.85;
 }
 
+/**
+ * Gecko, side view facing right: a tapered body built along a centre line
+ * (fat tail on leopard geckos), shaded as a rounded solid with fine tubercle
+ * bump, the morph's pattern in soft patches (tail bands, crest fringe), four
+ * jointed legs stepping in diagonal pairs with splayed toes or pads, a lidded
+ * eye with a slit pupil and the long smiling mouth line.
+ */
 function paintGecko(b: Buf, L: number, c: CritterColours, frame: number, dead: boolean, ft: CritterFeatures): void {
   const body = hex(c.body);
   const belly = hex(c.belly);
@@ -371,15 +370,14 @@ function paintGecko(b: Buf, L: number, c: CritterColours, frame: number, dead: b
   const x0 = b.w * 0.04;
   const len = b.w * 0.92;
   const thick = L * (ft.fatTail ? 0.085 : 0.075);
-  const smooth = (a: number, z: number, v: number) => {
+  const sm = (a: number, z: number, v: number) => {
     const t = Math.max(0, Math.min(1, (v - a) / (z - a)));
     return t * t * (3 - 2 * t);
   };
-  // Radius along the animal from tail tip (0) to snout (1).
   const radius = (sv: number): number => {
     if (sv < 0.42) {
       const u = sv / 0.42;
-      if (ft.fatTail) return thick * (0.18 + 0.95 * smooth(0, 0.55, u)) * (u > 0.8 ? 1 - (u - 0.8) * 0.9 : 1);
+      if (ft.fatTail) return thick * (0.18 + 0.95 * sm(0, 0.55, u)) * (u > 0.8 ? 1 - (u - 0.8) * 0.9 : 1);
       return thick * (0.12 + 0.6 * u);
     }
     if (sv < 0.5) return thick * (0.82 + (sv - 0.42) * 2);
@@ -388,124 +386,148 @@ function paintGecko(b: Buf, L: number, c: CritterColours, frame: number, dead: b
     const u = (sv - 0.81) / 0.19;
     return thick * (0.86 + Math.sin(u * Math.PI * 0.7) * 0.12) * Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, u - 0.55) / 0.45, 2) * 0.85));
   };
-  // Centre line: the tail rests on the ground, the body is held up on the legs, head a little raised.
   const lift = thick * 1.25;
   const centre = (sv: number): number => {
     const onGround = g - radius(sv) - 1;
     const held = g - lift - thick;
-    const y = onGround + (held - onGround) * smooth(0.18, 0.46, sv);
+    const y = onGround + (held - onGround) * sm(0.18, 0.46, sv);
     return y - (sv > 0.78 ? (sv - 0.78) * thick * 1.6 : 0) + (dead ? 0 : Math.sin((frame * Math.PI) / 2 + sv * 9) * (sv < 0.4 ? thick * 0.12 : 0));
   };
-  // Far-side legs first (darker), then the body, then the near legs.
+  const seed = Math.round(body[0] * 7 + body[2] + L);
+  const pat = skinPattern(c.pattern === 'spots' ? 'spots' : c.pattern, L * 0.55, seed);
+  const sk: Skin = { base: body, belly, gloss: ft.crest ? 0.15 : 0.22, bump: 0.7, bumpScale: Math.max(0.8, thick * 0.22), seed, patCol: accent, pattern: pat };
+  const legSk: Skin = { ...sk, pattern: undefined, bump: 0.5 };
   const legAt = (sv: number, near: boolean, ph: number) => {
     const sx = x0 + sv * len;
-    const sy = centre(sv) + radius(sv) * 0.55;
+    const sy = centre(sv) + radius(sv) * 0.45;
     const swing = dead ? 0 : (ph < 2 ? ph : 4 - ph) * thick * 0.5 - thick * 0.5;
     const hind = sv < 0.6;
     const kneeX = sx + (hind ? -thick * 0.5 : thick * 0.6) + swing * 0.5;
-    const kneeY = g - thick * 0.75;
+    const kneeY = g - thick * 0.8;
     const footX = sx + (hind ? -thick * 0.15 : thick * 0.95) + swing;
-    const col = near ? lit(body, 0.98) : lit(body, 0.62);
-    const w = Math.max(2, thick * 0.55);
-    b.line(sx, sy, kneeX, kneeY, col, 1, w);
-    b.line(kneeX, kneeY, footX, g - 1, col, 1, Math.max(1, w * 0.7));
-    // Splayed toes.
-    for (const d of [-1, 0, 1]) b.set(footX + d * Math.max(1, thick * 0.25), g, near ? (ft.toePads ? lit(belly, 1.15) : lit(body, 0.9)) : lit(body, 0.55), 1);
+    const s2: Skin = near ? legSk : { ...legSk, base: lit(body, 0.55), belly: lit(belly, 0.55), gloss: 0 };
+    const w = Math.max(2, thick * 0.6);
+    limb(b, sx, sy, kneeX, kneeY, w, w * 0.75, s2);
+    limb(b, kneeX, kneeY, footX, g - w * 0.25, w * 0.7, w * 0.45, s2);
+    for (const d of [-1.2, -0.4, 0.4, 1.2]) {
+      const tx = footX + d * thick * 0.35 + thick * 0.15;
+      limb(b, footX, g - w * 0.2, tx, g - 0.5, w * 0.3, w * 0.22, s2);
+      if (ft.toePads && near) blob(b, tx, g - 0.6, w * 0.22, w * 0.16, 0, { base: lit(belly, 1.05), gloss: 0.2 });
+    }
   };
   legAt(0.48, false, (frame + 2) % 4);
   legAt(0.72, false, frame % 4);
   for (let i = 0; i <= Math.ceil(len); i++) {
     const sv = i / len;
     const r = radius(sv);
-    if (r < 0.6) continue;
+    if (r < 0.5) continue;
     const yc = centre(sv);
     const x = x0 + i;
-    for (let y = -Math.ceil(r); y <= Math.ceil(r); y++) {
+    for (let y = -Math.ceil(r) - 1; y <= Math.ceil(r) + 1; y++) {
       const v = y / r;
-      if (Math.abs(v) > 1.02) continue;
-      let col = v > 0.5 ? belly : body;
-      if (v <= 0.5) {
-        if (ft.fatTail && sv < 0.42 && Math.floor(sv * 26) % 3 === 0) col = mixC(body, accent, 0.35);
-        if (patternAt(c, x * 0.8, (yc + y) * 0.8, 5)) col = accent;
-        if (c.pattern === 'blotch' && v < -0.35 && Math.floor(x / Math.max(3, thick)) % 2 === 0) col = mixC(body, [255, 236, 190], 0.45);
-        if (c.pattern === 'stripes' && Math.abs(v + 0.55) < 0.18 && sv > 0.4) col = mixC(body, [255, 236, 190], 0.55);
-      }
-      // Rounded shading, a lit back and a soft rim below.
-      let k = 1.18 - (v + 1) * 0.2;
-      if (Math.abs(v) > 0.85) k *= 0.82;
-      // Bumpy skin.
-      if (((x * 7 + (yc + y) * 13) % 11) === 0) k *= 0.92;
-      b.set(x, yc + y, lit(col, k), 1);
+      const cover = Math.min(1, Math.max(0, r - Math.abs(y) + 0.5));
+      if (cover <= 0) continue;
+      const vv = Math.max(-0.999, Math.min(0.999, v));
+      const nz = Math.sqrt(1 - vv * vv);
+      let skin = sk;
+      // Leopard gecko tail bands; harlequin and flame crests get a pale dorsal stripe.
+      if (ft.fatTail && sv < 0.42 && Math.sin(sv * 46) > 0.55 && v < 0.4) skin = { ...sk, base: mixC(body, belly, 0.55) };
+      if ((c.pattern === 'blotch' || c.pattern === 'stripes') && v < -0.4 && sv > 0.35) skin = { ...sk, base: mixC(body, [250, 226, 176], c.pattern === 'blotch' ? 0.5 * (Math.sin(sv * 30) > 0 ? 1 : 0.3) : 0.6) };
+      b.set(x, yc + y, shadeSkin(skin, x, yc + y, 0, vv, nz), cover);
     }
-    // Crested gecko: a fringe of small spikes along the back and over the eyes.
-    if (ft.crest && sv > 0.5 && sv < 0.97 && i % 3 === 0) b.set(x, yc - r - 1, lit(body, 1.25), 1);
+    // Crested gecko: a fringe of small soft spikes along the back.
+    if (ft.crest && sv > 0.5 && sv < 0.97 && i % Math.max(2, Math.round(thick * 0.45)) === 0) limb(b, x, yc - r + 0.5, x - thick * 0.12, yc - r - thick * 0.35, thick * 0.22, thick * 0.06, { ...sk, base: lit(body, 1.15), pattern: undefined });
   }
   legAt(0.48, true, frame % 4);
   legAt(0.72, true, (frame + 2) % 4);
-  // Head details: a big lidded eye, nostril, and the long smiling mouth line.
+  // Head: lidded eye with a slit pupil, nostril, smiling mouth line.
   const he = 0.9;
   const hx = x0 + he * len;
   const hy = centre(he) - radius(he) * 0.2;
-  const er = Math.max(1.5, thick * 0.38);
-  b.ellipse(hx, hy, er, er, (nx, ny) => {
-    if (nx * nx + ny * ny > 0.6) return [ft.crest ? [190, 140, 70] : lit(body, 0.7), 1];
-    return [nx < -0.15 && ny < -0.15 ? [235, 225, 205] : ft.crest ? [120, 80, 30] : [18, 18, 22], 1];
-  });
-  if (ft.crest) for (let k = -1; k <= 2; k++) b.set(hx + k, hy - er - 1 - (k === 0 ? 1 : 0), lit(body, 1.3), 1);
+  const er = Math.max(1.4, thick * (ft.crest ? 0.42 : 0.36));
+  blob(b, hx, hy, er * 1.3, er * 1.15, 0, { ...sk, pattern: undefined });
+  eyeball(b, hx + er * 0.1, hy, er, ft.crest ? [176, 128, 60] : [168, 150, 120], 'slit');
+  if (ft.crest) for (let k = -1; k <= 2; k++) limb(b, hx + k * er * 0.5, hy - er * 1.1, hx + k * er * 0.5 - er * 0.2, hy - er * 1.7, er * 0.35, er * 0.1, { ...sk, base: lit(body, 1.2), pattern: undefined });
   b.set(x0 + 0.985 * len, centre(0.985) - radius(0.985) * 0.2, lit(body, 0.45), 1);
   const my = centre(0.9) + radius(0.9) * 0.35;
-  b.line(x0 + 0.84 * len, my + thick * 0.08, x0 + 0.99 * len, my - thick * 0.1, lit(body, 0.55), 1);
+  b.line(x0 + 0.84 * len, my + thick * 0.08, x0 + 0.99 * len, my - thick * 0.1, lit(body, 0.5), 0.8, Math.max(1, thick * 0.08));
   if (dead) for (let i = 0; i < b.data.length; i += 4) b.data[i + 3] *= 0.85;
 }
 
+/** Fine hairs: short soft strokes leaning back from a surface. */
+function hairs(b: Buf, x: number, y: number, n: number, len: number, col: RGB, seed: number, ang = -1.9): void {
+  for (let i = 0; i < n; i++) {
+    const a = ang + (hh(i, seed, 3) - 0.5) * 1.4;
+    const l = len * (0.5 + hh(i, seed, 5) * 0.8);
+    b.line(x, y, x + Math.cos(a) * l, y + Math.sin(a) * l, lit(col, 0.8 + hh(i, seed, 7) * 0.5), 0.5, 1);
+  }
+}
+
+/**
+ * Tarantula, side view facing right: a velvety hairy abdomen and a domed
+ * carapace with a radial pattern, eight segmented legs (far pair darker)
+ * stepping in alternation with pale knee bands and long setae, pedipalps,
+ * chelicerae and the eye tubercle.
+ */
 function paintSpider(b: Buf, L: number, c: CritterColours, frame: number, dead: boolean): void {
   const body = hex(c.body);
   const belly = hex(c.belly);
-  const limb = hex(c.fin);
+  const limbC = hex(c.fin);
   const hair = hex(c.accent);
   const g = b.h - 2;
   const cx = b.w * 0.5;
   const cy = g - L * 0.22;
-  const hash = (x: number, y: number) => ((Math.imul(Math.round(x) * 73856093 ^ Math.round(y) * 19349663, 83492791) >>> 0) % 1000) / 1000;
-  // Eight thick, hairy legs: four each side seen from the side, jointed, stepping in pairs.
+  const seed = Math.round(body[0] + L);
+  const fur: Skin = { base: body, belly, bump: 1, bumpScale: Math.max(0.6, L / 90), seed, gloss: 0 };
+  const legSk = (far: boolean): Skin => ({ base: far ? lit(limbC, 0.55) : limbC, bump: 0.9, bumpScale: Math.max(0.6, L / 110), seed: seed + 1, gloss: 0.05 });
   const leg = (k: number) => {
     const far = k < 4;
     const i = k % 4;
     const baseX = cx + L * (0.02 + i * 0.045);
-    const lift = dead ? -L * 0.18 : (((frame + i + (far ? 2 : 0)) % 4) < 2 ? -L * 0.035 : 0);
+    const lifted = dead ? -L * 0.18 : (((frame + i + (far ? 2 : 0)) % 4) < 2 ? -L * 0.035 : 0);
     const spread = (i - 1.6) * L * 0.21 + (far ? L * 0.03 : 0);
     const kneeX = baseX + spread * 0.62;
-    const kneeY = cy - L * 0.1 + lift;
+    const kneeY = cy - L * 0.11 + lifted;
     const footX = baseX + spread * 1.08;
-    const col = far ? lit(limb, 0.62) : lit(limb, 1.05);
-    const w = Math.max(2, L * 0.075);
-    b.line(baseX, cy, kneeX, kneeY, col, 1, w);
-    b.line(kneeX, kneeY, footX, g + (dead ? -L * 0.25 : 0), col, 1, Math.max(2, w * 0.8));
-    // Pale knee bands and bristles along the leg.
-    b.set(kneeX, kneeY - 1, lit(hair, far ? 0.8 : 1.05), 1);
-    b.set(kneeX + 1, kneeY - 1, lit(hair, far ? 0.75 : 1), 0.8);
-    for (let s = 0.15; s < 1; s += 0.22) b.set(kneeX + (footX - kneeX) * s - 1, kneeY + (g - kneeY) * s, lit(hair, far ? 0.7 : 0.95), 0.7);
+    const footY = g + (dead ? -L * 0.25 : 0);
+    const midX = kneeX + (footX - kneeX) * 0.5;
+    const midY = kneeY + (footY - kneeY) * 0.45;
+    const w = Math.max(2, L * 0.07);
+    const sk = legSk(far);
+    limb(b, baseX, cy, kneeX, kneeY, w, w * 0.85, sk);
+    limb(b, kneeX, kneeY, midX, midY, w * 0.85, w * 0.7, sk);
+    limb(b, midX, midY, footX, footY - 0.5, w * 0.7, w * 0.45, sk);
+    // Pale bands at the joints (the "knees" of a rose hair).
+    blob(b, kneeX, kneeY, w * 0.5, w * 0.42, 0, { base: lit(hair, far ? 0.6 : 0.95), bump: 0.6, seed }, 0.85);
+    blob(b, midX, midY, w * 0.4, w * 0.35, 0, { base: lit(hair, far ? 0.55 : 0.9), bump: 0.6, seed }, 0.7);
+    if (!far) {
+      hairs(b, (baseX + kneeX) / 2, (cy + kneeY) / 2 - w * 0.3, 5, w * 0.9, hair, seed + k);
+      hairs(b, (kneeX + midX) / 2, (kneeY + midY) / 2 - w * 0.2, 5, w * 0.9, hair, seed + k + 9, -1.4);
+    }
   };
   for (let k = 0; k < 4; k++) leg(k);
-  // Abdomen (back, left): round and covered in fine pale hairs; cephalothorax (front, right).
-  b.ellipse(cx - L * 0.2, cy - L * 0.02, L * 0.2, L * 0.16, (nx, ny) => {
-    const h = hash((nx + 1) * 40, (ny + 1) * 40);
-    const base = lit(body, 1.08 - ny * 0.35 - Math.abs(nx) * 0.1);
-    return [h > 0.82 ? mixC(base, hair, 0.7) : h < 0.08 ? lit(base, 0.75) : base, 1];
-  });
-  b.ellipse(cx + L * 0.09, cy - L * 0.03, L * 0.16, L * 0.115, (nx, ny) => {
-    const h = hash((nx + 1) * 30 + 7, (ny + 1) * 30);
-    const base = lit(ny > 0.35 ? belly : body, 1.12 - ny * 0.3);
-    return [h > 0.88 ? mixC(base, hair, 0.5) : base, 1];
-  });
+  // Abdomen: velvety, with long pale setae.
+  const ax = cx - L * 0.2;
+  const ay = cy - L * 0.02;
+  blob(b, ax, ay, L * 0.2, L * 0.16, -0.15, fur);
+  for (let k = 0; k < 26; k++) {
+    const ang = Math.PI * (0.85 + hh(k, seed, 1) * 1.1);
+    hairs(b, ax + Math.cos(ang) * L * 0.18, ay + Math.sin(ang) * L * 0.14, 1, L * 0.05, hair, seed + k * 3, ang);
+  }
+  // Carapace: domed, with dark radial lines from the fovea.
+  const tx = cx + L * 0.09;
+  const ty = cy - L * 0.03;
+  blob(b, tx, ty, L * 0.16, L * 0.11, 0, { ...fur, gloss: 0.12, bump: 0.6, pattern: (x, y) => {
+    const a = Math.atan2(y - ty, x - tx);
+    return Math.max(0, Math.cos(a * 8) - 0.85) * 3;
+  }, patCol: lit(body, 0.55) });
   for (let k = 4; k < 8; k++) leg(k);
   // Pedipalps and chelicerae.
-  b.line(cx + L * 0.2, cy, cx + L * 0.3, cy + L * 0.09, lit(limb, 0.9), 1, Math.max(2, L * 0.04));
-  b.ellipse(cx + L * 0.22, cy + L * 0.03, L * 0.04, L * 0.05, () => [lit(body, 0.55), 1]);
-  // Eye cluster on the carapace.
-  b.set(cx + L * 0.12, cy - L * 0.12, [16, 16, 16]);
-  b.set(cx + L * 0.14, cy - L * 0.12, [16, 16, 16]);
-  b.set(cx + L * 0.13, cy - L * 0.13, [200, 200, 200], 0.8);
+  limb(b, cx + L * 0.2, cy, cx + L * 0.28, cy + L * 0.06, L * 0.05, L * 0.04, legSk(false));
+  limb(b, cx + L * 0.28, cy + L * 0.06, cx + L * 0.32, g - L * 0.04, L * 0.04, L * 0.03, legSk(false));
+  blob(b, cx + L * 0.22, cy + L * 0.03, L * 0.05, L * 0.06, 0.2, { base: lit(body, 0.45), gloss: 0.25 });
+  // Eye tubercle with tiny glossy eyes.
+  blob(b, tx + L * 0.04, ty - L * 0.1, L * 0.022, L * 0.016, 0, { base: [24, 22, 20], gloss: 0.9 });
   if (dead) for (let i = 0; i < b.data.length; i += 4) b.data[i + 3] *= 0.85;
 }
 
@@ -521,93 +543,120 @@ export function critterColours(m: ColourMorph): CritterColours {
   return { body: m.body, belly: m.belly, fin: m.fin, accent: m.accent, pattern: m.pattern };
 }
 
+/**
+ * Shrimp, side view facing right: a translucent arched abdomen of six
+ * overlapping segments, a smooth carapace, a fanned tail, a serrated rostrum,
+ * a stalked glossy eye, long antennae, walking legs and beating swimmerets.
+ * Colour from the morph (cherry red, crystal bands, amano dashes, cleaner
+ * stripe) with saturation concentrated on the back and a glassy belly.
+ */
 function paintShrimp(b: Buf, L: number, c: CritterColours, frame: number, dead: boolean): void {
   const body = hex(c.body);
   const belly = hex(c.belly);
   const accent = hex(c.accent);
+  const finC = hex(c.fin);
   const x0 = b.w * 0.18;
   const groundY = b.h - 2;
   const top = groundY - L * 0.42;
-  // Body axis: a gentle arch from tail (left) to head (right).
   const yAt = (t: number) => top + L * 0.16 + Math.sin(t * Math.PI) * -L * 0.06 + (1 - t) * L * 0.06;
   const hAt = (t: number) => L * (t > 0.62 ? 0.15 : 0.06 + t * 0.15);
-  const segs = 6;
-  for (let i = 0; i <= 60; i++) {
-    const t = i / 60;
-    const x = x0 + t * L;
-    const yc = yAt(t);
-    const half = hAt(t);
-    const seg = Math.floor(t * 10);
-    for (let y = -half; y <= half; y++) {
-      const v = y / half;
-      const shadeK = 1.1 - v * 0.35;
-      let col = mixC(body, belly, Math.max(0, v) * 0.5);
-      if (c.pattern === 'bands' && t < 0.62 && seg % 2 === 0) col = accent;
-      if (c.pattern === 'bands' && t >= 0.62 && t < 0.8) col = accent;
-      if (c.pattern === 'lateral' && v < -0.15) col = mixC(hex(c.fin), [200, 40, 30], 0.3);
-      if (c.pattern === 'lateral' && Math.abs(v + 0.15) < 0.12) col = [250, 250, 250];
-      if (c.pattern === 'spots' && (Math.round(x) + Math.round(y) * 3) % 7 === 0) col = accent;
-      b.set(x, yc + y, lit(col, shadeK), dead ? 0.6 : 0.88);
-    }
-    // Segment joints on the abdomen.
-    if (t < 0.6 && t > 0.05 && i % Math.round(60 * 0.62 / segs) === 0) b.line(x, yc - half, x, yc + half * 0.3, lit(body, 0.75), 0.3);
+  const alpha = dead ? 0.55 : 0.9;
+  const seed = Math.round(body[0] + L);
+  const skinFor = (t: number): Skin => {
+    let base = body;
+    if (c.pattern === 'bands') base = Math.floor(t * 10) % 2 === 0 && t < 0.62 ? accent : t >= 0.62 && t < 0.8 ? accent : body;
+    return { base, belly: mixC(belly, [235, 235, 230], 0.4), gloss: 0.7, seed, pattern: c.pattern === 'spots' ? (x, y) => (hh(Math.floor(x / 2), Math.floor(y / 2), seed) > 0.9 ? 1 : 0) : undefined, patCol: accent };
+  };
+  // Swimmerets under the abdomen, beating.
+  for (let k = 0; k < 4; k++) {
+    const t = 0.15 + k * 0.11;
+    const lx = x0 + L * t;
+    const ly = yAt(t) + hAt(t) * 0.7;
+    const beat = dead ? 0 : Math.sin(frame * 1.6 + k * 0.9) * L * 0.025;
+    limb(b, lx, ly, lx - L * 0.02 + beat, ly + L * 0.06, L * 0.022, L * 0.01, { base: finC, gloss: 0.3 }, 0.7);
   }
-  // Glossy highlight along the back.
-  for (let i = 5; i < 58; i++) b.set(x0 + (i / 60) * L, yAt(i / 60) - hAt(i / 60) + 1, [255, 255, 255], 0.35);
+  // Abdomen segments, tail to head, each a shaded overlapping plate.
+  for (let k = 0; k < 6; k++) {
+    const t = 0.06 + k * 0.1;
+    blob(b, x0 + L * t, yAt(t), L * 0.07, hAt(t) * 1.02, -0.15 + k * 0.05, skinFor(t), alpha);
+  }
+  // Carapace.
+  blob(b, x0 + L * 0.8, yAt(0.8) - L * 0.005, L * 0.21, hAt(0.8) * 1.05, 0.04, skinFor(0.8), alpha);
+  // Lateral stripe (cleaner shrimp) and back highlight line.
+  if (c.pattern === 'lateral') for (let i = 4; i < 98; i++) { const t = i / 100; b.set(x0 + L * t, yAt(t) - hAt(t) * 0.25, [250, 250, 250], 0.85); b.set(x0 + L * t, yAt(t) - hAt(t) * 0.6, [200, 40, 30], 0.6); }
   // Tail fan.
-  const tx = x0;
   const ty = yAt(0);
-  b.line(tx, ty, tx - L * 0.12, ty - L * 0.08, lit(hex(c.fin), 1.05), 0.85, 2);
-  b.line(tx, ty, tx - L * 0.13, ty + L * 0.02, lit(hex(c.fin), 0.95), 0.85, 2);
-  // Head: rostrum, eye, antennae.
+  for (const [dy, k] of [[-0.09, 1.05], [-0.03, 1], [0.03, 0.9]] as Array<[number, number]>) limb(b, x0, ty, x0 - L * 0.13, ty + L * dy, L * 0.04, L * 0.06, { base: lit(finC, k), gloss: 0.5 }, 0.8);
+  // Rostrum, eye, antennae.
   const hx = x0 + L;
   const hy = yAt(1);
-  b.line(hx - 1, hy - 1, hx + L * 0.12, hy - L * 0.04, lit(body, 1.1), 0.9);
-  b.set(hx - L * 0.04, hy - L * 0.03, [10, 10, 14]);
-  b.set(hx - L * 0.04 + 1, hy - L * 0.03, [10, 10, 14]);
-  b.set(hx - L * 0.04, hy - L * 0.03 - 1, [230, 230, 230], 0.8);
+  limb(b, hx - L * 0.04, hy - L * 0.02, hx + L * 0.12, hy - L * 0.05, L * 0.03, L * 0.008, skinFor(1), alpha);
+  limb(b, hx - L * 0.05, hy - L * 0.02, hx - L * 0.01, hy - L * 0.045, L * 0.025, L * 0.025, skinFor(1));
+  eyeball(b, hx - L * 0.005, hy - L * 0.05, Math.max(1, L * 0.03), [40, 30, 30]);
   const ant = c.pattern === 'lateral' ? 1.2 : 0.85;
   const wav = Math.sin(frame * 1.6) * L * 0.03;
-  const antCol: RGB = c.pattern === 'lateral' ? [250, 250, 250] : lit(body, 1.15);
-  b.line(hx, hy, hx + L * 0.35 * ant, hy - L * 0.35 * ant + wav, antCol, 0.8);
-  b.line(hx, hy + 1, hx + L * 0.45 * ant, hy - L * 0.12 + wav, antCol, 0.6);
-  // Walking legs (under the carapace) and swimmerets (under the abdomen).
+  const antCol: RGB = c.pattern === 'lateral' ? [250, 250, 250] : lit(body, 1.1);
+  b.line(hx, hy, hx + L * 0.35 * ant, hy - L * 0.35 * ant + wav, antCol, 0.75);
+  b.line(hx, hy + 1, hx + L * 0.45 * ant, hy - L * 0.12 + wav, antCol, 0.55);
+  // Walking legs.
   for (let k = 0; k < 5; k++) {
-    const lx = x0 + L * (0.66 + k * 0.065);
-    const ly = yAt(0.66 + k * 0.065) + hAt(0.7) * 0.6;
+    const t = 0.66 + k * 0.065;
+    const lx = x0 + L * t;
+    const ly = yAt(t) + hAt(0.7) * 0.6;
     const step = Math.sin(frame * (Math.PI / 2) + k * 1.3) * L * 0.035;
-    if (dead) b.line(lx, ly, lx + 2, ly - L * 0.1, lit(body, 0.9), 0.5);
-    else b.line(lx, ly, lx + step, groundY, lit(body, 0.95), 0.55);
-  }
-  for (let k = 0; k < 4; k++) {
-    const lx = x0 + L * (0.15 + k * 0.11);
-    const ly = yAt(0.15 + k * 0.11) + hAt(0.2) * 0.8;
-    b.line(lx, ly, lx - L * 0.02 + Math.sin(frame + k) * 1, ly + L * 0.035, lit(hex(c.fin), 1), 0.45);
+    const kneeX = lx + L * 0.03 + step * 0.5;
+    const kneeY = (ly + groundY) / 2 - L * 0.02;
+    const legSk: Skin = { base: lit(body, 0.95), gloss: 0.3 };
+    if (dead) limb(b, lx, ly, lx + 2, ly - L * 0.1, L * 0.015, L * 0.01, legSk, 0.5);
+    else {
+      limb(b, lx, ly, kneeX, kneeY, L * 0.016, L * 0.013, legSk, 0.75);
+      limb(b, kneeX, kneeY, lx + step, groundY, L * 0.013, L * 0.008, legSk, 0.75);
+    }
   }
 }
 
+/**
+ * A gastropod shell: a glossy body whorl coiling to an apex at upper left,
+ * suture lines between whorls, fine growth lines across them, the morph's
+ * bands or speckle, an aperture lip and a wet highlight.
+ */
 function shellSpiral(b: Buf, cx: number, cy: number, r: number, c: CritterColours): void {
   const main = hex(c.body);
   const accent = hex(c.accent);
-  b.ellipse(cx, cy, r, r * 0.92, (nx, ny) => {
-    const d = Math.hypot(nx, ny);
-    const ang = Math.atan2(ny, nx);
-    // Spiral suture: whorls shrink toward the apex at upper left.
-    const spiral = (ang / (Math.PI * 2) + d * 1.6) % 1;
-    let col = main;
-    if (c.pattern === 'stripes' && Math.sin(ang * 9 + d * 14) > 0.35) col = accent;
-    if (c.pattern === 'bars' && Math.sin(ang * 6) > 0.5) col = accent;
-    if (c.pattern === 'speckle' && Math.sin(nx * 31) * Math.sin(ny * 27) > 0.6) col = accent;
-    const k = 1.15 - (nx * 0.25 + ny * 0.45) - d * 0.15;
-    const suture = spiral < 0.06 && d > 0.25 ? 0.6 : 1;
-    return [lit(col, k * suture), 1];
+  const seed = Math.round(main[0] + r);
+  blob(b, cx, cy, r, r * 0.92, -0.15, {
+    base: main,
+    gloss: 0.55,
+    bump: 0.25,
+    bumpScale: Math.max(0.8, r / 18),
+    seed,
+    patCol: accent,
+    pattern: (x, y) => {
+      const nx = (x - cx) / r;
+      const ny = (y - cy) / r;
+      const d = Math.hypot(nx + 0.3, ny + 0.35);
+      const ang = Math.atan2(ny + 0.35, nx + 0.3);
+      const spiral = (ang / (Math.PI * 2) + d * 1.7 + 10) % 1;
+      // Suture: a thin dark seam between whorls.
+      let a = spiral < 0.05 && d > 0.12 ? 0.6 : 0;
+      // Growth lines across the whorl.
+      a = Math.max(a, Math.max(0, Math.sin(ang * 38) - 0.9) * 2.5 * 0.35);
+      if (c.pattern === 'stripes') a = Math.max(a, Math.sin(spiral * Math.PI * 6) > 0.45 ? 0.85 : 0);
+      if (c.pattern === 'bars') a = Math.max(a, Math.sin(ang * 6 + d * 3) > 0.5 ? 0.85 : 0);
+      if (c.pattern === 'speckle') a = Math.max(a, hh(Math.floor(x / 1.5), Math.floor(y / 1.5), seed) > 0.86 ? 0.8 : 0);
+      return a;
+    },
   });
-  // Apex and a glossy highlight.
-  b.ellipse(cx - r * 0.3, cy - r * 0.35, r * 0.28, r * 0.25, () => [lit(main, 1.25), 1]);
-  b.set(cx - r * 0.45, cy - r * 0.5, [255, 255, 255], 0.7);
-  b.set(cx - r * 0.4, cy - r * 0.55, [255, 255, 255], 0.5);
+  // Apex whorls.
+  blob(b, cx - r * 0.32, cy - r * 0.36, r * 0.3, r * 0.26, -0.3, { base: lit(main, 1.12), gloss: 0.5 }, 0.95);
+  blob(b, cx - r * 0.42, cy - r * 0.48, r * 0.13, r * 0.11, -0.3, { base: lit(main, 1.2), gloss: 0.5 }, 0.95);
 }
 
+/**
+ * Snail: shell as above over a soft, slightly translucent foot that ripples
+ * along the ground, with a head, two tentacles with eye tips and the mantle
+ * edge at the aperture.
+ */
 function paintSnail(b: Buf, L: number, c: CritterColours, frame: number, dead: boolean): void {
   const groundY = b.h - 2;
   const foot = hex(c.belly);
@@ -615,52 +664,55 @@ function paintSnail(b: Buf, L: number, c: CritterColours, frame: number, dead: b
   const cx = b.w * 0.45;
   const cy = groundY - r - L * 0.12;
   if (!dead) {
-    // Foot: a soft strip along the ground with a ripple, head and tentacles to the right.
-    const ripple = frame % 2;
-    for (let x = cx - r * 1.05; x < cx + r * 1.35; x++) {
-      const t = (x - (cx - r)) / (r * 2.35);
-      const hgt = L * (0.1 + Math.sin(Math.min(1, t) * Math.PI) * 0.06) + ((Math.round(x) + ripple) % 4 === 0 ? 0.6 : 0);
-      for (let y = 0; y < hgt; y++) b.set(x, groundY - y, lit(foot, 1.05 - y / hgt * 0.25), 0.95);
-    }
+    const ripple = frame * 0.8;
+    const footSk: Skin = { base: foot, gloss: 0.45, bump: 0.5, bumpScale: Math.max(0.8, L / 40), seed: 9 };
+    blob(b, cx + r * 0.15, groundY - L * 0.08, r * 1.25, L * 0.09, 0, footSk, 0.95);
+    for (let k = 0; k < 6; k++) b.line(cx - r * 0.8 + k * r * 0.35 + Math.sin(ripple + k) * 1, groundY - L * 0.02, cx - r * 0.75 + k * r * 0.35, groundY - L * 0.12, lit(foot, 0.85), 0.25);
     const hx = cx + r * 1.3;
-    const hy = groundY - L * 0.14;
+    const hy = groundY - L * 0.12;
+    blob(b, hx, hy, L * 0.1, L * 0.075, 0.2, footSk, 0.95);
     const wave = Math.sin(frame * 1.5) * L * 0.05;
-    b.line(hx, hy, hx + L * 0.16, hy - L * 0.2 + wave, lit(foot, 0.85), 1);
-    b.line(hx - 1, hy, hx + L * 0.06, hy - L * 0.24 - wave, lit(foot, 0.85), 1);
-    b.set(hx + L * 0.16, hy - L * 0.2 + wave, [20, 20, 20]);
+    limb(b, hx + L * 0.04, hy - L * 0.04, hx + L * 0.16, hy - L * 0.22 + wave, L * 0.03, L * 0.018, footSk);
+    limb(b, hx, hy - L * 0.04, hx + L * 0.06, hy - L * 0.25 - wave, L * 0.03, L * 0.018, footSk);
+    blob(b, hx + L * 0.16, hy - L * 0.22 + wave, L * 0.018, L * 0.018, 0, { base: [20, 18, 18], gloss: 0.8 });
   }
   shellSpiral(b, cx, cy, r, c);
 }
 
+/**
+ * Hermit crab: a borrowed pale shell behind, banded jointed walking legs with
+ * dark tips, a larger claw in front, eyes on stalks and twitching antennae.
+ */
 function paintCrab(b: Buf, L: number, c: CritterColours, frame: number, dead: boolean): void {
   const groundY = b.h - 2;
   const legs = hex(c.fin);
   const tipC = hex(c.accent);
   const body = hex(c.body);
-  // Borrowed shell at the back.
   const r = L * 0.36;
   const cx = b.w * 0.38;
   const cy = groundY - r - L * 0.14;
   shellSpiral(b, cx, cy, r, { ...c, body: '#c8b090', accent: '#8a7458', pattern: 'speckle' });
-  // Legs (blue with orange tips) and claws in front of the shell.
   const fx = cx + r * 0.75;
+  const legSk: Skin = { base: legs, gloss: 0.4, bump: 0.3, seed: 4 };
   for (let k = 0; k < 3; k++) {
     const lx = fx + k * L * 0.06;
     const ly = cy + r * 0.2;
     const step = dead ? 0 : Math.sin(frame * (Math.PI / 2) + k * 2) * L * 0.05;
     const kneeX = lx + L * 0.14 + step;
     const kneeY = ly - L * 0.06;
-    b.line(lx, ly, kneeX, kneeY, legs, 1, 2);
-    b.line(kneeX, kneeY, kneeX + L * 0.08, groundY, legs, 1, 2);
-    b.set(kneeX + L * 0.08, groundY - 1, tipC);
+    const w = Math.max(2, L * 0.05);
+    limb(b, lx, ly, kneeX, kneeY, w, w * 0.85, legSk);
+    limb(b, kneeX, kneeY, kneeX + L * 0.08, groundY - 0.5, w * 0.8, w * 0.4, legSk);
+    blob(b, kneeX, kneeY, w * 0.45, w * 0.4, 0, { base: lit(tipC, 1.1), gloss: 0.4 }, 0.8);
+    limb(b, kneeX + L * 0.06, groundY - L * 0.04, kneeX + L * 0.08, groundY - 0.5, w * 0.4, w * 0.25, { base: lit(tipC, 0.7), gloss: 0.3 });
   }
-  // Claw.
-  b.ellipse(fx + L * 0.22, cy + r * 0.15, L * 0.09, L * 0.06, () => [lit(body, 1.05), 1]);
-  b.set(fx + L * 0.3, cy + r * 0.12, tipC);
-  // Eyes on stalks.
-  b.line(fx + L * 0.05, cy - r * 0.2, fx + L * 0.12, cy - r * 0.55, lit(body, 1.1), 1);
-  b.set(fx + L * 0.12, cy - r * 0.6, [15, 15, 15]);
-  b.line(fx + L * 0.02, cy - r * 0.15, fx + L * 0.25, cy - r * 0.45 + Math.sin(frame) * 1.5, lit(tipC, 1.1), 0.8);
+  // Claw: palm and fingers.
+  blob(b, fx + L * 0.22, cy + r * 0.15, L * 0.1, L * 0.065, 0.1, { base: body, gloss: 0.5, bump: 0.6, bumpScale: Math.max(0.8, L / 50), seed: 7 });
+  limb(b, fx + L * 0.28, cy + r * 0.1, fx + L * 0.36, cy + r * 0.13, L * 0.035, L * 0.015, { base: lit(tipC, 0.9), gloss: 0.5 });
+  // Eyes on stalks and antennae.
+  limb(b, fx + L * 0.05, cy - r * 0.2, fx + L * 0.12, cy - r * 0.55, L * 0.03, L * 0.025, { base: lit(body, 1.05), gloss: 0.3 });
+  blob(b, fx + L * 0.12, cy - r * 0.6, L * 0.03, L * 0.028, 0, { base: [15, 15, 15], gloss: 0.9 });
+  b.line(fx + L * 0.02, cy - r * 0.15, fx + L * 0.25, cy - r * 0.45 + Math.sin(frame) * 1.5, lit(tipC, 1.1), 0.75);
 }
 
 /** Paints a walk-cycle sheet. L is the body length in px. */

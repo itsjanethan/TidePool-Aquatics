@@ -301,11 +301,21 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
       const v = (yy - yTop) / span; // 0 back .. 1 belly
       // Countershading.
       let c: RGB = v < 0.48 ? mixC(p.back, p.body, smooth(0, 0.44, v)) : mixC(p.body, p.belly, smooth(0.52, 0.9, v));
-      // Pattern layers on the body.
+      // Pattern layers on the body, sampled four times per texel so every pattern
+      // edge is soft (anti-aliased) rather than a hard step.
+      let glow = 0;
       for (const layer of p.patterns) {
         if (layer.region !== 'body' && layer.region !== 'all') continue;
-        const a = bodyPattern(layer.type, t, v, i, yy - off[i], bodyLen, bodyH, seed, phase) * layer.strength;
+        let a = 0;
+        for (const [sx, sy] of SUB) {
+          const ti = (i + sx) / (bodyLen - 1);
+          const vi = (yy + sy - yTop) / span;
+          a += bodyPattern(layer.type, ti, vi, i + sx, yy + sy - off[i], bodyLen, bodyH, seed, phase);
+        }
+        a = (a / SUB.length) * layer.strength;
         if (a > 0) c = mixC(c, patternColour(layer.type, layer.colour, t, v, p), Math.min(1, a));
+        // The neon stripe is structural colour: it stays bright on the shaded flank.
+        if (layer.type === 'neon' && Math.abs(v - 0.42) < 0.12) glow = Math.max(glow, a * smooth(0.12, 0.02, Math.abs(v - 0.42)));
       }
       // Rounded lighting from above and in front.
       const ny = (v - 0.5) * 2;
@@ -315,8 +325,10 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
       const wrap = Math.max(0, (ny * lightY + nz * lightZ + 0.3) / 1.3);
       let k = 0.44 + 0.66 * wrap;
       // Rim light along the back ridge; silvery belly sheen.
-      if (v < 0.07) k += 0.07;
-      if (v > 0.68 && !p.fry) c = mixC(c, [236, 236, 228], 0.12 * smooth(0.68, 0.9, v));
+      if (v < 0.07) k += 0.05;
+      k -= 0.1 * smooth(0.2, 0, v); // the dorsal ridge turns away from the viewer
+      // Silvery guanine on the lower flank and belly.
+      if (v > 0.6 && !p.fry) c = mixC(c, [232, 236, 232], 0.2 * smooth(0.6, 0.92, v) * (1 - p.bodyClarity));
       // Head slightly darker toward the gill, tail stalk slightly darker.
       k -= 0.06 * smooth(0.7, 0.78, t) * (1 - smooth(0.78, 0.86, t));
       k -= 0.08 * (1 - smooth(0, 0.12, t));
@@ -347,6 +359,7 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
       const shine = Math.max(0, 1 - Math.abs(v - 0.26) / 0.07) * smooth(0.2, 0.35, t) * (1 - smooth(0.75, 0.86, t));
       k += shine * (0.14 + 0.25 * p.metallic);
       c = lit(c, k);
+      if (glow > 0) c = mixC(c, mixC(p.patterns.find((l) => l.type === 'neon')?.colour ?? [80, 200, 255], [210, 250, 255], 0.25), Math.min(0.8, glow * 0.75));
       if (p.metallic > 0.3 && v < 0.7) c = mixC(c, [200, 230, 255], p.metallic * 0.12 * lambert);
       // Iridescence on the flank: the hue slides with the body angle through the beat,
       // so the sheen shimmers as the fish swims. Strongest on metallic and neon fish.
@@ -468,11 +481,11 @@ function bodyPattern(type: string, t: number, v: number, i: number, y: number, b
   switch (type) {
     case 'neon': {
       // Iridescent stripe through the upper middle; red lower rear handled by colour.
-      const sv = 0.42;
-      const w = Math.max(0.08, 1.4 / Math.max(6, bodyH));
-      if (Math.abs(v - sv) < w && t > 0.08 && t < 0.92) return 1;
-      if (v > sv + w && v < 0.86 && t < 0.55) return smooth(0.55, 0.42, t);
-      return 0;
+      const sv = 0.42 - 0.03 * Math.sin(t * Math.PI);
+      const w = Math.max(0.07, 1.4 / Math.max(6, bodyH));
+      const stripe = smooth(w, w * 0.55, Math.abs(v - sv)) * smooth(0.06, 0.14, t) * smooth(0.95, 0.85, t);
+      const red = v > sv + w * 0.8 && v < 0.88 ? smooth(0.58, 0.44, t) * smooth(0.9, 0.8, v) : 0;
+      return Math.max(stripe, red);
     }
     case 'stripes': {
       const n = bodyH > 14 ? 4 : 3;
@@ -780,3 +793,5 @@ function finish(fr: Frame, p: Phenotype): void {
 }
 
 const NEIGH: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+/** Sub-texel sample offsets for anti-aliased patterns. */
+const SUB: Array<[number, number]> = [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]];
