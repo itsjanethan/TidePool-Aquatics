@@ -10,7 +10,7 @@ import { getSpecies } from '../../data/species';
 import { getMorph } from '../../sim/fish';
 import { hashString, phenotypeKey, type Phenotype } from '../../sim/phenotype';
 import { mix } from './pixel';
-import { paintFishSheet, SHEET_FRAMES, SWIM_FRAMES, TURN_FRAMES } from './fishPainter';
+import { SHEET_FRAMES, startFishSheet, SWIM_FRAMES, TURN_FRAMES, type FishSheetJob } from './fishPainter';
 import { fishTexels, MAX_TEXELS, type FishTexSize } from './fishBudget';
 
 export { fishTexels, MAX_TEXELS };
@@ -37,6 +37,8 @@ const MAX_TEXTURES = 160;
 const FRAME_BUDGET_MS = 10;
 const lastUsed = new Map<string, number>();
 const info = new Map<string, FishTex>();
+/** Sheets being painted across frames. */
+const jobs = new Map<string, FishSheetJob>();
 let spentThisFrame = 0;
 
 /** Call once per rendered frame to reset the painting budget. */
@@ -64,8 +66,25 @@ export function fishTexture(scene: Phaser.Scene, p: Phenotype, length: number, f
   }
   if (!force && spentThisFrame > FRAME_BUDGET_MS) return null;
   const t0 = performance.now();
-  // Painted at `detail` texels per canvas pixel, drawn smoothly (linear filtering).
-  const sheet = paintFishSheet(p, Math.round(L * detail));
+  // Painted at `detail` texels per canvas pixel, drawn smoothly (linear filtering), one
+  // frame of the sheet at a time within this frame's budget, continuing next frame.
+  let job = jobs.get(key);
+  if (!job) {
+    job = startFishSheet(p, Math.round(L * detail));
+    jobs.set(key, job);
+    // Abandoned jobs (a fish sold or grown mid-paint) are dropped oldest first.
+    if (jobs.size > 40) jobs.delete(jobs.keys().next().value!);
+  }
+  let done = false;
+  while (!done) {
+    done = job.step();
+    if (!done && !force && spentThisFrame + (performance.now() - t0) > FRAME_BUDGET_MS) {
+      spentThisFrame += performance.now() - t0;
+      return null;
+    }
+  }
+  jobs.delete(key);
+  const sheet = job.sheet;
   // One transparent texel between frames so linear filtering never bleeds a neighbour in.
   const fw = sheet.width + 1;
   const canvas = scene.textures.createCanvas(key, fw * SHEET_FRAMES, sheet.height)!;

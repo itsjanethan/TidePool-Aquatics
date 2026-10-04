@@ -267,6 +267,18 @@ export interface PlantDrawOptions {
   smooth?: boolean;
 }
 
+let scratchBuf = new Int32Array(64);
+/** Reused colour buffer for leaf strips (no per-frame allocation). */
+function scratch(points: number): Int32Array {
+  if (scratchBuf.length < points * 4) scratchBuf = new Int32Array(points * 8);
+  return scratchBuf;
+}
+
+const packRGB = (r: number, g: number, b: number): number => {
+  const c = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
+  return (c(r) << 16) | (c(g) << 8) | c(b);
+};
+
 /** Vertex-coloured triangle (WebGL gradient fill). */
 function tri(g: Phaser.GameObjects.Graphics, a: number, x0: number, y0: number, c0: number, x1: number, y1: number, c1: number, x2: number, y2: number, c2: number): void {
   g.fillGradientStyle(c0, c1, c2, c2, a);
@@ -376,7 +388,8 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
 
   // Leaves: filled polygons with a lit side, midrib and veins.
   for (const l of plant.leaves) {
-    const n = l.shape === 'ribbon' ? 16 : 11;
+    // Segments follow the leaf's length (short leaves need few), capped as before.
+    const n = o.smooth ? Math.max(4, Math.min(l.shape === 'ribbon' ? 14 : 10, Math.round(l.length / (6 * px)))) : l.shape === 'ribbon' ? 16 : 11;
     const left: number[] = [];
     const right: number[] = [];
     const mid: number[] = [];
@@ -415,13 +428,13 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
     const tipY = mid[mid.length - 1];
     const k = (0.72 + 0.38 * light(mid[mid.length - 2], tipY)) * haze;
     const base = mixC(l.col, [180, 220, 120], (1 - l.age) * 0.18);
+    if (o.smooth) {
+      drawLeafSmooth(g, l, left, right, mid, base, k, a, light(mid[mid.length - 2], tipY), o.time, px);
+      continue;
+    }
     const poly: Phaser.Types.Math.Vector2Like[] = [];
     for (let i = 0; i < left.length / 2; i++) poly.push({ x: left[i * 2], y: left[i * 2 + 1] });
     for (let i = right.length / 2 - 1; i >= 0; i--) poly.push({ x: right[i * 2], y: right[i * 2 + 1] });
-    if (o.smooth) {
-      drawLeafSmooth(g, l, left, right, mid, base, k, a, light, o.time, px);
-      continue;
-    }
     g.fillStyle(toInt(base, 0.86 * k), a).fillPoints(poly, true);
     // Lit half (the side facing up/out).
     if (l.width > 2.5 * px && l.shape !== 'ribbon') {
@@ -468,36 +481,45 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
  * gloss band along the lit half, fine lateral veins, ribbons that twist
  * (light and dark bands moving along them) and dry brown tips on old leaves.
  */
-function drawLeafSmooth(g: Phaser.GameObjects.Graphics, l: LeafSpec, left: number[], right: number[], mid: number[], base: RGB, k: number, a: number, light: (x: number, y: number) => number, time: number, px: number): void {
+function drawLeafSmooth(g: Phaser.GameObjects.Graphics, l: LeafSpec, left: number[], right: number[], mid: number[], base: RGB, k: number, a: number, ll: number, time: number, px: number): void {
   const n = mid.length / 2 - 1;
   const litLeft = l.angle >= 0;
   const ribbon = l.shape === 'ribbon';
-  const glowCol: RGB = [196, 232, 96];
-  const col = (t: number, across: number, litSide: boolean, x: number, y: number): number => {
-    // across: 0 midrib .. 1 margin.
-    const ll = light(x, y);
-    let kk = k * (0.7 + 0.42 * t);
-    let c = base;
-    if (ribbon) {
-      const twist = Math.sin(t * 9 + l.phase + time * 0.4);
-      kk *= 0.86 + 0.26 * twist * (litSide ? 1 : 0.6);
-    } else {
-      kk *= litSide ? 1.04 + 0.12 * (1 - across) : 0.74 + 0.1 * (1 - across);
-      if (litSide && across > 0.25 && across < 0.65) kk *= 1.08; // gloss band
+  // One light sample per leaf (sampling per vertex cost more than it showed), and
+  // colours for each spine point computed once, without allocating, then shared by
+  // both triangles that meet there. Per point: lit mid, lit edge, shade mid, shade edge.
+  const glowK = Math.max(0, ll - 0.62) * (1 - l.age * 0.5);
+  const cols = scratch(n + 1);
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    let base0 = k * (0.7 + 0.42 * t);
+    if (t < 0.15) base0 *= 0.7 + 2 * t; // base in the shadow of the rosette
+    const dry = l.age > 0.85 && t > 0.88 ? Math.min(1, (t - 0.88) * 6 * (l.age - 0.85) * 4) : 0;
+    for (let q = 0; q < 4; q++) {
+      const litSide = q < 2;
+      const across = q % 2;
+      let kk = base0;
+      if (ribbon) kk *= 0.86 + 0.26 * Math.sin(t * 9 + l.phase + time * 0.4) * (litSide ? 1 : 0.6);
+      else {
+        kk *= litSide ? 1.04 + 0.12 * (1 - across) : 0.74 + 0.1 * (1 - across);
+        if (litSide && across === 0) kk *= 1.04; // gloss toward the midrib
+      }
+      kk *= 1 - across * 0.18;
+      // Translucency: thin tissue near the tip and margins glows under strong light.
+      const glow = Math.min(0.45, glowK * (0.35 + 0.65 * across) * (0.4 + 0.6 * t) * 0.9);
+      let r = base[0] + (196 - base[0]) * glow;
+      let gg = base[1] + (232 - base[1]) * glow;
+      let bb = base[2] + (96 - base[2]) * glow;
+      if (dry > 0) {
+        r += (120 - r) * dry;
+        gg += (96 - gg) * dry;
+        bb += (52 - bb) * dry;
+      }
+      cols[i * 4 + q] = packRGB(r * kk, gg * kk, bb * kk);
     }
-    kk *= 1 - across * 0.18;
-    // Translucency: thin tissue near the tip and margins glows under strong light.
-    const glow = Math.max(0, ll - 0.62) * (0.35 + 0.65 * across) * (0.4 + 0.6 * t) * (1 - l.age * 0.5);
-    if (glow > 0) c = mixC(c, glowCol, Math.min(0.45, glow * 0.9));
-    // Old leaves dry from the tip.
-    if (l.age > 0.85 && t > 0.88) c = mixC(c, [120, 96, 52], (t - 0.88) * 6 * (l.age - 0.85) * 4);
-    // Base in the shadow of the rosette.
-    if (t < 0.15) kk *= 0.7 + 2 * t;
-    return toInt(c, kk);
-  };
+  }
+  const col = (i: number, across: number, litSide: boolean): number => cols[i * 4 + (litSide ? 0 : 2) + across];
   for (let i = 0; i < n; i++) {
-    const t0 = i / n;
-    const t1 = (i + 1) / n;
     const mx0 = mid[i * 2];
     const my0 = mid[i * 2 + 1];
     const mx1 = mid[i * 2 + 2];
@@ -509,10 +531,10 @@ function drawLeafSmooth(g: Phaser.GameObjects.Graphics, l: LeafSpec, left: numbe
       const ey0 = e[i * 2 + 1];
       const ex1 = e[i * 2 + 2];
       const ey1 = e[i * 2 + 3];
-      const cm0 = col(t0, 0, litSide, mx0, my0);
-      const cm1 = col(t1, 0, litSide, mx1, my1);
-      const ce0 = col(t0, 1, litSide, ex0, ey0);
-      const ce1 = col(t1, 1, litSide, ex1, ey1);
+      const cm0 = col(i, 0, litSide);
+      const cm1 = col(i + 1, 0, litSide);
+      const ce0 = col(i, 1, litSide);
+      const ce1 = col(i + 1, 1, litSide);
       tri(g, a, mx0, my0, cm0, ex0, ey0, ce0, ex1, ey1, ce1);
       tri(g, a, mx0, my0, cm0, ex1, ey1, ce1, mx1, my1, cm1);
     }

@@ -29,7 +29,9 @@ const TANKS = [
   { id: 'A1', label: 'ordinary' },
   { id: 'M6', label: 'densely planted' },
   { id: 'Q1', label: 'population cap' },
-];
+].filter((t) => !process.env.TANKS || process.env.TANKS.split(',').includes(t.id));
+// Longest wait for every sheet to be painted before measuring (SETTLE_MS, default 40 s).
+const SETTLE_MS = Number(process.env.SETTLE_MS ?? 40000);
 const stats = (xs) => {
   if (!xs.length) return { frames: 0, mean: 0, p50: 0, p95: 0, p99: 0, max: 0, slow: 0 };
   const s = [...xs].sort((a, b) => a - b);
@@ -57,7 +59,7 @@ for (const quality of qualities.split(',')) {
       await page.waitForFunction(() => window.__tidepool?.sim && window.__tidepool.game.scene.isActive('Shop'), null, { timeout: 30000 });
       await page.waitForTimeout(1500);
       const r = await page.evaluate(
-        async ({ id, secs }) => {
+        async ({ id, secs, settleCap }) => {
           const c = window.__tidepool;
           c.ui.clear();
           // Keep staff proposals and customers from opening dialogues mid-measurement.
@@ -77,6 +79,19 @@ for (const quality of qualities.split(',')) {
             early.push(now - last);
             last = now;
           }
+          // Settle: wait until every animal has its painted sheet (sprites become visible
+          // once painted) plus one second, at most SETTLE_MS, so painting is not counted as
+          // steady-state cost. Reported as settleMs.
+          const s0 = performance.now();
+          const sceneS = c.game.scene.getScene('Tank');
+          while (performance.now() - s0 < settleCap) {
+            const agents = [...sceneS.tankRenderer.agents.values()];
+            if (agents.every((a) => a.sprite.visible)) break;
+            await frame();
+          }
+          const settleMs = performance.now() - s0;
+          const s1 = performance.now();
+          while (performance.now() - s1 < 1000) await frame();
           // Steady state. Also time our update (JS) and the renderer (WebGL submit; on
           // SwiftShader this includes rasterising, so it tracks fill and draw calls).
           const scene0 = c.game.scene.getScene('Tank');
@@ -121,6 +136,7 @@ for (const quality of qualities.split(',')) {
             decor: c.state.tanks[id].decor.length,
             canvas: [c.game.scale.width, c.game.scale.height],
             openMs: +(firstFrame ?? -1).toFixed(1),
+            settleMs: +settleMs.toFixed(0),
             stallMaxMs: +Math.max(...early).toFixed(1),
             stallFramesOver50: early.filter((x) => x > 50).length,
             steady: deltas,
@@ -133,13 +149,13 @@ for (const quality of qualities.split(',')) {
             displayObjects: scene.children.list.length,
           };
         },
-        { id: tank.id, secs: Number(secs) },
+        { id: tank.id, secs: Number(secs), settleCap: SETTLE_MS },
       );
       const row = { quality, viewport: vp.name, tank: tank.id, kind: tank.label, ...r, steady: stats(r.steady), update: stats(r.update), render: stats(r.render), errors };
       results.push(row);
       const s = row.steady;
       console.log(
-        `${quality.padEnd(8)} ${vp.name.padEnd(7)} ${tank.id} ${tank.label.padEnd(15)} fish ${String(row.fish).padStart(2)} open ${row.openMs}ms | frame ${s.mean}/${s.p95} | update ${row.update.mean}/${row.update.p95}/${row.update.max} | render ${row.render.mean}/${row.render.p95} | heap ${row.heapMB}MB tex ${row.textures} (${row.textureMP}MP) objs ${row.displayObjects}${errors.length ? ' ERR ' + errors.join('|') : ''}`,
+        `${quality.padEnd(8)} ${vp.name.padEnd(7)} ${tank.id} ${tank.label.padEnd(15)} fish ${String(row.fish).padStart(2)} open ${row.openMs}ms settle ${row.settleMs}ms | frame ${s.mean}/${s.p95} | update ${row.update.mean}/${row.update.p50}/${row.update.p95}/${row.update.max} | render ${row.render.mean}/${row.render.p95} | heap ${row.heapMB}MB tex ${row.textures} (${row.textureMP}MP) objs ${row.displayObjects}${errors.length ? ' ERR ' + errors.join('|') : ''}`,
       );
       await ctx.close();
     }

@@ -25,7 +25,7 @@ export function paintCaustics(size = CAUSTIC_SIZE, seed = 1307): Uint8ClampedArr
     waves.push({ kx: (kx * Math.PI * 2) / N, ky: (ky * Math.PI * 2) / N, a: 1 / Math.pow(k, 2.2), ph: rng.range(0, Math.PI * 2) });
   }
   const acc = new Float32Array(N * N);
-  const M = N * 2;
+  const M = Math.round(N * 1.5);
   const step = N / M;
   // Depth of the bed below the surface, in texture px per unit slope.
   const depth = N * 1.15;

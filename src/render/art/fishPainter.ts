@@ -56,10 +56,31 @@ const mixC = (a: RGB, b: RGB, t: number): RGB => [a[0] + (b[0] - a[0]) * t, a[1]
 const lit = (c: RGB, k: number): RGB => (k >= 1 ? mixC(c, [255, 255, 255], Math.min(1, k - 1)) : [c[0] * Math.max(0, k), c[1] * Math.max(0, k), c[2] * Math.max(0, k)]);
 
 /** Thin-film iridescence: hue shifts with the viewing angle (teal, blue, violet, green). */
-const iridescent = (h: number): RGB => {
+const iridescentTo = (out: RGB, h: number): void => {
   const a = Math.PI * 2 * h;
-  return [96 + 70 * Math.cos(a + 2.2), 176 + 60 * Math.cos(a), 222 + 33 * Math.cos(a - 1.6)];
+  out[0] = 96 + 70 * Math.cos(a + 2.2);
+  out[1] = 176 + 60 * Math.cos(a);
+  out[2] = 222 + 33 * Math.cos(a - 1.6);
 };
+/** out = a + (b - a) * t (out may alias a or b). */
+const mixTo = (out: RGB, a: RGB, b: RGB, t: number): void => {
+  const r = a[0] + (b[0] - a[0]) * t;
+  const g = a[1] + (b[1] - a[1]) * t;
+  out[2] = a[2] + (b[2] - a[2]) * t;
+  out[0] = r;
+  out[1] = g;
+};
+/** out = lit(c, k) without allocating. */
+const litTo = (out: RGB, c: RGB, k: number): void => {
+  if (k >= 1) mixTo(out, c, WHITE, Math.min(1, k - 1));
+  else {
+    const m = Math.max(0, k);
+    out[0] = c[0] * m;
+    out[1] = c[1] * m;
+    out[2] = c[2] * m;
+  }
+};
+const WHITE: RGB = [255, 255, 255];
 
 function h2(x: number, y: number, s: number): number {
   let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0;
@@ -227,11 +248,29 @@ function geometry(p: Phenotype, L: number): Geo {
 // Painting.
 
 export function paintFishSheet(p: Phenotype, L: number): FishSheet {
+  const job = startFishSheet(p, L);
+  while (!job.step());
+  return job.sheet;
+}
+
+/** A sheet painted one frame per `step()` (true when complete), so busy tanks never stall a frame. */
+export interface FishSheetJob {
+  sheet: FishSheet;
+  step(): boolean;
+}
+
+export function startFishSheet(p: Phenotype, L: number): FishSheetJob {
   const g = geometry(p, L);
-  const frames: FishSheet['frames'] = [];
-  for (let f = 0; f < SWIM_FRAMES; f++) frames.push(paint(p, g, (f / SWIM_FRAMES) * Math.PI * 2, 0).data);
-  for (const yaw of TURN_YAWS) frames.push(paint(p, g, 0.6, yaw).data);
-  return { width: g.W, height: g.H, frames, bodyLen: g.bodyLen };
+  const sheet: FishSheet = { width: g.W, height: g.H, frames: [], bodyLen: g.bodyLen };
+  return {
+    sheet,
+    step(): boolean {
+      const f = sheet.frames.length;
+      if (f < SWIM_FRAMES) sheet.frames.push(paint(p, g, (f / SWIM_FRAMES) * Math.PI * 2, 0).data);
+      else if (f < SHEET_FRAMES) sheet.frames.push(paint(p, g, 0.6, TURN_YAWS[f - SWIM_FRAMES]).data);
+      return sheet.frames.length >= SHEET_FRAMES;
+    },
+  };
 }
 
 /** One still frame, for portraits. */
@@ -292,6 +331,12 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
   const glintPos = (phase / (Math.PI * 2)) * 1.6 - 0.3; // band sweeping along the body over the cycle
   const bodyA = 1 - p.bodyClarity;
   const neon = p.patterns.some((l) => l.type === 'neon');
+  // Colour math in this loop writes into reused arrays (no per-texel allocation).
+  const c: RGB = [0, 0, 0];
+  const tmp: RGB = [0, 0, 0];
+  const neonLayer = p.patterns.find((l) => l.type === 'neon');
+  const neonGlow: RGB = mixC(neonLayer?.colour ?? [80, 200, 255], [210, 250, 255], 0.25);
+  const bodyLayers = p.patterns.filter((l) => l.region === 'body' || l.region === 'all');
   for (let i = 0; i < bodyLen; i++) {
     const t = i / (bodyLen - 1); // 0 tail .. 1 snout
     const yTop = Math.round(-g.top[i] + off[i]);
@@ -300,20 +345,25 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
     for (let yy = yTop; yy <= yBot; yy++) {
       const v = (yy - yTop) / span; // 0 back .. 1 belly
       // Countershading.
-      let c: RGB = v < 0.48 ? mixC(p.back, p.body, smooth(0, 0.44, v)) : mixC(p.body, p.belly, smooth(0.52, 0.9, v));
-      // Pattern layers on the body, sampled four times per texel so every pattern
-      // edge is soft (anti-aliased) rather than a hard step.
+      if (v < 0.48) mixTo(c, p.back, p.body, smooth(0, 0.44, v));
+      else mixTo(c, p.body, p.belly, smooth(0.52, 0.9, v));
+      // Pattern layers: centre and one corner first; texels on a pattern edge take
+      // four sub-texel samples so every edge is soft (anti-aliased).
       let glow = 0;
-      for (const layer of p.patterns) {
-        if (layer.region !== 'body' && layer.region !== 'all') continue;
-        let a = 0;
-        for (const [sx, sy] of SUB) {
-          const ti = (i + sx) / (bodyLen - 1);
-          const vi = (yy + sy - yTop) / span;
-          a += bodyPattern(layer.type, ti, vi, i + sx, yy + sy - off[i], bodyLen, bodyH, seed, phase);
+      for (const layer of bodyLayers) {
+        let a = bodyPattern(layer.type, t, v, i, yy - off[i], bodyLen, bodyH, seed, phase);
+        const a2 = bodyPattern(layer.type, (i + 0.35) / (bodyLen - 1), (yy + 0.35 - yTop) / span, i + 0.35, yy + 0.35 - off[i], bodyLen, bodyH, seed, phase);
+        if (Math.abs(a2 - a) > 0.01) {
+          a = 0;
+          for (let q = 0; q < 4; q++) {
+            const sx = SUB_X[q];
+            const sy = SUB_Y[q];
+            a += bodyPattern(layer.type, (i + sx) / (bodyLen - 1), (yy + sy - yTop) / span, i + sx, yy + sy - off[i], bodyLen, bodyH, seed, phase);
+          }
+          a *= 0.25;
         }
-        a = (a / SUB.length) * layer.strength;
-        if (a > 0) c = mixC(c, patternColour(layer.type, layer.colour, t, v, p), Math.min(1, a));
+        a *= layer.strength;
+        if (a > 0) mixTo(c, c, patternColour(layer.type, layer.colour, t, v, p), Math.min(1, a));
         // The neon stripe is structural colour: it stays bright on the shaded flank.
         if (layer.type === 'neon' && Math.abs(v - 0.42) < 0.12) glow = Math.max(glow, a * smooth(0.12, 0.02, Math.abs(v - 0.42)));
       }
@@ -324,11 +374,10 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
       // Wrapped diffuse: light bends round a wet, slightly translucent body.
       const wrap = Math.max(0, (ny * lightY + nz * lightZ + 0.3) / 1.3);
       let k = 0.44 + 0.66 * wrap;
-      // Rim light along the back ridge; silvery belly sheen.
       if (v < 0.07) k += 0.05;
       k -= 0.1 * smooth(0.2, 0, v); // the dorsal ridge turns away from the viewer
       // Silvery guanine on the lower flank and belly.
-      if (v > 0.6 && !p.fry) c = mixC(c, [232, 236, 232], 0.2 * smooth(0.6, 0.92, v) * (1 - p.bodyClarity));
+      if (v > 0.6 && !p.fry) mixTo(c, c, SILVER, 0.2 * smooth(0.6, 0.92, v) * (1 - p.bodyClarity));
       // Head slightly darker toward the gill, tail stalk slightly darker.
       k -= 0.06 * smooth(0.7, 0.78, t) * (1 - smooth(0.78, 0.86, t));
       k -= 0.08 * (1 - smooth(0, 0.12, t));
@@ -343,7 +392,7 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
         const sv = (yy - off[i]) / scaleSize + (col % 2) * 0.5;
         const fu = su - col;
         const fv = sv - Math.floor(sv);
-        const arc = Math.abs(fu - 0.15 - Math.pow(fv - 0.5, 2) * 1.2);
+        const arc = Math.abs(fu - 0.15 - (fv - 0.5) * (fv - 0.5) * 1.2);
         // Each scale is a small cupped plate: dark at its overlapped edge, a lit crown, and
         // its own slight tilt so the flank breaks into a soft mosaic of reflections.
         const tilt = (h2(col, Math.floor(sv), seed + 31) - 0.5) * 0.06;
@@ -358,15 +407,21 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
       // Specular shine along the upper flank.
       const shine = Math.max(0, 1 - Math.abs(v - 0.26) / 0.07) * smooth(0.2, 0.35, t) * (1 - smooth(0.75, 0.86, t));
       k += shine * (0.14 + 0.25 * p.metallic);
-      c = lit(c, k);
-      if (glow > 0) c = mixC(c, mixC(p.patterns.find((l) => l.type === 'neon')?.colour ?? [80, 200, 255], [210, 250, 255], 0.25), Math.min(0.8, glow * 0.75));
-      if (p.metallic > 0.3 && v < 0.7) c = mixC(c, [200, 230, 255], p.metallic * 0.12 * lambert);
+      litTo(c, c, k);
+      if (glow > 0) mixTo(c, c, neonGlow, Math.min(0.8, glow * 0.75));
+      if (p.metallic > 0.3 && v < 0.7) mixTo(c, c, METAL_SHEEN, p.metallic * 0.12 * lambert);
       // Iridescence on the flank: the hue slides with the body angle through the beat,
       // so the sheen shimmers as the fish swims. Strongest on metallic and neon fish.
       const iri = (p.metallic * 0.5 + (neon ? 0.35 : 0)) * (1 - Math.abs(v - 0.36) * 1.9) * smooth(0.08, 0.3, t) * (1 - smooth(0.82, 0.95, t));
-      if (iri > 0.01 && !p.fry) c = mixC(c, iridescent(t * 0.9 + v * 0.7 + Math.sin(phase) * 0.12 + yaw * 0.3), Math.min(0.55, iri * 0.6));
+      if (iri > 0.01 && !p.fry) {
+        iridescentTo(tmp, t * 0.9 + v * 0.7 + Math.sin(phase) * 0.12 + yaw * 0.3);
+        mixTo(c, c, tmp, Math.min(0.55, iri * 0.6));
+      }
       // Thin tissue near the tail stalk glows a little warmer (light passing through).
-      if (t < 0.12 && !p.albino) c = mixC(c, lit(c, 1.12), 0.25 * (1 - t / 0.12));
+      if (t < 0.12 && !p.albino) {
+        litTo(tmp, c, 1.12);
+        mixTo(c, c, tmp, 0.25 * (1 - t / 0.12));
+      }
       put(x0 + i, cy + yy, c, bodyA, true);
     }
   }
@@ -471,8 +526,8 @@ function paint(p: Phenotype, g: Geo, phase: number, yaw: number): Frame {
 }
 
 function patternColour(type: string, colour: RGB, t: number, v: number, p: Phenotype): RGB {
-  if (type === 'neon') return v > 0.45 && t < 0.55 ? (p.albino ? [236, 150, 150] : [214, 38, 52]) : colour;
-  if (type === 'gradient') return mixC(p.body, colour, 1);
+  if (type === 'neon') return v > 0.45 && t < 0.55 ? (p.albino ? NEON_RED_ALBINO : NEON_RED) : colour;
+  if (type === 'gradient') return colour;
   return colour;
 }
 
@@ -769,11 +824,14 @@ function finish(fr: Frame, p: Phenotype): void {
       let r = 0;
       let g = 0;
       let b = 0;
-      for (const [dx, dy] of NEIGH) {
-        const xx = x + dx;
-        const yy = y + dy;
-        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-        const k = (yy * w + xx) * 4;
+      const kE = x + 1 < w ? j + 4 : -1;
+      const kW = x > 0 ? j - 4 : -1;
+      const kS = y + 1 < h ? j + w * 4 : -1;
+      const kN = y > 0 ? j - w * 4 : -1;
+      // Interior texels whose neighbours share their alpha need nothing.
+      if (kE >= 0 && kW >= 0 && kS >= 0 && kN >= 0 && src[kE + 3] === a0 && src[kW + 3] === a0 && src[kS + 3] === a0 && src[kN + 3] === a0) continue;
+      for (const k of [kE, kW, kS, kN]) {
+        if (k < 0) continue;
         const a = src[k + 3];
         an += a;
         r += src[k] * a;
@@ -792,6 +850,10 @@ function finish(fr: Frame, p: Phenotype): void {
   }
 }
 
-const NEIGH: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 /** Sub-texel sample offsets for anti-aliased patterns. */
-const SUB: Array<[number, number]> = [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]];
+const SUB_X = [-0.25, 0.25, -0.25, 0.25];
+const SUB_Y = [-0.25, -0.25, 0.25, 0.25];
+const SILVER: RGB = [232, 236, 232];
+const METAL_SHEEN: RGB = [200, 230, 255];
+const NEON_RED: RGB = [214, 38, 52];
+const NEON_RED_ALBINO: RGB = [236, 150, 150];
