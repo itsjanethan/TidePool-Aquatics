@@ -110,6 +110,8 @@ Three separate expansions, each its own milestone with its own systems, art, cus
 
 ### 1. Corals and aquatic invertebrates
 
+STATUS 2026-10-04 (feat/reef-floor, pending merge): first pass DONE as shop level 5 (eight corals, reef chemistry, dosing, fragging, frag rack, eight invertebrates). Still to do: crayfish, mussels, urchins and starfish, copper sensitivity, berried females and colour grades.
+
 Builds on Marine depth (Milestone 4) and the freshwater shrimp in Milestone 2.
 
 - Freshwater invertebrates: shrimp colonies (colour grades, moulting, berried females), snails (pest and ornamental, egg rules), crayfish (escape risk, aggression), mussels (filter feeding)
@@ -120,6 +122,8 @@ Builds on Marine depth (Milestone 4) and the freshwater shrimp in Milestone 2.
 - Rendering: coral growth forms and polyp motion tied to flow and light; invertebrate behaviour (grazing, scavenging, moulting)
 
 ### 2. Vivariums, paludariums and related habitats
+
+STATUS 2026-10-04 (feat/vivarium-floor, pending merge): first pass DONE as shop level 6. Vivariums, terrariums and paludariums with humidity, air temperature, basking lamps, UVB, ventilation, substrate moisture, mould, waste, water dishes, calcium, feeder insects, a bioactive clean-up crew, land plants and hides; paludarium pools with real water chemistry; six species (dart frog, White's tree frog, fire-bellied toad, rose hair tarantula, leopard gecko, crested gecko). Still to do from this list: riparium, newts and axolotls, shedding and moulting, temperature gradients beyond the basking spot, feeder cultures as living stock, specialist herp staff skills.
 
 A new habitat branch beside the aquariums, unlocked on a later floor. Builds on the invertebrate systems (feeder insects, moulting) and the per-tank environment systems.
 
@@ -132,6 +136,8 @@ A new habitat branch beside the aquariums, unlocked on a later floor. Builds on 
 - Architecture already prepared: habitat rendering reads light colour and water tint from data, plants are architecture-driven, per-tank systems can gain new environment values
 
 ### 3. Ant keeping (a dedicated expansion, after the habitats branch)
+
+Roadmap only. Not started, deliberately: it needs its own colony simulation and many-agent rendering.
 
 A distinct expansion with its own simulation rather than a tank variant.
 

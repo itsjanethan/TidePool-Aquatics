@@ -8,13 +8,15 @@ import { tickFloating } from './floating';
 import { clamp, clamp01, round } from '../core/math';
 import { AIR_PUMP, getDecor, getFilter, getHeater, getTankSize, getSubstrate, getBackground } from '../data/catalog';
 import { getSpecies } from '../data/species';
-import { summarizeAquascape } from './aquascape';
+import { VIVARIUM_ROOM_TEMP } from '../data/terra';
+import { summarizeAquascape, type AquascapeSummary } from './aquascape';
 import { stressTarget } from './compat';
 import { spend } from './economy';
 import { decorRefusal, MAX_DECOR, removeToStorage, tickPlants } from './plants';
 import { chemAfterWaterChange, NEW_CORAL_SIZE, tickReef } from './reef';
 import { grazeWeight, tickCleanupCrew } from './inverts';
-import { appetite, eat, fishInTank, fishValue, killFish, newId, tickFish } from './fish';
+import { effectiveTemp, feedEnclosure, habitatRefusal, isEnclosure, isLandOnly, isPaludarium, landFeedingNeed, livesOn, terraDamage, terraOf, tickTerrarium } from './terrarium';
+import { appetite, eat, fishInTank, fishValue, killFish, newId, tickFish, type FishEnv } from './fish';
 import { AMMONIA_PER_FOOD_EATEN, freshWater, liveRockWeight, tickWater, waterChange } from './water';
 import type { FishEntity, GameState, TankState } from './types';
 
@@ -98,8 +100,19 @@ export function tickTank(state: GameState, tank: TankState, dtHours: number, ctx
     if (days > 2.5) f.tankId = null; // fully decomposed
   }
 
-  const fishAmmonia = alive.reduce((s, f) => s + excretion(f), 0);
-  const oxygenDemand = alive.reduce((s, f) => s + 0.0016 * f.sizeCm * f.sizeCm, 0) / tank.litres * 10;
+  // Enclosures: climate and husbandry. Land-only enclosures have no water to simulate.
+  // The vivarium floor is a heated room, so enclosures and their pools sit at least that warm.
+  if (isEnclosure(tank)) ctx = { ...ctx, ambient: Math.max(ctx.ambient, VIVARIUM_ROOM_TEMP) };
+  if (isEnclosure(tank)) tickTerrarium(state, tank, dtHours, { ambient: ctx.ambient, daylight: ctx.daylight });
+  if (isLandOnly(tank)) {
+    if (corpseAmmonia > 0) terraOf(tank).waste = clamp01(terraOf(tank).waste + corpseAmmonia * 0.002 * dtHours);
+    tickAnimals(state, tank, alive, scape, dtHours, ctx);
+    return;
+  }
+  // Land animals in a paludarium leave waste on the bank, not in the pool.
+  const inWater = alive.filter((f) => livesOn(getSpecies(f.speciesId)) !== 'land');
+  const fishAmmonia = inWater.reduce((s, f) => s + excretion(f), 0);
+  const oxygenDemand = inWater.reduce((s, f) => s + 0.0016 * f.sizeCm * f.sizeCm, 0) / tank.litres * 10;
   // Algae grazers count by strength: a pleco 1, a cherry shrimp a fraction (see inverts.ts).
   const grazers = alive.reduce((sum, f) => sum + grazeWeight(f), 0);
   // Scavengers (shrimp, hermits, mystery snails) clear leftovers and settled waste.
@@ -124,26 +137,50 @@ export function tickTank(state: GameState, tank: TankState, dtHours: number, ctx
   // Plants grow, get eaten by plant-unsafe fish, and recover.
   tickPlants(state, tank, dtHours);
   tickFloating(tank, dtHours);
+  tickAnimals(state, tank, alive, scape, dtHours, ctx);
+}
 
+/** The environment one animal lives in: the water, or (land animals) the enclosure climate. */
+export function animalEnv(f: FishEntity, tank: TankState, mates: FishEntity[], stress: number): FishEnv {
+  const sp = getSpecies(f.speciesId);
+  const water: FishEnv = {
+    temperature: tank.water.temperature,
+    ph: tank.water.ph,
+    gh: tank.water.gh,
+    ammonia: tank.water.ammonia,
+    nitrite: tank.water.nitrite,
+    nitrate: tank.water.nitrate,
+    oxygen: tank.water.oxygen,
+    litres: tank.litres,
+    stressTarget: stress,
+    salinity: tank.water.salinity ?? 0,
+  };
+  const wrong = habitatRefusal(sp, tank);
+  const lives = livesOn(sp);
+  if (lives === 'water') return wrong ? { ...water, extra: { damage: 6, causes: ['no water'] } } : water;
+  if (!isEnclosure(tank)) return { ...water, extra: { damage: 6, causes: ['drowning'] } };
+  // Land animals: no water chemistry, except amphibians sitting in a paludarium pool.
+  const pool = lives === 'amphibious' && isPaludarium(tank);
+  const td = terraDamage(f, tank, mates);
+  return {
+    temperature: effectiveTemp(sp, tank),
+    ph: sp.ph.ideal,
+    gh: sp.hardness.min,
+    ammonia: pool ? tank.water.ammonia : 0,
+    nitrite: pool ? tank.water.nitrite : 0,
+    nitrate: pool ? tank.water.nitrate : 0,
+    oxygen: 8,
+    litres: tank.litres,
+    stressTarget: stress,
+    salinity: 0,
+    extra: wrong ? { damage: td.damage + 1, causes: [...td.causes, 'wrong habitat'] } : td,
+  };
+}
+
+function tickAnimals(state: GameState, tank: TankState, alive: FishEntity[], scape: AquascapeSummary, dtHours: number, ctx: TankTickContext): void {
   for (const f of alive) {
     const st = stressTarget(f, tank, alive, scape);
-    const res = tickFish(
-      f,
-      {
-        temperature: tank.water.temperature,
-        ph: tank.water.ph,
-        gh: tank.water.gh,
-        ammonia: tank.water.ammonia,
-        nitrite: tank.water.nitrite,
-        nitrate: tank.water.nitrate,
-        oxygen: tank.water.oxygen,
-        litres: tank.litres,
-        stressTarget: st.total,
-        salinity: tank.water.salinity ?? 0,
-      },
-      tank,
-      dtHours,
-    );
+    const res = tickFish(f, animalEnv(f, tank, alive, st.total), tank, dtHours);
     if (res.died) {
       killFish(state, f, res.cause);
       ctx.onDeath?.(f, tank, res.cause);
@@ -168,7 +205,19 @@ export const FEED_MULTIPLIER: Record<FeedAmount, number> = { light: 0.5, normal:
 
 export function feedTank(state: GameState, tank: TankState, amount: FeedAmount): ActionResult {
   if (state.idle) return idleRefusal();
-  const fish = fishInTank(state, tank.id);
+  // Enclosures: land animals get their feeder insects or gecko diet.
+  if (isLandOnly(tank)) return feedEnclosure(state, tank, amount);
+  if (isPaludarium(tank) && landFeedingNeed(state, tank) > 0.05) {
+    const land = feedEnclosure(state, tank, amount);
+    const poolFish = fishInTank(state, tank.id).filter((f) => livesOn(getSpecies(f.speciesId)) === 'water');
+    if (!poolFish.length) return land;
+    const water = feedFish(state, tank, amount, poolFish);
+    return { ok: land.ok || water.ok, message: `${land.message} ${water.message}`, minutes: land.minutes + water.minutes };
+  }
+  return feedFish(state, tank, amount, fishInTank(state, tank.id));
+}
+
+function feedFish(state: GameState, tank: TankState, amount: FeedAmount, fish: FishEntity[]): ActionResult {
   if (!fish.length) {
     // Ghost feeding an empty tank is a valid (if slow) way to start cycling.
     const units = 1.5 * FEED_MULTIPLIER[amount];
@@ -178,7 +227,7 @@ export function feedTank(state: GameState, tank: TankState, amount: FeedAmount):
     tank.lastFedMinute = state.minute;
     return ok('You sprinkle food into the empty tank. It will rot and feed bacteria.', 2);
   }
-  const need = Math.max(0.3, feedingNeed(state, tank));
+  const need = Math.max(0.3, fish.reduce((s, f) => s + (appetite(f) * f.hunger) / 100, 0));
   const units = round(need * FEED_MULTIPLIER[amount], 2);
   if (state.foodUnits < units) return fail('Out of fish food. Order more from the office PC.');
   state.foodUnits = round(state.foodUnits - units, 2);

@@ -9,6 +9,7 @@ import { FOOD_TUB, getDryGood } from '../data/catalog';
 import { getSpecies, SPECIES } from '../data/species';
 import { earn, spend } from './economy';
 import { createFish, newId } from './fish';
+import { habitatRefusal, isLandAnimal } from './terrarium';
 import type { GameState, SupplierOrder, SupplierOrderLine, SupplierState } from './types';
 
 export interface SupplierDef {
@@ -92,6 +93,19 @@ export const SUPPLIERS: SupplierDef[] = [
     minOrder: 20,
     level: 5,
   },
+  {
+    id: 'canopy',
+    name: 'Canopy Captive Breeders',
+    blurb: 'Captive-bred frogs, geckos and tarantulas from a licensed breeder. Small batches, shipped warm, two-day delivery.',
+    deliveryDays: 2,
+    costMultiplier: 1,
+    quality: [0.55, 0.88],
+    doaRisk: 0.02,
+    species: ['dart_frog', 'whites_tree_frog', 'fire_bellied_toad', 'rose_tarantula', 'leopard_gecko', 'crested_gecko'],
+    stockRange: [2, 10],
+    minOrder: 30,
+    level: 6,
+  },
 ];
 
 /** Suppliers that trade with a shop of this level. */
@@ -152,7 +166,9 @@ export function placeOrder(state: GameState, supplierId: string, lines: Array<Om
     if (!state.tanks[l.tankId]) return { ok: false, message: 'Pick a tank for every line.' };
     const sp = getSpecies(l.speciesId);
     const tw = state.tanks[l.tankId].waterType ?? 'freshwater';
-    if (sp.waterType !== tw) return { ok: false, message: `${sp.commonName} is a ${sp.waterType} fish and cannot go in ${state.tanks[l.tankId].name} (${tw}).` };
+    const wrong = habitatRefusal(sp, state.tanks[l.tankId]);
+    if (wrong) return { ok: false, message: wrong };
+    if (!isLandAnimal(sp) && sp.waterType !== tw) return { ok: false, message: `${sp.commonName} is a ${sp.waterType} fish and cannot go in ${state.tanks[l.tankId].name} (${tw}).` };
     priced.push({ ...l, unitCost: s.unitCost });
   }
   if (!priced.length) return { ok: false, message: 'The order is empty.' };

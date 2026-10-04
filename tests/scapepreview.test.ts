@@ -27,7 +27,7 @@ describe('Aquascape score components', () => {
 
 describe('Placement previews match the real placement', () => {
   it('predicted score, cover and caves equal what placing the item actually does', () => {
-    for (const def of DECOR.filter((d) => !d.marineOnly)) {
+    for (const def of DECOR.filter((d) => !d.marineOnly && !d.land)) {
       for (const [x, layer] of [[0.1, 0], [0.5, 1], [0.9, 2]] as const) {
         const s = fresh();
         const t = s.tanks.A1;

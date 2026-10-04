@@ -10,6 +10,7 @@ import type { AquascapeSummary } from './aquascape';
 import { coverPercent, habitatOf, tankNeeds } from './habitat';
 import { getMorph } from './fish';
 import { canEat, CLEANER_RELIEF, hasCleaner, isInvert, predationWarning } from './inverts';
+import { habitatRefusal, isEnclosure, isLandAnimal, landSpace, landVolume, terraIssues } from './terrarium';
 import type { FishEntity, TankState } from './types';
 
 /** Stocking capacity in "effective cm" of fish. */
@@ -24,10 +25,20 @@ export function fishLoad(f: FishEntity): number {
   return f.sizeCm * Math.sqrt(sp.wasteFactor);
 }
 
+/**
+ * Share of a tank's capacity one animal of this size uses (1 = full).
+ * Water animals load the filter; land animals take enclosure space
+ * (litres per adult, see data/terra.ts).
+ */
+export function loadRatio(tank: TankState, speciesId: string, sizeCm: number): number {
+  const sp = getSpecies(speciesId);
+  if (isLandAnimal(sp) && isEnclosure(tank)) return landSpace(sp, sizeCm) / landVolume(tank);
+  return (sizeCm * Math.sqrt(sp.wasteFactor)) / stockingCapacity(tank);
+}
+
 /** Current stocking as a fraction of capacity (1.0 = fully stocked). */
 export function stockingRatio(tank: TankState, fish: FishEntity[]): number {
-  const load = fish.reduce((s, f) => s + (f.alive ? fishLoad(f) : 0), 0);
-  return load / stockingCapacity(tank);
+  return fish.reduce((s, f) => s + (f.alive ? loadRatio(tank, f.speciesId, f.sizeCm) : 0), 0);
 }
 
 function hasLongFins(f: FishEntity, sp: SpeciesDef): boolean {
@@ -54,6 +65,16 @@ export function stressTarget(
   const add = (reason: string, amount: number) => {
     if (amount > 0.5) reasons.push({ reason, amount });
   };
+  // Land animals in an enclosure: climate, hides, space and rivals (sim/terrarium.ts).
+  if (isLandAnimal(sp) && isEnclosure(tank)) {
+    for (const i of terraIssues(f, tank, mates)) add(i.text, i.stress);
+    const coverPct = coverPercent(scape);
+    const coverReq = habitatOf(sp).cover * 100;
+    if (coverPct < coverReq) add('Not enough plants and cover to hide in', (0.3 + sp.behaviour.shyness) * ((coverReq - coverPct) / coverReq) * 25);
+    add('Hungry', f.hunger > 60 ? (f.hunger - 60) * 0.5 : 0);
+    reasons.sort((a, b) => b.amount - a.amount);
+    return { total: clamp(reasons.reduce((s, r) => s + r.amount, 0) + 6, 0, 100), reasons };
+  }
 
   // Water.
   const t = w.temperature;
@@ -127,17 +148,43 @@ export interface SuitabilityResult {
  */
 export function assessSpeciesForSetup(
   speciesId: string,
-  setup: { litres: number; lengthCm?: number; heated: boolean; temperature?: number; residentSpecies?: string[]; waterType?: 'freshwater' | 'brackish' | 'marine' },
+  setup: { litres: number; lengthCm?: number; heated: boolean; temperature?: number; residentSpecies?: string[]; waterType?: 'freshwater' | 'brackish' | 'marine'; habitat?: TankState['habitat'] },
 ): SuitabilityResult {
   const sp = getSpecies(speciesId);
   const issues: string[] = [];
   let score = 1;
+  const wrongHabitat = habitatRefusal(sp, { habitat: setup.habitat, name: 'this', waterType: setup.waterType });
+  if (wrongHabitat) {
+    issues.push(wrongHabitat);
+    score -= 1;
+  }
   const wt = setup.waterType ?? 'freshwater';
-  if (sp.waterType !== wt) {
+  if (sp.waterType !== wt && !isLandAnimal(sp) && setup.habitat !== 'vivarium' && setup.habitat !== 'terrarium') {
     issues.push(`${sp.commonName} is a ${sp.waterType} fish; this is a ${wt} tank.`);
     score -= 1;
   }
-  if (setup.litres < sp.minTankLitres) {
+  if (isLandAnimal(sp) && setup.habitat && sp.terra) {
+    // Humid planted vivarium versus dry terrarium, and a basking lamp for baskers.
+    if (setup.habitat === 'terrarium' && sp.terra.humidity[0] >= 60) {
+      issues.push(`${sp.commonName} needs a humid, planted vivarium (${sp.terra.humidity[0]}%+ humidity), not a dry terrarium.`);
+      score -= 0.5;
+    }
+    if (setup.habitat === 'vivarium' && sp.terra.humidity[1] <= 55) {
+      issues.push(`${sp.commonName} needs a dry terrarium (under ${sp.terra.humidity[1]}% humidity).`);
+      score -= 0.5;
+    }
+    if (sp.terra.basking && !setup.heated) {
+      issues.push(`${sp.commonName} needs a basking lamp (about ${sp.terra.basking}°C).`);
+      score -= 0.3;
+    }
+  }
+  if (isLandAnimal(sp) && setup.habitat) {
+    // Enclosure space is judged by the enclosure, not water volume.
+    if (setup.litres < sp.minTankLitres) {
+      issues.push(`${sp.commonName} needs an enclosure of at least ${sp.minTankLitres}L.`);
+      score -= 0.4;
+    }
+  } else if (setup.litres < sp.minTankLitres) {
     issues.push(`${sp.commonName} needs at least ${sp.minTankLitres}L.`);
     score -= setup.litres < sp.minTankLitres * 0.6 ? 0.7 : 0.4;
   }
@@ -146,7 +193,7 @@ export function assessSpeciesForSetup(
     score -= 0.2;
   }
   const temp = setup.temperature ?? (setup.heated ? 25 : 19);
-  if (temp < sp.temperature.min || temp > sp.temperature.max) {
+  if (!isLandAnimal(sp) && (temp < sp.temperature.min || temp > sp.temperature.max)) {
     issues.push(setup.heated ? `${sp.commonName} prefers cooler, unheated water.` : `${sp.commonName} needs a heater.`);
     score -= 0.6;
   }

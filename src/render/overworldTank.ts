@@ -10,8 +10,9 @@ import type { PropPlacement } from '../data/shopLayout';
 import { TILE } from '../data/shopLayout';
 import { fishInTank } from '../sim/fish';
 import { getSpecies } from '../data/species';
-import { getDecor } from '../data/catalog';
-import type { GameState } from '../sim/types';
+import { getDecor, getSubstrate } from '../data/catalog';
+import type { GameState, TankState } from '../sim/types';
+import { isEnclosure, isLandAnimal, isPaludarium, terraOf } from '../sim/terrarium';
 import { miniFishColour } from './art/fishArt';
 import { hexToInt, mix } from './art/pixel';
 import { propTextureKey, tankWaterRect } from './art/shopArt';
@@ -26,6 +27,11 @@ interface Dot {
   phase: number;
   bottom: boolean;
   dead: boolean;
+  /** Enclosures: lives on land (and climbs the glass if a climber). */
+  land: boolean;
+  climber: boolean;
+  /** Land animals sit still between short moves. */
+  pause: number;
 }
 
 /** Overworld status bubble; always the top issue from the shared tank diagnostics. */
@@ -66,6 +72,7 @@ export class OverworldTank {
       const sp = getSpecies(f.speciesId);
       const bottom = sp.swimLevel === 'bottom';
       const crawler = sp.tags.includes('invertebrate');
+      const land = isLandAnimal(sp);
       if (k) {
         k.dead = !f.alive;
         return k;
@@ -73,13 +80,16 @@ export class OverworldTank {
       return {
         id: f.id,
         x: vr.range(1, this.rect.w - 3),
-        y: bottom ? this.rect.h - 3 : vr.range(2, this.rect.h - 5),
+        y: land ? -1 : bottom ? this.rect.h - 3 : vr.range(2, this.rect.h - 5),
         speed: crawler ? vr.range(0.4, 1.6) : vr.range(3, 9),
         dir: vr.chance(0.5) ? 1 : -1,
         colour: hexToInt(miniFishColour(f.speciesId, f.morphId)),
         phase: vr.range(0, 6),
         bottom,
         dead: !f.alive,
+        land,
+        climber: !!sp.terra?.climber,
+        pause: vr.range(0, 3),
       };
     });
   }
@@ -97,6 +107,11 @@ export class OverworldTank {
     const g = this.gfx;
     const { x, y, w, h } = this.rect;
     g.clear();
+    if (isEnclosure(tank)) {
+      this.drawEnclosure(dt, tank);
+      this.showIcon();
+      return;
+    }
     const reefLit = tank.waterType === 'marine' && (tank.reef?.light ?? 'standard') !== 'standard';
     let water = mix(reefLit ? '#3a7ae0' : '#58b4d8', '#6aa86a', Math.min(1, tank.algae * 0.8));
     water = mix(water, '#d8e0d0', Math.min(0.8, tank.water.cloudiness * 0.9));
@@ -157,11 +172,117 @@ export class OverworldTank {
       const by = y + h - 3 - ((this.t * 8) % (h - 3));
       g.fillStyle(0xe8f8ff, 0.8).fillRect(Math.round(bx), Math.round(by), 1, 1);
     }
+    this.showIcon();
+  }
+
+  private showIcon(): void {
     this.icon.setVisible(!!this.alert);
     if (this.alert) {
       this.icon.setTexture(ICON_TEXTURE[this.alert]);
       this.icon.y = this.prop.y * TILE - 5 + Math.round(Math.sin(this.t * 4) * 1.5);
     }
+  }
+
+  /**
+   * A vivarium, terrarium or paludarium in miniature: the back wall, a deep
+   * substrate (a soil bank and a pool in a paludarium), plants and hides,
+   * the lamp's warm spot, mist on humid glass, and animals that sit, hop and
+   * climb rather than swim.
+   */
+  private drawEnclosure(dt: number, tank: TankState): void {
+    const g = this.gfx;
+    const { x, y, w, h } = this.rect;
+    const tr = terraOf(tank);
+    const night = !tank.lightOn;
+    const wallCol: Record<string, string> = { cork_wall: '#4e3a2a', desert_wall: '#b4875a', jungle_wall: '#2e4a26' };
+    let wall = wallCol[tank.backgroundId] ?? '#3a4048';
+    if (night) wall = mix(wall, '#0a0c18', 0.6);
+    g.fillStyle(hexToInt(wall), 1).fillRect(x, y, w, h);
+    if (tank.backgroundId === 'jungle_wall') for (let i = 0; i < w; i += 3) g.fillStyle(hexToInt(mix('#4a7a34', wall, night ? 0.6 : 0)), 1).fillRect(x + i, y + ((i * 7) % 5), 2, 2);
+    const sub = getSubstrate(tank.substrateId);
+    const soil = hexToInt(mix(sub.colourB, '#000000', night ? 0.5 : 0));
+    const pal = isPaludarium(tank);
+    const poolX = pal ? Math.round(w * 0.55) : w;
+    const poolY = Math.round(h * 0.45);
+    if (pal) {
+      // Soil bank on the left, the pool on the right.
+      g.fillStyle(soil, 1).fillRect(x, y + poolY, poolX, h - poolY);
+      g.fillStyle(hexToInt(mix('#4a8a3a', '#000000', night ? 0.5 : 0)), 1).fillRect(x, y + poolY, poolX, 1);
+      g.fillStyle(soil, 1).fillRect(x + poolX, y + poolY + 2, 2, h - poolY - 2);
+      let water = mix('#4aa0b8', '#6aa86a', Math.min(1, tank.algae * 0.8));
+      water = mix(water, '#d8e0d0', Math.min(0.8, tank.water.cloudiness * 0.9));
+      if (night) water = mix(water, '#0c1830', 0.55);
+      g.fillStyle(hexToInt(water), 1).fillRect(x + poolX, y + poolY + 1, w - poolX, h - poolY - 1);
+      g.fillStyle(0xffffff, night ? 0.08 : 0.3).fillRect(x + poolX, y + poolY + 1, w - poolX, 1);
+    } else g.fillStyle(soil, 1).fillRect(x, y + h - 3, w, 3);
+    const groundY = (fx: number) => (pal && fx < poolX ? poolY : h - 3);
+    // Hides, branches, litter, then plants.
+    for (const d of tank.decor) {
+      const def = getDecor(d.defId);
+      const px = Math.round(d.x * (w - 4));
+      const gy = groundY(px);
+      if (def.kind === 'plant') {
+        const tall = Math.max(3, Math.min(8, Math.round(def.height / 12)));
+        const leaf = hexToInt(mix(def.land ? '#3f8a3a' : '#3f9a45', '#000000', night ? 0.5 : 0));
+        const sway = Math.round(Math.sin(this.t * 1.2 + d.x * 10) * 0.5);
+        if (def.land) {
+          g.fillStyle(leaf, 1).fillRect(x + px - 1, y + gy - tall + 2, 3, tall - 2);
+          g.fillStyle(leaf, 1).fillRect(x + px + sway - 2, y + gy - tall, 5, 2);
+          if (def.id === 'bromeliad') g.fillStyle(0xc83a3a, 1).fillRect(x + px, y + gy - 3, 1, 1);
+        } else {
+          g.fillStyle(leaf, 1).fillRect(x + px + sway, y + gy - tall, 1, tall);
+        }
+        continue;
+      }
+      if (def.provides.includes('climbing')) {
+        for (let k = 0; k < 7; k++) g.fillStyle(0x8a6a44, 1).fillRect(x + px - 3 + k, y + gy - 1 - k, 1, 1);
+        continue;
+      }
+      if (def.provides.includes('litter')) {
+        g.fillStyle(0x8a5a2e, 1).fillRect(x + px, y + gy - 1, 4, 1);
+        continue;
+      }
+      g.fillStyle(def.art === 'slate' ? 0x5a5a60 : 0x6a5038, 1).fillRect(x + px, y + gy - 3, 4, 3);
+      g.fillStyle(0x1a120c, 1).fillRect(x + px + 1, y + gy - 1, 2, 1);
+    }
+    // Basking lamp: a warm spot under the lid.
+    if (tr.heatLamp !== null && !night) {
+      g.fillStyle(0xffb050, 0.25).fillRect(x + 2, y, Math.round(w * 0.4), h - 3);
+      g.fillStyle(0xffd080, 1).fillRect(x + Math.round(w * 0.2), y, 2, 1);
+    }
+    // Animals.
+    for (const d of this.dots) {
+      const fx = Math.round(d.x);
+      if (d.dead) {
+        g.fillStyle(0xb0b0a8, 1).fillRect(x + fx, y + groundY(fx) - 1, 2, 1);
+        continue;
+      }
+      if (!d.land) {
+        // Pool fish and shrimp stay in the water.
+        d.x += d.dir * d.speed * dt * (night ? 0.3 : 1);
+        if (d.x < poolX + 1) { d.x = poolX + 1; d.dir = 1; }
+        if (d.x > w - 3) { d.x = w - 3; d.dir = -1; }
+        const yy = d.bottom ? h - 2 : Math.max(poolY + 2, Math.min(h - 3, poolY + 3 + (d.y % Math.max(1, h - poolY - 5)) + Math.sin(this.t * 2 + d.phase)));
+        g.fillStyle(d.colour, 1).fillRect(x + Math.round(d.x), y + Math.round(yy), 2, 1);
+        continue;
+      }
+      d.pause -= dt * (night ? 0.4 : 1);
+      if (d.pause <= 0) {
+        d.pause = vr.range(1.5, 5);
+        d.dir = vr.chance(0.5) ? 1 : -1;
+        d.x = Math.max(1, Math.min((pal && !d.climber ? poolX : w) - 3, d.x + d.dir * vr.range(2, 6)));
+        d.y = d.climber && vr.chance(0.5) ? vr.range(2, h - 8) : -1;
+      }
+      const gy = d.y >= 0 ? d.y : groundY(fx) - 2;
+      const hop = d.pause > 0 && d.pause < 0.2 ? -1 : 0;
+      g.fillStyle(d.colour, 1).fillRect(x + fx, y + Math.round(gy) + hop, 3, 2);
+      g.fillStyle(0x101010, 1).fillRect(x + fx + (d.dir > 0 ? 2 : 0), y + Math.round(gy) + hop, 1, 1);
+    }
+    // Condensation on humid glass, and smears.
+    if (tr.humidity > 78) g.fillStyle(0xe8f0f4, Math.min(0.3, (tr.humidity - 78) / 50)).fillRect(x, y, w, h);
+    if (tank.glassDirt > 0.3) g.fillStyle(0x8a7a50, Math.min(0.45, (tank.glassDirt - 0.3) * 0.7)).fillRect(x, y, w, h);
+    // Mesh lid.
+    g.fillStyle(0x50566a, 1).fillRect(x, y, w, 1);
   }
 
   private updateAlert(): void {

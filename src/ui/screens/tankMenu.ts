@@ -24,6 +24,8 @@ import { h } from '../dom';
 import { incomingCount, incomingSummary } from '../../sim/incoming';
 import { openIncoming } from './incoming';
 import { openReefCare } from './reef';
+import { climateReportEl, enclosureEquipment, feederRight } from './enclosure';
+import { enclosureFeeder, habitatRefusal, isLandAnimal, isLandOnly, landVolume, setupHeated } from '../../sim/terrarium';
 import type { MenuItem } from '../menu';
 import type { MenuScreen } from '../ui';
 import { fishCard, fishLabel, tankHeader, waterReportEl } from './common';
@@ -42,9 +44,11 @@ export function openTankMenu(c: GameController, tankId: string): void {
         ? [{ label: `On order (${incomingCount(s, tankId)})`, right: 'not arrived', className: 'incoming', hint: `${incomingSummary(s, tankId)}. See what will be here after delivery, or cancel.`, action: () => openIncoming(c, tankId, () => screen.refresh(items())) }]
         : []),
       { label: 'View Tank', hint: 'Watch your fish up close.', action: () => c.openTankView(tankId) },
-      locked(c, 'maintenance', { label: 'Feed', right: `food: ${Math.floor(s.foodUnits)}`, action: () => openFeed(c, tankId, screen) }),
+      locked(c, 'maintenance', { label: 'Feed', right: tank.habitat && enclosureFeeder(s, tank) ? feederRight(s, tank) : `food: ${Math.floor(s.foodUnits)}`, action: () => openFeed(c, tankId, screen) }),
       { label: `Livestock (${n})`, action: () => openLivestock(c, tankId) },
-      { label: 'Water Test', hint: 'Takes 5 minutes.', action: () => openWaterTest(c, tankId) },
+      isLandOnly(tank)
+        ? { label: 'Climate check', hint: 'Humidity, temperature, basking spot, ventilation, mould, waste and the water dish, against what these animals need.', action: () => openWaterTest(c, tankId) }
+        : { label: tank.habitat ? 'Water test and climate' : 'Water Test', hint: 'Takes 5 minutes.', action: () => openWaterTest(c, tankId) },
       locked(c, 'maintenance', { label: 'Maintenance', hint: 'Water changes and cleaning, with the expected result of each.', action: () => openMaintenance(c, tankId, screen) }),
       { label: 'Equipment', hint: c.idle ? 'View only in Idle Mode.' : undefined, action: () => openEquipment(c, tankId, screen) },
       locked(c, 'aquascape', { label: 'Aquascape', hint: 'Decorate with a live preview: plants, rocks, wood, substrate and background.', action: () => c.openTankView(tankId, 'aquascape') }),
@@ -92,7 +96,9 @@ function openFeed(c: GameController, tankId: string, parent?: MenuScreen): void 
   };
   const scr = c.ui.menu({
     title: 'Feed',
-    body: h('div', null, need < 0.5 ? 'The fish are not very hungry.' : need > 3 ? 'The fish look hungry!' : 'The fish could eat.', ' ', helpLink('Hunger', 'hunger')),
+    body: h('div', null, tank.habitat && enclosureFeeder(s, tank)
+      ? `${need < 0.5 ? 'The animals are not very hungry.' : need > 3 ? 'The animals look hungry!' : 'The animals could eat.'} Uses ${feederRight(s, tank)}${s.dryGoods.calcium_dust ? `; dusted with calcium (${s.dryGoods.calcium_dust} left)` : '; no calcium dust in stock'}. `
+      : need < 0.5 ? 'The fish are not very hungry.' : need > 3 ? 'The fish look hungry!' : 'The fish could eat.', ' ', helpLink('Hunger', 'hunger')),
     items: [
       { label: 'Light pinch', hint: 'Half a meal. Safest for water quality.', action: () => run('light') },
       { label: 'Normal feed', hint: previewHint(c, tankId, 'feed', 'What they will eat in a couple of minutes.'), action: () => run('normal') },
@@ -106,10 +112,13 @@ export function openWaterTest(c: GameController, tankId: string): void {
   const s = c.state;
   c.sim!.advance(5);
   s.tanks[tankId].lastMaintenance.test = s.minute;
+  const t = s.tanks[tankId];
   const scr = c.ui.menu({
-    title: `Water Test: ${s.tanks[tankId].name}`,
-    body: () => waterReportEl(s, s.tanks[tankId]),
-    items: [helpItem('cycle', 'Help: the nitrogen cycle'), helpItem('ammonia', 'Help: ammonia, nitrite, nitrate'), { label: 'Done', action: () => c.ui.remove(scr) }],
+    title: `${isLandOnly(t) ? 'Climate check' : 'Water Test'}: ${t.name}`,
+    body: () => (isLandOnly(t) ? climateReportEl(s, t) : t.habitat ? h('div', null, climateReportEl(s, t), h('div', { class: 'small' }, 'Pool water:'), waterReportEl(s, t)) : waterReportEl(s, t)),
+    items: isLandOnly(t)
+      ? [helpItem('humidity', 'Help: humidity'), helpItem('basking', 'Help: basking and heat'), helpItem('ventilation', 'Help: ventilation'), helpItem('mould', 'Help: mould and waste'), { label: 'Done', action: () => c.ui.remove(scr) }]
+      : [helpItem('cycle', 'Help: the nitrogen cycle'), helpItem('ammonia', 'Help: ammonia, nitrite, nitrate'), ...(t.habitat ? [helpItem('paludarium', 'Help: paludariums')] : []), { label: 'Done', action: () => c.ui.remove(scr) }],
     className: 'wide',
   });
 }
@@ -134,7 +143,20 @@ function openMaintenance(c: GameController, tankId: string, parent?: MenuScreen)
   const fixItem = (label: string, fix: FixId, extra: string): MenuItem =>
     locked(c, 'maintenance', { label, right: `${previewFix(s, tankId, fix).result.minutes || '-'} min`, hint: previewHint(c, tankId, fix, extra), action: () => doIt(() => FIXES[fix].run(s, tank)) });
   const dead = () => fishInTank(s, tankId, true).filter((f) => !f.alive).length;
-  const items = (): MenuItem[] => [
+  const terraItems = (): MenuItem[] => (tank.habitat
+    ? [
+        fixItem('Mist', 'mist', 'Damp substrate and humid air for a while.'),
+        fixItem('Spot clean', 'spotClean', 'Droppings, dead feeders and mouldy patches out.'),
+        fixItem('Refresh the water dish', 'dish', ''),
+      ]
+    : []);
+  const items = (): MenuItem[] => isLandOnly(tank) ? [
+    ...terraItems(),
+    fixItem('Clean glass', 'glass', 'Condensation marks and smears.'),
+    locked(c, 'maintenance', { label: 'Remove dead animals', right: dead() ? `${dead()}` : '-', disabled: !dead(), hint: 'They rot and spread mould.', action: () => doIt(() => removeDead(s, tank)) }),
+    { label: 'Back', action: () => c.ui.remove(scr) },
+  ] : [
+    ...terraItems(),
     fixItem('Water change 25%', 'water25', 'Lowers nitrate and toxins gently.'),
     fixItem('Water change 50%', 'water50', 'Big reset. Large changes stress fish a little.'),
     fixItem('Clean glass', 'glass', ''),
@@ -158,7 +180,12 @@ function openEquipment(c: GameController, tankId: string, parent?: MenuScreen): 
     refreshParent(parent);
   };
   const items = (): MenuItem[] => {
-    const list: MenuItem[] = [{ label: 'Filters', header: true }];
+    const list: MenuItem[] = tank.habitat ? enclosureEquipment(c, tank, doIt, () => scr.refresh(items())) : [];
+    if (isLandOnly(tank)) {
+      list.push(helpItem('humidity', 'Help: humidity'), helpItem('basking', 'Help: basking'), { label: 'Back', action: () => c.ui.remove(scr) });
+      return list;
+    }
+    list.push({ label: tank.habitat ? 'Pool filter' : 'Filters', header: true });
     for (const f of FILTERS) {
       const current = tank.filterId === f.id;
       list.push(locked(c, 'buy', {
@@ -196,7 +223,7 @@ function openEquipment(c: GameController, tankId: string, parent?: MenuScreen): 
     list.push({ label: 'Back', action: () => c.ui.remove(scr) });
     return list;
   };
-  const scr = c.ui.menu({ title: `Equipment: ${tank.name}`, items: items(), body: () => h('div', null, `Current filter: ${getFilter(tank.filterId).name}. Money: ${formatMoney(s.money)}`) });
+  const scr = c.ui.menu({ title: `Equipment: ${tank.name}`, items: items(), body: () => h('div', null, isLandOnly(tank) ? `${tank.habitat}: no water to filter or heat. Money: ${formatMoney(s.money)}` : `Current filter: ${getFilter(tank.filterId).name}. Money: ${formatMoney(s.money)}`) });
 }
 
 export function openPrices(c: GameController, tankId: string | null): void {
@@ -430,9 +457,11 @@ function openMoveFish(c: GameController, fish: FishEntity[], done: () => void): 
     .map((id) => {
       const t = s.tanks[id];
       const resident = [...new Set(fishInTank(s, id).map((x) => x.speciesId))];
-      const res = assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: t.water.temperature, residentSpecies: resident, waterType: t.waterType ?? 'freshwater' });
-      const warn = res.issues[0] ?? (t.water.ammonia > 0.25 ? 'Water is toxic!' : '');
-      const wrongWater = sp.waterType !== (t.waterType ?? 'freshwater');
+      const res = assessSpeciesForSetup(sp.id, { litres: isLandAnimal(sp) && t.habitat ? landVolume(t) : t.litres, lengthCm: t.lengthCm, heated: setupHeated(t), temperature: t.water.temperature, residentSpecies: resident, waterType: t.waterType ?? 'freshwater', habitat: t.habitat });
+      const warn = res.issues[0] ?? (t.water.ammonia > 0.25 && !isLandAnimal(sp) ? 'Water is toxic!' : '');
+      const wrongHabitat = habitatRefusal(sp, t);
+      if (wrongHabitat) return { label: `${t.name} (${t.habitat ?? t.waterType ?? 'freshwater'})`, disabled: true, hint: wrongHabitat };
+      const wrongWater = !isLandAnimal(sp) && sp.waterType !== (t.waterType ?? 'freshwater');
       if (wrongWater) return { label: `${t.name} (${t.waterType ?? 'freshwater'})`, disabled: true, hint: `${sp.commonName} is a ${sp.waterType} fish. It cannot live in this tank.` };
       return {
         label: `${t.name}${res.score < 0.75 ? ' ⚠' : ''}`,

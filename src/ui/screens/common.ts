@@ -1,5 +1,7 @@
 /** Shared UI fragments: tank status, water readout, fish cards. */
 import { reefChem } from '../../sim/reef';
+import { isLandOnly } from '../../sim/terrarium';
+import { enclosureLine } from './enclosure';
 import { REEF_TARGETS } from '../../data/reef';
 import { MARINE_SAFE, sgLabel, TARGET_SALINITY } from '../../sim/marine';
 import { diagnoseTank, STATUS_LABEL } from '../../sim/tankDiagnostics';
@@ -37,11 +39,13 @@ export function tankHeader(state: GameState, tank: TankState, withStatus = true)
   return h(
     'div',
     { class: 'tank-header' },
-    h('div', { class: 'row' }, h('span', null, `${tank.litres}L · ${tank.lengthCm}cm long`), h('span', null, `${tank.water.temperature.toFixed(1)}°C`)),
-    h('div', { class: 'row' }, h('span', null, `${filter.name} · ${heater}`)),
+    tank.habitat
+      ? h('div', { class: 'row' }, h('span', null, enclosureLine(tank)))
+      : h('div', { class: 'row' }, h('span', null, `${tank.litres}L · ${tank.lengthCm}cm long`), h('span', null, `${tank.water.temperature.toFixed(1)}°C`)),
+    isLandOnly(tank) ? null : h('div', { class: 'row' }, h('span', null, `${filter.name} · ${heater}`)),
     !withStatus ? null : h('div', { class: 'row' }, h('span', null, 'Stocking'), meter(Math.min(1, ratio), ratio > 1 ? 'bad' : ratio > 0.8 ? 'warn' : 'good'), h('span', null, `${Math.round(ratio * 100)}%`)),
     h('div', { class: 'row' }, h('span', null, 'Aquascape'), meter(scape.beauty / 100, 'blue'), h('span', null, `${Math.round(scape.beauty)}`)),
-    h('div', { class: 'row' }, h('span', { class: `tag tag-${cyc}` }, cyc.toUpperCase()), tank.forSale === false ? h('span', { class: 'tag tag-closed' }, 'NOT FOR SALE') : h('span', null, ''), withStatus ? h('span', { class: 'status' }, tankStatusLine(state, tank)) : h('span', null, '')),
+    h('div', { class: 'row' }, isLandOnly(tank) ? h('span', { class: 'tag tag-cycled' }, (tank.habitat ?? '').toUpperCase()) : h('span', { class: `tag tag-${cyc}` }, cyc.toUpperCase()), tank.forSale === false ? h('span', { class: 'tag tag-closed' }, 'NOT FOR SALE') : h('span', null, ''), withStatus ? h('span', { class: 'status' }, tankStatusLine(state, tank)) : h('span', null, '')),
   );
 }
 

@@ -20,6 +20,10 @@ export interface ArchetypeDef {
   heatedChance: number;
   weight: number;
   greetings: string[];
+  /** Only visits once this floor is open. */
+  floor?: string;
+  /** Enclosure keepers: the kinds of enclosure they ask advice about. */
+  habitats?: Array<'vivarium' | 'terrarium'>;
 }
 
 export const ARCHETYPES: ArchetypeDef[] = [
@@ -57,6 +61,20 @@ export const ARCHETYPES: ArchetypeDef[] = [
     goals: { browse: 0.5, buy_specific: 0.5 }, favourites: [],
     tankSizes: [40, 60, 120], heatedChance: 0.7, weight: 1.5,
     greetings: ['What is your best price today?', 'I saw these cheaper online, you know.'],
+  },
+  {
+    id: 'reef_keeper', label: 'Reef Keeper',
+    budget: [60, 180], experience: [0.6, 1], patience: [0.5, 0.9], negotiation: [0.1, 0.4], ethics: [0.7, 1], qualityFocus: [0.6, 1],
+    goals: { buy_specific: 0.5, browse: 0.5 }, favourites: ['cleaner_shrimp', 'hermit_crab', 'turbo_snail', 'clownfish', 'cherry_shrimp', 'crystal_shrimp'],
+    tankSizes: [60, 120, 200, 300], heatedChance: 1, weight: 1.4, floor: 'reef',
+    greetings: ['Any new frags in? My Montipora finally took off.', 'I need a clean-up crew for my nano reef.', 'What are you running your alk at?'],
+  },
+  {
+    id: 'herp_keeper', label: 'Reptile & Amphibian Keeper',
+    budget: [50, 160], experience: [0.3, 0.9], patience: [0.5, 0.9], negotiation: [0.1, 0.4], ethics: [0.6, 1], qualityFocus: [0.5, 0.9],
+    goals: { buy_specific: 0.45, browse: 0.3, advice_stocking: 0.25 }, favourites: ['dart_frog', 'leopard_gecko', 'crested_gecko', 'rose_tarantula', 'whites_tree_frog', 'fire_bellied_toad'],
+    tankSizes: [45, 60, 90, 120, 200], heatedChance: 0.5, weight: 1.6, floor: 'vivarium', habitats: ['vivarium', 'terrarium'],
+    greetings: ['Do you have any captive-bred geckos?', 'My vivarium is finally planted. Time for frogs!', 'Is it true tarantulas can live twenty years?'],
   },
 ];
 

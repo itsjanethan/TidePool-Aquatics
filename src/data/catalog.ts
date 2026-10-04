@@ -49,6 +49,8 @@ export interface DecorDef {
   coral?: CoralTraits;
   /** Shop level needed before it can be bought (default 1). */
   level?: number;
+  /** Enclosure item (vivarium, terrarium, paludarium land): not for aquariums. */
+  land?: boolean;
 }
 
 /** How a plant species' propagation is described to the player. */
@@ -77,6 +79,14 @@ export const DECOR: DecorDef[] = [
   { id: 'live_rock', name: 'Live Rock', kind: 'rock', cost: 28, cover: 0.14, cave: true, caveSlots: 2, width: 66, height: 46, nutrientUptake: 0, phEffect: 0.1, beauty: 0.6, provides: ['rocks', 'cave', 'live_rock'], art: 'liverock', marineOnly: true, description: 'Porous reef rock full of bacteria: extra biological filtration and hiding places in marine tanks.' },
   { id: 'reef_rock', name: 'Reef Rock Arch', kind: 'rock', cost: 60, cover: 0.2, cave: true, caveSlots: 3, width: 150, height: 96, nutrientUptake: 0, phEffect: 0.12, beauty: 0.75, provides: ['rocks', 'cave', 'live_rock'], art: 'reefrock', marineOnly: true, description: 'A big arch of live reef rock: plenty of filtration, caves underneath, and ledges at every height to set corals on.' },
   { id: 'coconut_cave', name: 'Coconut Hut', kind: 'cave', cost: 5, cover: 0.09, cave: true, width: 34, height: 22, nutrientUptake: 0, phEffect: -0.05, beauty: 0.3, provides: ['cave'], art: 'coconut', description: 'Half a coconut shell. Rustic and cosy.' },
+  // Enclosure items (vivarium floor): plants for humid vivariums, hides, climbing branches and litter.
+  { id: 'bromeliad', name: 'Bromeliad', kind: 'plant', cost: 9, cover: 0.12, cave: false, width: 40, height: 46, nutrientUptake: 0, phEffect: 0, beauty: 0.7, provides: ['plants', 'terra_plants'], art: 'bromeliad', land: true, level: 6, growthRate: 0.03, maxSize: 1.6, tough: true, propagation: 'division', description: 'A stiff rosette with a red heart that holds a little pool of water. Dart frogs lay eggs and raise tadpoles in them.' },
+  { id: 'pothos', name: 'Pothos Vine', kind: 'plant', cost: 6, cover: 0.16, cave: false, width: 56, height: 80, nutrientUptake: 0, phEffect: 0, beauty: 0.6, provides: ['plants', 'terra_plants', 'climbing'], art: 'pothos', land: true, level: 6, growthRate: 0.06, maxSize: 1.8, tough: true, propagation: 'cuttings', description: 'A trailing vine with heart-shaped leaves. Tough, fast and good cover for climbing frogs and geckos.' },
+  { id: 'boston_fern', name: 'Boston Fern', kind: 'plant', cost: 7, cover: 0.18, cave: false, width: 60, height: 50, nutrientUptake: 0, phEffect: 0, beauty: 0.6, provides: ['plants', 'terra_plants'], art: 'bfern', land: true, level: 6, growthRate: 0.05, maxSize: 1.7, propagation: 'division', description: 'Soft arching fronds that like damp air. Gives shy frogs plenty of shade.' },
+  { id: 'cork_hide', name: 'Cork Bark Hide', kind: 'cave', cost: 8, cover: 0.12, cave: true, caveSlots: 1, width: 48, height: 26, nutrientUptake: 0, phEffect: 0, beauty: 0.45, provides: ['cave', 'hide'], art: 'cork', land: true, level: 6, description: 'A curved tube of cork bark: a dark, snug hide for spiders, geckos and frogs.' },
+  { id: 'slate_hide', name: 'Slate Cave Hide', kind: 'cave', cost: 10, cover: 0.1, cave: true, caveSlots: 1, width: 50, height: 30, nutrientUptake: 0, phEffect: 0, beauty: 0.4, provides: ['cave', 'hide', 'warm_hide'], art: 'slate', land: true, level: 6, description: 'A flat rock cave. Under a basking lamp it stays warm, which desert geckos need to digest.' },
+  { id: 'climb_branch', name: 'Climbing Branch', kind: 'wood', cost: 11, cover: 0.08, cave: false, width: 110, height: 160, nutrientUptake: 0, phEffect: 0, beauty: 0.55, provides: ['wood', 'climbing'], art: 'spiderwood', land: true, level: 6, description: 'A sanded branch running up the enclosure: perches for tree frogs and crested geckos.' },
+  { id: 'leaf_litter', name: 'Leaf Litter', kind: 'ornament', cost: 3, cover: 0.14, cave: false, width: 60, height: 10, nutrientUptake: 0, phEffect: 0, beauty: 0.35, provides: ['litter'], art: 'litter', land: true, level: 6, description: 'Dry oak and magnolia leaves. Cover for small frogs, food for the clean-up crew, and it keeps the soil damp.' },
   // Corals (marine reef tanks, Reef & Invertebrates floor). Decor layer = height on the rockwork.
   { id: 'zoanthids', name: 'Zoanthid Colony', kind: 'coral', cost: 28, cover: 0.02, cave: false, width: 42, height: 22, nutrientUptake: 0, phEffect: 0, beauty: 0.75, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.035, maxSize: 2, description: 'Button polyps in green and orange. Hardy, forgiving and quick to spread across rock.', coral: { group: 'soft', form: 'zoa', genus: 'zoanthus', par: [50, 260], flow: [0.25, 0.8], nitrate: [1, 25], calcify: 0.02, growth: 0.035, maxSize: 2, sting: 0, reach: 0.05, sensitivity: 0.25, colours: { base: '#2e8a6a', tip: '#f07a2a', glow: '#7affb0' }, frag: 'Cut a few polyps off the edge of the mat with their rock.' } },
   { id: 'gsp', name: 'Green Star Polyps', kind: 'coral', cost: 18, cover: 0.03, cave: false, width: 46, height: 12, nutrientUptake: 0, phEffect: 0, beauty: 0.6, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.06, maxSize: 2.2, description: 'A purple mat that sprouts waving green stars. Grows fast and will creep over neighbours.', coral: { group: 'soft', form: 'gsp', genus: 'pachyclavularia', par: [70, 320], flow: [0.3, 0.9], nitrate: [1, 30], calcify: 0.012, growth: 0.06, maxSize: 2.2, sting: 0.06, reach: 0.08, sensitivity: 0.15, colours: { base: '#6a2a5a', tip: '#6aff7a', glow: '#8aff9a' }, frag: 'Peel a strip of the mat off the rock.' } },
@@ -190,6 +200,8 @@ export interface SubstrateDef {
   plantBonus?: number;
   /** Active soils hold pH and hardness near these values (water changes pull away for a while). */
   buffer?: { ph: number; gh: number };
+  /** Enclosure substrate (holds moisture: 0 dry sand .. 1 spongy soil). */
+  land?: { moisture: number };
 }
 
 export const SUBSTRATES: SubstrateDef[] = [
@@ -200,6 +212,9 @@ export const SUBSTRATES: SubstrateDef[] = [
   { id: 'aqua_soil', name: 'Planted Soil', cost: 18, colourA: '#2e2218', colourB: '#4a3828', provides: ['soil'], beauty: 0.5, grain: 'soil', plantBonus: 1.35 },
   { id: 'black_gravel', name: 'Black Gravel', cost: 12, colourA: '#2a2a30', colourB: '#4a4a52', provides: [], beauty: 0.45, grain: 'gravel' },
   { id: 'bare', name: 'Bare Bottom', cost: 0, colourA: '#5a6a74', colourB: '#6a7a84', provides: [], beauty: 0, grain: 'bare' },
+  { id: 'coco_fibre', name: 'Coco Fibre & Leaf Litter', cost: 9, colourA: '#3a2618', colourB: '#5a3c24', provides: ['soil'], beauty: 0.5, grain: 'soil', land: { moisture: 1 } },
+  { id: 'forest_floor', name: 'Bioactive Forest Floor', cost: 16, colourA: '#2a2014', colourB: '#6a4a24', provides: ['soil'], beauty: 0.6, grain: 'soil', land: { moisture: 0.9 } },
+  { id: 'desert_clay', name: 'Desert Sand & Clay', cost: 12, colourA: '#c89a62', colourB: '#e0c08a', provides: ['sand'], beauty: 0.5, grain: 'sand', land: { moisture: 0.25 } },
   { id: 'shrimp_soil', name: 'Active Shrimp Soil', cost: 22, colourA: '#24201c', colourB: '#3e342a', provides: ['soil'], beauty: 0.5, grain: 'soil', plantBonus: 1.2, buffer: { ph: 6.3, gh: 5 } },
 ];
 
@@ -208,6 +223,8 @@ export interface BackgroundDef {
   name: string;
   cost: number;
   beauty: number;
+  /** Enclosure back wall (not for aquariums). */
+  land?: boolean;
 }
 
 export const BACKGROUNDS: BackgroundDef[] = [
@@ -215,6 +232,9 @@ export const BACKGROUNDS: BackgroundDef[] = [
   { id: 'black', name: 'Black Film', cost: 4, beauty: 0.3 },
   { id: 'blue', name: 'Blue Gradient', cost: 4, beauty: 0.25 },
   { id: 'rocky', name: 'Rock Wall Print', cost: 8, beauty: 0.4 },
+  { id: 'cork_wall', name: 'Cork Bark Back Wall', cost: 18, beauty: 0.5, land: true },
+  { id: 'desert_wall', name: 'Sandstone Back Wall', cost: 16, beauty: 0.45, land: true },
+  { id: 'jungle_wall', name: 'Living Moss Wall', cost: 24, beauty: 0.6, land: true },
 ];
 
 export interface DryGoodDef {
@@ -240,6 +260,10 @@ export const DRY_GOODS: DryGoodDef[] = [
   { id: 'reef_alk', name: 'Alkalinity Buffer', wholesale: 2.5, retail: 7, description: 'Part A of reef two-part. One measure raises 100L by about 1 dKH. Stony corals use it up building skeleton.', floor: 'reef' },
   { id: 'reef_calcium', name: 'Calcium Supplement', wholesale: 2.5, retail: 7, description: 'Part B of reef two-part. One measure raises 100L by about 20 ppm calcium.', floor: 'reef' },
   { id: 'reef_magnesium', name: 'Magnesium Supplement', wholesale: 3, retail: 8, description: 'One measure raises 100L by about 50 ppm. Magnesium keeps calcium and alkalinity in solution.', floor: 'reef' },
+  { id: 'crickets', name: 'Live Crickets (tub)', wholesale: 1.5, retail: 4, description: 'Feeder insects for frogs, geckos and tarantulas. One tub is one feed for an enclosure.', floor: 'vivarium' },
+  { id: 'fruit_flies', name: 'Fruit Fly Culture', wholesale: 1.8, retail: 5, description: 'Flightless fruit flies for dart frogs and other small frogs. One culture is one feed.', floor: 'vivarium' },
+  { id: 'gecko_diet', name: 'Crested Gecko Diet', wholesale: 1.2, retail: 4, description: 'Powdered fruit diet mixed with water. One measure is one feed.', floor: 'vivarium' },
+  { id: 'calcium_dust', name: 'Calcium + D3 Dust', wholesale: 0.4, retail: 1.5, description: 'Dusted onto feeder insects. Frogs and reptiles need it for strong bones. One measure dusts one feed.', floor: 'vivarium' },
   { id: 'frag_plugs', name: 'Frag Plugs & Glue (pack)', wholesale: 1.2, retail: 4, description: 'Ceramic plugs and coral glue. One per coral frag you cut.', floor: 'reef' },
 ];
 

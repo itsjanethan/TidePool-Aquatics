@@ -181,6 +181,39 @@ export interface TankState {
   skimmer?: boolean;
   /** Reef equipment and chemistry history (marine tanks; absent = standard light, no wavemaker). */
   reef?: ReefState;
+  /** Enclosure kind (vivarium floor). Absent = aquarium. */
+  habitat?: 'vivarium' | 'terrarium' | 'paludarium';
+  /** Enclosure climate and husbandry (vivariums, terrariums, paludariums). */
+  terra?: TerraState;
+}
+
+/** Climate and care state of an enclosure (see sim/terrarium.ts). */
+export interface TerraState {
+  /** Relative humidity, %. */
+  humidity: number;
+  /** Air temperature, °C. */
+  airTemp: number;
+  /** Substrate moisture 0 (dust dry) .. 1 (soaked). */
+  moisture: number;
+  /** Mould on the substrate and decor, 0..1. */
+  mould: number;
+  /** Droppings and dead feeders, 0..1. */
+  waste: number;
+  /** Ventilation setting 0..1 (mesh opening). */
+  vent: number;
+  /** Automatic mister fitted. */
+  mister: boolean;
+  /** Basking lamp thermostat, °C; null = no lamp. */
+  heatLamp: number | null;
+  uvb: boolean;
+  /** Springtails and isopods living in the substrate. */
+  bioactive: boolean;
+  /** Calcium supplement in the animals' diet, 0..1 (dusted feeds top it up). */
+  calcium: number;
+  /** Water dish freshness, 0 (empty, fouled) .. 1. */
+  dish: number;
+  /** Minute of the last misting (visual mist and droplets). */
+  lastMist?: number;
 }
 
 export interface ReefState {
@@ -240,6 +273,8 @@ export interface CustomerState {
     tankLitres?: number;
     heated?: boolean;
     problemId?: string;
+    /** Enclosure keepers asking advice: the kind of enclosure they own. */
+    habitat?: 'vivarium' | 'terrarium';
   };
   phase: CustomerPhase;
   x: number;

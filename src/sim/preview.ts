@@ -8,9 +8,10 @@ import { feedingNeed } from './tank';
 import { cleanFilter, cleanGlass, doWaterChange, feedTank, removeDead, scrubAlgae, topOffTank, vacuumSubstrate, type ActionResult } from './tank';
 import { fishInTank } from './fish';
 import { doseReef, reefChem } from './reef';
+import { mistEnclosure, refreshDish, spotClean } from './terrarium';
 import type { GameState, TankState } from './types';
 
-export type FixId = 'feed' | 'water25' | 'water50' | 'glass' | 'algae' | 'vacuum' | 'filter' | 'removeDead' | 'topoff' | 'doseAlk' | 'doseCa' | 'doseMg';
+export type FixId = 'feed' | 'water25' | 'water50' | 'glass' | 'algae' | 'vacuum' | 'filter' | 'removeDead' | 'topoff' | 'doseAlk' | 'doseCa' | 'doseMg' | 'mist' | 'spotClean' | 'dish';
 
 /** The sim function behind each fix. */
 export const FIXES: Record<FixId, { label: string; run: (s: GameState, t: TankState) => ActionResult }> = {
@@ -26,6 +27,9 @@ export const FIXES: Record<FixId, { label: string; run: (s: GameState, t: TankSt
   doseAlk: { label: 'Dose alkalinity buffer', run: (s, t) => doseReef(s, t, 'alk') },
   doseCa: { label: 'Dose calcium', run: (s, t) => doseReef(s, t, 'calcium') },
   doseMg: { label: 'Dose magnesium', run: (s, t) => doseReef(s, t, 'magnesium') },
+  mist: { label: 'Mist the enclosure', run: (s, t) => mistEnclosure(s, t) },
+  spotClean: { label: 'Spot clean', run: (s, t) => spotClean(s, t) },
+  dish: { label: 'Refresh the water dish', run: (s, t) => refreshDish(s, t) },
 };
 
 /** Player-facing tank metrics (percentages 0..100 unless noted). */
@@ -50,6 +54,11 @@ export interface TankMetrics {
   alk: number;
   calcium: number;
   magnesium: number;
+  /** Enclosures (0 for aquariums): humidity %, mould %, waste %, water dish %. */
+  humidity: number;
+  mould: number;
+  landWaste: number;
+  dish: number;
 }
 
 /** Detritus (mg/L) shown as a 0..100 waste level. */
@@ -78,6 +87,10 @@ export function tankMetrics(state: GameState, tank: TankState): TankMetrics {
           return { alk: Math.round(c.alk * 10) / 10, calcium: Math.round(c.calcium), magnesium: Math.round(c.magnesium) };
         })()
       : { alk: 0, calcium: 0, magnesium: 0 }),
+    humidity: tank.terra ? Math.round(tank.terra.humidity) : 0,
+    mould: tank.terra ? Math.round(tank.terra.mould * 100) : 0,
+    landWaste: tank.terra ? Math.round(tank.terra.waste * 100) : 0,
+    dish: tank.terra ? Math.round(tank.terra.dish * 100) : 0,
   };
 }
 
@@ -106,6 +119,10 @@ const LABEL: Record<keyof TankMetrics, string> = {
   alk: 'Alkalinity',
   calcium: 'Calcium',
   magnesium: 'Magnesium',
+  humidity: 'Humidity',
+  mould: 'Mould',
+  landWaste: 'Waste',
+  dish: 'Water dish',
 };
 
 function fmt(key: keyof TankMetrics, v: number): string {

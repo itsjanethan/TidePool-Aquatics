@@ -99,6 +99,17 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **Active shrimp soil buffers the water** (pH 6.3, GH 5), pulling back after water changes. It is what makes crystal shrimp possible, and wrong for snails.
 - **Critters have their own renderer.** Shrimp, snails and crabs walk the substrate contour, clamber over rock, glide up the glass and make short swims, drawn from a procedural walk-cycle painter (`critterArt.ts`), not the fish painter.
 
+## 2026-10-04: Vivariums, terrariums and paludariums (shop level 6)
+
+- **Enclosures are tanks with a habitat.** `TankState.habitat` ('vivarium' | 'terrarium' | 'paludarium') and `TankState.terra` (climate and husbandry) sit beside the existing water state, so orders, incoming livestock, stocking, staff, diagnostics, customers, saving and the sandbox all work through the same paths. Land-only enclosures skip the water tick; a paludarium's `litres` is its pool (45% of the size) and the rest is land volume.
+- **Animals say where they live.** `SpeciesDef.lives` ('water' | 'land' | 'amphibious') and `SpeciesDef.terra` (humidity range, basking temperature, ventilation, feeder, calcium, UVB, climber, pool, space, climate). `habitatRefusal` is the one rule for every move, order, purchase and preset: land animals never go in water, fish only in a paludarium pool. Amphibians in a paludarium feel the pool's ammonia and nitrite.
+- **One function says what is wrong.** `terraIssues` returns each problem with plain words, numbers, stress and damage; stress, damage, diagnostics (`terra_*`), the Climate check, staff jobs and breeding read it.
+- **Simple, legible climate.** Humidity relaxes toward a target from substrate moisture, vents, plants and the pool; the automatic mister tops moisture up toward damp (not a swamp); the basking lamp lifts the day air and gives a hotspot (lamp temperature, at most air + 14°C). The vivarium floor is a heated room (23.5°C) so frogs and tarantulas live at room temperature and only desert reptiles need a lamp. Mould needs wet, still air and waste; springtails and isopods (bioactive) keep it and waste down.
+- **Feeders are stockroom goods.** Fruit flies, crickets and gecko diet are bought by the tub; a feed uses one and is dusted with calcium when dust is in stock. Uneaten crickets wander and pester sleeping animals.
+- **Realistic breeding only.** White's tree frogs need a rain chamber (always fails in a shop), toads need a paludarium pool, and humidity or low calcium weaken breeding. Tarantulas must live alone; two male leopard geckos fight.
+- **Land animals use the critter renderer.** Frogs leap in arcs, climbers sit on the glass and branches, spiders rest, toads float in the pool. The enclosure view has a mesh lid, front doors, land back walls (cork, sandstone, living moss with vines), a cross-section soil bank for paludariums, a basking lamp cone and warm spot, UVB tube, mister bursts, water dish, condensation and mould on the glass, and live feeders that crawl and hover.
+- **Ant keeping is not part of this.** It stays roadmap only.
+
 ## 2026-10-04: Incoming livestock is part of every tank's future
 
 - **One source of truth: `state.orders`.** Incoming views (`sim/incoming.ts`) read placed orders directly, so deliveries, cancellations and save/load can never leave them stale.
