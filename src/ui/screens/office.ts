@@ -27,6 +27,7 @@ import { locked } from './locks';
 import { openStaffHub } from './staff';
 import { openProgression } from './progression';
 import { openRetail } from './retail';
+import { openTanksOverview } from './overview';
 import { retailUnlocked } from '../../sim/retail';
 import { openProposals } from '../../sim/staff';
 
@@ -73,6 +74,7 @@ export function openOffice(c: GameController): void {
       { label: 'Help', right: 'H', action: () => c.openHelp() },
       { label: 'Shop', header: true },
       locked(c, 'order', { label: 'Order livestock', hint: 'Buy fish from suppliers. Delivered at opening time.', action: () => openSuppliers(c) }),
+      { label: 'All tanks', hint: 'Every tank on every floor with its status and worst problem, most urgent first.', action: () => openTanksOverview(c) },
       { label: 'Incoming deliveries', right: s.orders.length ? `${s.orders.length} order${s.orders.length > 1 ? 's' : ''}` : 'none', hint: 'Livestock on order: what, for which tank, arriving when. Cancel from here.', action: () => openAllIncoming(c) },
       { label: 'Stockroom', hint: 'Food, dry goods, potted plants and stored decor.', action: () => openStockroom(c) },
       ...(retailUnlocked(s) ? [{ label: 'Equipment retail', hint: 'Basement stock: tanks, filters, heaters, bundles.', action: () => openRetail(c) }] : []),

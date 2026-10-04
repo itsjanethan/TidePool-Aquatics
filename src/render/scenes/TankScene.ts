@@ -45,6 +45,11 @@ export class TankScene extends Phaser.Scene {
       },
       onSelect: () => this.overlay?.refreshFish(),
     });
+    // A tap that misses every sprite selects the nearest animal within about a fingertip (26 CSS px).
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (over.length) return;
+      this.tankRenderer.selectNearest(p.worldX, p.worldY, (26 * view.k) / this.cameras.main.zoom);
+    });
     // Show any leftover food already in the water as settled pellets.
     this.overlay = new TankViewScreen(c, this);
     c.ui.push(this.overlay);

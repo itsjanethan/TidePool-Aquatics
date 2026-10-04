@@ -1,4 +1,5 @@
 /** Pause menu with save/load/export. */
+import { openTanksOverview } from './overview';
 import type { GameController } from '../../game/GameController';
 import { AUTOSAVE_TEXT, SPEEDS } from '../../game/GameController';
 import { formatMoney } from '../../core/math';
@@ -22,6 +23,7 @@ export function openPauseMenu(c: GameController): void {
       c.idle
         ? { label: 'Resume Business', right: 'Idle Mode on', hint: 'Leave Idle Mode: the clock, customers, staff and fish care start again.', action: () => { c.exitIdle(); c.ui.remove(scr); } }
         : { label: 'Idle Mode', hint: 'Pause the business and just watch: fish swim and plants sway, but no time passes, nothing is bought or sold, and nothing gets hungry or dirty.', action: () => { c.enterIdle(); c.ui.remove(scr); } },
+      { label: 'All tanks', hint: 'Every tank on every floor with its status and worst problem, most urgent first.', action: () => openTanksOverview(c) },
       { label: 'Help', right: 'H', hint: 'Controls, symbols, water chemistry, habitat numbers and more.', action: () => c.openHelp() },
       { label: 'Save game', right: 'at office PC', hint: `Walk to the office PC (top right) to save, load, export or import. ${AUTOSAVE_TEXT}`, disabled: true },
       { label: 'Goals', action: () => openGoals(c) },

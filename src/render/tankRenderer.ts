@@ -1361,6 +1361,28 @@ export class TankRenderer {
     this.bubbles.push({ obj, vy: -vr.range(28, 46) * RES, wob: vr.range(0, 6), grow: vr.range(0.05, 0.25) });
   }
 
+  /**
+   * Selects the animal nearest a tap, within `radius` canvas px. Small fish,
+   * shrimp and frogs are hard to hit exactly with a finger, so a tap that
+   * misses every sprite still picks the closest one in reach.
+   */
+  selectNearest(x: number, y: number, radius: number): boolean {
+    let best: (FishAgent | CritterAgent) | null = null;
+    let bd = radius;
+    for (const a of this.agents.values()) {
+      // Distance to the body centre, less a little of the body size, so long fish are easy to hit too.
+      const d = Math.max(0, Math.hypot(a.x - x, a.y - (a instanceof CritterAgent ? a.height / 2 : 0) - y) - Math.min(a.len, 40 * RES) * 0.3);
+      if (d < bd) {
+        bd = d;
+        best = a;
+      }
+    }
+    if (!best) return false;
+    this.selectedId = best.fish.id;
+    this.opts.onSelect?.(best.fish);
+    return true;
+  }
+
   /** Living fish ids left to right (for keyboard selection). */
   selectableIds(): string[] {
     return [...this.agents.values()].sort((a, b) => a.x - b.x).map((a) => a.fish.id);

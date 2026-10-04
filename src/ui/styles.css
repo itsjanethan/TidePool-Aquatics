@@ -459,3 +459,9 @@ body.portrait .touch-controls[data-mode='minimal'] .ta-b { display: none; }
 .incoming-line { color: #e8c890; }
 .tv-incoming { color: #e8c890; white-space: nowrap; }
 .menu-item.incoming .menu-right { color: #e8c890; }
+
+/* All tanks overview: status column coloured by severity. */
+.menu-item.ov-urgent .menu-right { color: var(--bad); }
+.menu-item.ov-attention .menu-right { color: var(--warn); }
+.menu-item.ov-good .menu-right { color: var(--good); }
+.menu-item.ov-empty .menu-right { color: #8a87a0; }
