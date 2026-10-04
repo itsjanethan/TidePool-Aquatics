@@ -21,7 +21,11 @@ export type BreedingMethod =
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'very_rare';
 
 /** Visual body archetype used by the procedural fish renderer. */
-export type BodyShape = 'slender' | 'torpedo' | 'deep' | 'livebearer' | 'catfish' | 'pleco' | 'goldfish';
+export type BodyShape = 'slender' | 'torpedo' | 'deep' | 'livebearer' | 'catfish' | 'pleco' | 'goldfish'
+  /** Invertebrates: drawn and animated by the critter renderer, not the fish painter. */
+  | 'shrimp' | 'snail' | 'crab'
+  /** Land animals (vivarium floor), also drawn by the critter renderer. */
+  | 'frog' | 'gecko' | 'spider';
 export type FinStyle = 'short' | 'fan' | 'delta' | 'long' | 'sail' | 'twin';
 export type PatternType =
   | 'none'
@@ -261,4 +265,34 @@ export interface SpeciesDef {
   starter: boolean;
   /** Shop level that unlocks this species (default 1). */
   shopLevel?: number;
+  /** Word for the young (default 'fry'): 'shrimplets', 'baby snails'. */
+  young?: string;
+  /** Where it lives (default water). Land animals need an enclosure; amphibious ones a paludarium. */
+  lives?: 'water' | 'land' | 'amphibious';
+  /** Enclosure needs for land and amphibious animals (see data/terra.ts). */
+  terra?: TerraNeeds;
+}
+
+/** What a land or amphibious animal needs from its enclosure, in player-facing numbers. */
+export interface TerraNeeds {
+  /** Comfortable relative humidity, %. */
+  humidity: [number, number];
+  /** Basking spot temperature it seeks, °C (reptiles); absent = no basking. */
+  basking?: number;
+  /** Minimum ventilation 0..1 (0.3 low, 0.5 medium, 0.8 high). */
+  ventilation: number;
+  /** What it eats. */
+  feeder: 'fruit_flies' | 'crickets' | 'fruit_diet';
+  /** Needs calcium-dusted food (bone growth). */
+  calcium: boolean;
+  /** Benefits from UVB lighting (calcium use). */
+  uvb?: boolean;
+  /** Climbs glass and branches. */
+  climber: boolean;
+  /** Needs a pool of water to sit in (paludarium), not just a dish. */
+  pool?: boolean;
+  /** Enclosure volume per adult, litres. */
+  space: number;
+  /** Climate label for menus. */
+  climate: 'tropical' | 'arid' | 'temperate';
 }

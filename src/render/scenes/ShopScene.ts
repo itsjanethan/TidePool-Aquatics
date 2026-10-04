@@ -4,6 +4,8 @@
  * GameController when no UI screen is open.
  */
 import Phaser from 'phaser';
+import { availableFrags } from '../../sim/reef';
+import { openFragRack } from '../../ui/screens/reef';
 import { controller } from '../../game/GameController';
 import type { Action } from '../../input/input';
 import { propAt, TILE, type FloorLayout, type PropPlacement } from '../../data/shopLayout';
@@ -512,6 +514,7 @@ export class ShopScene extends Phaser.Scene {
     if (p?.kind === 'stairs' && p.to) return s.unlocks.floors.includes(p.to) ? `${k}: ${p.dir === 'down' ? 'Down' : 'Up'} to ${getFloorLayout(p.to).name}` : `${getFloorLayout(p.to).name} (not open yet)`;
     if (p?.kind === 'tank' && !s.tanks[p.id]) return null;
     if (p?.kind === 'rack') return s.unlocks.floors.includes('basement') ? `${k}: Equipment retail stock` : null;
+    if (p?.kind === 'fragrack') return `${k}: Frag rack (${availableFrags(s).length} for sale)`;
     if (p?.kind === 'tank') {
       const fish = fishInTank(s, p.id);
       const counts = new Map<string, number>();
@@ -565,7 +568,8 @@ export class ShopScene extends Phaser.Scene {
     } else if (p?.kind === 'stairs') this.takeStairs(p);
     else if (p?.kind === 'rack') {
       if (c.state.unlocks.floors.includes('basement')) openRetail(c);
-    } else if (p?.kind === 'pallet') void c.ui.say(null, 'Pallets of substrate bags and boxed equipment, waiting to go on the racks.');
+    } else if (p?.kind === 'fragrack') openFragRack(c);
+    else if (p?.kind === 'pallet') void c.ui.say(null, 'Pallets of substrate bags and boxed equipment, waiting to go on the racks.');
     else if (p?.kind === 'desk') openOffice(c);
     else if (p?.kind === 'shelf') openStockroom(c);
     else if (p?.kind === 'plant') void c.ui.say(null, 'A healthy pothos. It has outlived three previous owners.');

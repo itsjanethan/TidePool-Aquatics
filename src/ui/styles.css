@@ -212,7 +212,7 @@ input:focus { border-color: var(--accent); }
 
 /* Aquascape -------------------------------------------------------------- */
 .aquascape-ui { position: absolute; inset: 0; }
-.aq-panel { left: auto; right: calc(var(--px) * 18); top: calc(var(--px) * 40); transform: none; min-width: calc(var(--px) * 150); max-width: calc(var(--px) * 165); max-height: calc(var(--px) * 236); font-size: max(var(--min-text), 0.85em); }
+.aq-panel { left: auto; right: calc(var(--px) * 18); top: calc(var(--px) * 40); transform: none; min-width: calc(var(--px) * 170); max-width: calc(var(--px) * 190); max-height: calc(var(--px) * 236); font-size: max(var(--min-text), 0.85em); }
 .aq-info { padding: 0 calc(var(--px) * 2) calc(var(--px) * 2); }
 .aq-hint {
   position: absolute; left: calc(var(--px) * 10); right: calc(var(--px) * 10); bottom: calc(var(--px) * 24); text-align: center; background: rgba(248, 246, 236, 0.95);
@@ -420,3 +420,48 @@ body.compact.portrait .tv-card.tv-card-empty { display: grid !important; gap: 6p
   color: #1b1830; background: var(--blue); border: calc(var(--px) * 0.5) solid #0b0d1a; vertical-align: middle; letter-spacing: 0.04em;
 }
 .menu-item.nfs .menu-right, .menu-item.nfs.selected .menu-right { color: var(--blue); }
+
+/* Aquascape explanations --------------------------------------------------- */
+.aq-info { max-height: calc(var(--px) * 125); flex: 0 0 auto; overflow-y: auto; touch-action: pan-y; }
+body.compact.portrait .aq-info { max-height: 22vh; }
+body.compact.landscape .aq-info { max-height: 40vh; }
+.aq-panel > .menu { min-height: calc(var(--px) * 50); }
+.aq-ex { display: grid; gap: calc(var(--px) * 1); line-height: 1.25; }
+.aq-ex-score b { color: var(--accent); }
+.aq-ex-k { color: var(--blue); }
+.aq-ex-care { border-left: calc(var(--px) * 1.5) solid var(--blue); padding-left: calc(var(--px) * 2); }
+.aq-hint { display: grid; gap: calc(var(--px) * 1.5); }
+.aq-hint .aq-ex-k { color: #2b4f9a; }
+.aq-hint .aq-ex-score b { color: #1a1a28; }
+.aq-hint .good { color: #1d7a34; }
+.aq-hint .bad { color: #b02a1e; }
+.aq-hint .warn { color: #8a5a00; }
+.aq-hint .dim, .aq-hint .small { color: #4a4a5a; }
+.aq-hint .aq-ex-care { border-left-color: #2b4f9a; }
+.aq-place-buttons { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 2); justify-content: center; }
+.aq-place-buttons .tv-btn { color: var(--ink); min-width: calc(var(--px) * 22); }
+.aq-pb-ok { border-color: var(--good) !important; }
+body.compact.portrait .aquascape-ui.placing .aq-hint { top: var(--tank-bottom, 55%); bottom: 0; overflow-y: auto; align-content: start; background: #f8f6ec; }
+body.compact.landscape .aquascape-ui.placing .aq-hint { top: 4px; bottom: 4px; left: auto; right: 4px; width: 47%; max-height: none; overflow-y: auto; align-content: start; background: #f8f6ec; }
+/* The details sit on the side away from the item being placed, so it stays in view. */
+body.compact.landscape .aquascape-ui.placing.ghost-right .aq-hint { left: 4px; right: auto; }
+/* Larger screens: details along the top of the tank, leaving the bed and rockwork visible. */
+body:not(.compact) .aquascape-ui.placing .aq-hint { bottom: auto; top: calc(var(--px) * 24); }
+
+.aquascape-ui.placing .aq-hint { text-align: left; }
+.aquascape-ui.placing .aq-place-buttons { justify-content: flex-start; }
+/* Immersive tank view in portrait: no floating B (screens there have their own Back / Cancel / Done). */
+body.portrait .touch-controls[data-mode='minimal'] .ta-b { display: none; }
+
+/* Incoming livestock -------------------------------------------------------- */
+.outlook { display: grid; gap: calc(var(--px) * 1); margin-top: calc(var(--px) * 1); }
+.ol-k { color: var(--blue); }
+.incoming-line { color: #e8c890; }
+.tv-incoming { color: #e8c890; white-space: nowrap; }
+.menu-item.incoming .menu-right { color: #e8c890; }
+
+/* All tanks overview: status column coloured by severity. */
+.menu-item.ov-urgent .menu-right { color: var(--bad); }
+.menu-item.ov-attention .menu-right { color: var(--warn); }
+.menu-item.ov-good .menu-right { color: var(--good); }
+.menu-item.ov-empty .menu-right { color: #8a87a0; }

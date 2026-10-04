@@ -222,8 +222,10 @@ describe('staff across floors and saves', () => {
   it('knowledge changes recommendation quality (seeded)', () => {
     let goodSmart = 0;
     let goodNovice = 0;
-    for (let seed = 1; seed <= 12; seed++) {
-      for (const [k, add] of [[95, (n: number) => (goodSmart += n)], [10, (n: number) => (goodNovice += n)]] as const) {
+    let madeSmart = 0;
+    let madeNovice = 0;
+    for (let seed = 1; seed <= 24; seed++) {
+      for (const [k, add] of [[95, (n: number) => { goodSmart += n; madeSmart++; }], [10, (n: number) => { goodNovice += n; madeNovice++; }]] as const) {
         const sim = world(seed, 2);
         const s = sim.state;
         s.money = 5000;
@@ -232,8 +234,10 @@ describe('staff across floors and saves', () => {
         if (p) add(p.warnings.length === 0 ? 1 : 0);
       }
     }
-    expect(goodSmart).toBeGreaterThanOrEqual(goodNovice);
-    expect(goodSmart).toBeGreaterThan(6);
+    expect(goodSmart / madeSmart).toBeGreaterThanOrEqual(goodNovice / Math.max(1, madeNovice));
+    // Most suggestions from a knowledgeable buyer come with no warnings at all.
+    expect(madeSmart).toBeGreaterThan(8);
+    expect(goodSmart / madeSmart).toBeGreaterThanOrEqual(0.75);
   });
 
   it('staff never spend money without approval', () => {

@@ -25,18 +25,28 @@ import { hireApplicant, refreshApplicants } from '../sim/staff';
 import { refreshSupplierStock, SUPPLIERS } from '../sim/supplier';
 import { addDecor, buyHeater, setHeater } from '../sim/tank';
 import { dayOf } from '../sim/time';
+import { terraOf } from '../sim/terrarium';
+import { VIVARIUM_ROOM_TEMP } from '../data/terra';
 import type { GameState, StaffRole, TankState } from '../sim/types';
 
 export const SANDBOX_SEED = 4242;
 export const SANDBOX_NAME = 'Developer Sandbox';
 
-export type SandboxPreset = 'planted' | 'breeding' | 'coldwater' | 'marine' | 'performance';
+export type SandboxPreset = 'planted' | 'breeding' | 'coldwater' | 'marine' | 'reef' | 'shrimp' | 'vivarium' | 'desert' | 'paludarium' | 'performance';
+
+/** Presets for land enclosures, and the habitat each needs. */
+const ENCLOSURE_PRESETS: Partial<Record<SandboxPreset, NonNullable<TankState['habitat']>>> = { vivarium: 'vivarium', desert: 'terrarium', paludarium: 'paludarium' };
 
 export const PRESETS: Array<{ id: SandboxPreset; label: string; blurb: string; tank: string }> = [
   { id: 'planted', label: 'Planted aquarium', blurb: 'Dense mature plants, wood, floating cover, neons, corydoras and a bristlenose.', tank: 'M6' },
   { id: 'breeding', label: 'Breeding tank', blurb: 'Conditioned guppy pairs and an egg-scatterer pair in moss; not for sale.', tank: 'Q2' },
   { id: 'coldwater', label: 'Coldwater tank', blurb: 'Unheated 300L with fancy goldfish, canister filtration and hardy plants.', tank: 'U5' },
   { id: 'marine', label: 'Marine aquarium', blurb: 'Live rock, skimmer, salinity on target; clownfish, Banggai cardinals and a royal gramma.', tank: 'M1' },
+  { id: 'reef', label: 'Mixed reef', blurb: 'Reef LED and wavemaker; soft corals low, LPS mid, SPS on top; clownfish, cleaner shrimp and a clean-up crew.', tank: 'R2' },
+  { id: 'shrimp', label: 'Shrimp tank', blurb: 'Moss, active soil-free planted nano with a cherry shrimp colony and nerite snails.', tank: 'F1' },
+  { id: 'vivarium', label: 'Dart frog vivarium', blurb: 'Bioactive planted vivarium: bromeliads, fern, pothos, leaf litter, mister and a group of dart frogs.', tank: 'V1' },
+  { id: 'desert', label: 'Desert terrarium', blurb: 'Dry sand and clay, basking lamp at 32°C, UVB, a warm slate hide and a leopard gecko.', tank: 'T1' },
+  { id: 'paludarium', label: 'Paludarium', blurb: 'A planted bank and a filtered pool: fire-bellied toads on land and in the water, zebra danios in the pool.', tank: 'P1' },
   { id: 'performance', label: 'Performance test', blurb: `Population cap (${MAX_FISH_PER_TANK} fish), maximum decor and floating plants.`, tank: 'Q1' },
 ];
 
@@ -70,6 +80,25 @@ export function matureTank(t: TankState): void {
   if (t.waterType === 'marine') {
     w.salinity = 35;
     w.ph = 8.2;
+    // Reef systems run lean: corals (SPS above all) want very little nitrate.
+    if (t.reef) w.nitrate = 3;
+  }
+  if (t.habitat) {
+    // Enclosures: clean, fresh and with the climate settled for their kit.
+    const tr = terraOf(t);
+    tr.mould = 0;
+    tr.waste = 0.05;
+    tr.airTemp = Math.max(tr.airTemp, VIVARIUM_ROOM_TEMP);
+    w.temperature = Math.max(w.temperature, VIVARIUM_ROOM_TEMP);
+    tr.dish = 1;
+    tr.calcium = 0.9;
+    if (t.habitat === 'terrarium') {
+      tr.humidity = Math.min(tr.humidity, 45);
+      tr.moisture = Math.min(tr.moisture, 0.25);
+    } else {
+      tr.humidity = Math.max(tr.humidity, 78);
+      tr.moisture = Math.max(tr.moisture, 0.7);
+    }
   }
   t.algae = 0.05;
   t.glassDirt = 0.05;
@@ -91,7 +120,7 @@ function place(s: GameState, t: TankState, items: Array<[string, number, 0 | 1 |
     const r = addDecor(s, t, defId, x, layer);
     if (!r.ok) throw new Error(`Sandbox decor ${defId} in ${t.id}: ${r.message}`);
     const d = t.decor[t.decor.length - 1];
-    if (getDecor(defId).kind === 'plant') {
+    if (getDecor(defId).kind === 'plant' || getDecor(defId).kind === 'coral') {
       d.size = Math.min(getDecor(defId).maxSize ?? 1.5, size);
       d.health = 1;
     }
@@ -115,8 +144,12 @@ export function applyPreset(s: GameState, tankId: string, preset: SandboxPreset,
   const t = s.tanks[tankId];
   if (!t) throw new Error(`No tank ${tankId}`);
   const marine = t.waterType === 'marine';
-  if (preset === 'marine' && !marine) throw new Error(`${t.name} is a freshwater tank. Use a marine tank (M1 to M3).`);
-  if (preset !== 'marine' && marine) throw new Error(`${t.name} is a marine tank. Pick a freshwater tank for this preset.`);
+  const wantsMarine = preset === 'marine' || preset === 'reef';
+  if (wantsMarine && !marine) throw new Error(`${t.name} is a freshwater tank. Use a marine tank (M1 to M3, R1 to R3).`);
+  if (!wantsMarine && marine) throw new Error(`${t.name} is a marine tank. Pick a freshwater tank for this preset.`);
+  const habitat = ENCLOSURE_PRESETS[preset];
+  if (habitat && t.habitat !== habitat) throw new Error(`${t.name} is not a ${habitat}. Use ${habitat === 'vivarium' ? 'V1 to V3' : habitat === 'terrarium' ? 'T1 or T2' : 'P1 or P2'}.`);
+  if (!habitat && t.habitat) throw new Error(`${t.name} is a ${t.habitat}. Pick an aquarium for this preset.`);
   const money = s.money;
   s.money = Math.max(s.money, 1e6);
   clearTank(s, t);
@@ -162,6 +195,60 @@ export function applyPreset(s: GameState, tankId: string, preset: SandboxPreset,
       stock(s, rng, t, 'clownfish', 2);
       stock(s, rng, t, 'banggai_cardinal', 4);
       stock(s, rng, t, 'royal_gramma', 1);
+      break;
+    case 'reef':
+      t.substrateId = 'sand';
+      t.backgroundId = 'black';
+      t.skimmer = true;
+      t.reef = { light: 'reef_led', wavemaker: 2, doser: true };
+      // Every coral where it is happy: SPS high, LPS on the sand under moderate light,
+      // soft corals in the middle, aggressive ones out of reach of each other.
+      place(s, t, [
+        ['live_rock', 0.06, 1], ['reef_rock', 0.3, 1], ['reef_rock', 0.72, 1], ['live_rock', 0.94, 1],
+        ['acropora', 0.3, 0], ['montipora', 0.72, 0], ['zoanthids', 0.8, 1], ['torch', 0.5, 2], ['hammer', 0.58, 2], ['mushroom', 0.92, 2], ['toadstool', 0.06, 1],
+      ], 1.2);
+      stock(s, rng, t, 'clownfish', 2);
+      stock(s, rng, t, 'cleaner_shrimp', 2);
+      stock(s, rng, t, 'hermit_crab', 3);
+      stock(s, rng, t, 'turbo_snail', 2);
+      break;
+    case 'shrimp':
+      if (!t.heaterId) buyHeater(s, t, 'heater_50');
+      setHeater(t, 23);
+      t.substrateId = 'aqua_soil';
+      t.backgroundId = 'black';
+      t.forSale = undefined;
+      place(s, t, [['java_moss', 0.2, 2], ['java_moss', 0.55, 2], ['java_fern', 0.8, 1], ['river_stone', 0.4, 2], ['mopani', 0.62, 0], ['anubias', 0.1, 1]], 1.3);
+      stock(s, rng, t, 'cherry_shrimp', 18);
+      stock(s, rng, t, 'nerite_snail', 3);
+      break;
+    case 'vivarium':
+      t.substrateId = 'forest_floor';
+      t.backgroundId = 'jungle_wall';
+      Object.assign(terraOf(t), { vent: 0.25, mister: true, bioactive: true, heatLamp: null });
+      place(s, t, [
+        ['climb_branch', 0.36, 0], ['pothos', 0.08, 0], ['boston_fern', 0.8, 0], ['cork_hide', 0.56, 1], ['bromeliad', 0.2, 1],
+        ['leaf_litter', 0.4, 2], ['leaf_litter', 0.68, 2], ['bromeliad', 0.92, 2],
+      ], 1.3);
+      stock(s, rng, t, 'dart_frog', 5);
+      break;
+    case 'desert':
+      t.substrateId = 'desert_clay';
+      t.backgroundId = 'desert_wall';
+      Object.assign(terraOf(t), { vent: 0.8, mister: false, heatLamp: 32, uvb: true, bioactive: false, moisture: 0.15, humidity: 40 });
+      place(s, t, [['slate_hide', 0.25, 1], ['cork_hide', 0.8, 1], ['river_stone', 0.52, 2], ['leaf_litter', 0.62, 2]]);
+      stock(s, rng, t, 'leopard_gecko', 1, { sex: 'female' });
+      break;
+    case 'paludarium':
+      t.substrateId = 'coco_fibre';
+      t.backgroundId = 'jungle_wall';
+      Object.assign(terraOf(t), { vent: 0.4, mister: true, bioactive: true, heatLamp: null });
+      place(s, t, [
+        ['pothos', 0.06, 0], ['boston_fern', 0.36, 0], ['hornwort', 0.92, 0], ['cork_hide', 0.24, 1], ['bromeliad', 0.46, 1], ['java_fern', 0.72, 1],
+        ['leaf_litter', 0.14, 2], ['anubias', 0.64, 2], ['bromeliad', 0.02, 2],
+      ], 1.3);
+      stock(s, rng, t, 'fire_bellied_toad', 4);
+      stock(s, rng, t, 'zebra_danio', 6);
       break;
     case 'performance': {
       if (!t.heaterId) buyHeater(s, t, 'heater_150');
@@ -217,6 +304,14 @@ export function createSandbox(seed = SANDBOX_SEED): GameState {
     M3: [['banggai_cardinal', 4], ['royal_gramma', 1]],
     M4: [['german_blue_ram', 2]],
     M5: [['german_blue_ram', 2]],
+    R1: [['clownfish', 2], ['cleaner_shrimp', 1], ['hermit_crab', 4], ['turbo_snail', 2]],
+    R3: [['hermit_crab', 2]],
+    F2: [['amano_shrimp', 5], ['mystery_snail', 2]],
+    F3: [['crystal_shrimp', 14]],
+    V2: [['whites_tree_frog', 2]],
+    V3: [['crested_gecko', 1]],
+    T2: [['rose_tarantula', 1]],
+    P2: [['fire_bellied_toad', 3], ['cherry_shrimp', 10]],
   };
   for (const [tank, list] of Object.entries(fill)) for (const [sid, n] of list) stock(s, rng, s.tanks[tank], sid, n);
   s.tanks.C2.water.temperature = 21;
@@ -228,10 +323,12 @@ export function createSandbox(seed = SANDBOX_SEED): GameState {
   // Stock: every retail item, dry good, decor item, potted plant and floating plant.
   s.money = 100_000;
   for (const r of RETAIL_ITEMS) s.retail[r.id] = 8;
-  for (const g of DRY_GOODS) s.dryGoods[g.id] = 30;
+  for (const g of DRY_GOODS) s.dryGoods[g.id] = g.floor === 'vivarium' ? 300 : 30;
   s.foodUnits = 8000;
-  for (const d of DECOR) if (d.kind !== 'plant') s.storage.decor[d.id] = 2;
+  for (const d of DECOR) if (d.kind !== 'plant' && d.kind !== 'coral') s.storage.decor[d.id] = 2;
   for (const d of DECOR) if (d.kind === 'plant') s.storage.plants.push({ uid: newId(s, 'pp'), defId: d.id, size: 0.8, health: 1, reservedBy: null });
+  // Coral frags on the frag rack (two of each).
+  for (const d of DECOR) if (d.kind === 'coral') for (let i = 0; i < 2; i++) s.storage.plants.push({ uid: newId(s, 'fr'), defId: d.id, size: 0.25 + i * 0.3, health: 1, reservedBy: null });
   s.storage.floating = Object.fromEntries(FLOATING.map((f) => [f.id, 6]));
   const day = dayOf(s.minute);
   for (const sup of SUPPLIERS) refreshSupplierStock(s, rng, sup.id, day);

@@ -16,6 +16,10 @@ import { appetite, fishInTank } from './fish';
 import { coverPercent, tankNeeds, type TankNeeds } from './habitat';
 import { previewFix, previewLine, wastePercent, type FixId } from './preview';
 import { cycleStatus, waterQualityScore } from './water';
+import { assessCoral, coralsIn, reefChem, reefState } from './reef';
+import { ALK_SWING_LIMIT, REEF_TARGETS } from '../data/reef';
+import { canEat, isInvert } from './inverts';
+import { isEnclosure, isLandAnimal, isLandOnly, landVolume, livesOn, terraIssues, type TerraIssue } from './terrarium';
 import type { FishEntity, GameState, TankState } from './types';
 
 export type Severity = 'critical' | 'warning' | 'advice';
@@ -23,7 +27,7 @@ export type DiagCategory = 'livestock' | 'water' | 'cleanliness' | 'habitat' | '
 /** Overworld icon for an issue. Each maps to exactly one meaning. */
 export type AlertIcon = 'dead' | 'toxic' | 'sick' | 'hungry' | 'dirty' | 'attention';
 /** Screens a recommendation can jump to. */
-export type NavId = 'aquascape' | 'livestock' | 'equipment' | 'waterTest' | 'maintenance' | 'order';
+export type NavId = 'aquascape' | 'livestock' | 'equipment' | 'waterTest' | 'maintenance' | 'order' | 'reef';
 
 export interface DiagAction {
   label: string;
@@ -65,6 +69,8 @@ export interface TankReport {
   needs: TankNeeds;
   scape: AquascapeSummary;
   coverPct: number;
+  /** What kind of system this is (labels: water vs climate, fish vs animals). */
+  kind: 'aquarium' | 'land' | 'paludarium';
 }
 
 const SEV_ORDER: Record<Severity, number> = { critical: 0, warning: 1, advice: 2 };
@@ -183,8 +189,10 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
   }
   // Temperature and pH against what each species present needs.
   const species = [...new Set(alive.map((f) => f.speciesId))].map(getSpecies);
-  const cold = species.filter((sp) => w.temperature < sp.temperature.min);
-  const hot = species.filter((sp) => w.temperature > sp.temperature.max);
+  // Water temperature and pH only matter to animals living in the water.
+  const waterSpecies = species.filter((sp) => livesOn(sp) === 'water');
+  const cold = waterSpecies.filter((sp) => w.temperature < sp.temperature.min);
+  const hot = waterSpecies.filter((sp) => w.temperature > sp.temperature.max);
   for (const [list, word] of [[cold, 'cold'], [hot, 'warm']] as const) {
     if (!list.length) continue;
     const off = Math.max(...list.map((sp) => (word === 'cold' ? sp.temperature.min - w.temperature : w.temperature - sp.temperature.max)));
@@ -199,7 +207,7 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
       help: 'temperature',
     });
   }
-  const badPh = species.filter((sp) => w.ph < sp.ph.min || w.ph > sp.ph.max);
+  const badPh = waterSpecies.filter((sp) => w.ph < sp.ph.min || w.ph > sp.ph.max);
   if (badPh.length) {
     const phOff = Math.max(...badPh.map((sp) => Math.max(sp.ph.min - w.ph, w.ph - sp.ph.max)));
     add({
@@ -262,6 +270,204 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
     });
   }
 
+  // --- Reef: chemistry and corals ---------------------------------------------
+  const corals = coralsIn(tank);
+  if (corals.length) {
+    const defs = corals.map((d) => getDecor(d.defId));
+    const stony = defs.filter((d) => d.coral && d.coral.group !== 'soft');
+    const sps = defs.filter((d) => d.coral?.group === 'sps');
+    const chem = reefChem(w);
+    const coralGroups = (list: typeof corals) => {
+      const m = new Map<string, number>();
+      for (const d of list) m.set(getDecor(d.defId).name, (m.get(getDecor(d.defId).name) ?? 0) + 1);
+      return [...m.entries()].map(([label, count]) => ({ label, count }));
+    };
+    if (stony.length && chem.alk < REEF_TARGETS.alk[0]) {
+      add({
+        id: 'alk_low', severity: chem.alk < 6.5 ? 'critical' : 'warning', category: 'water', icon: chem.alk < 6.5 ? 'toxic' : 'attention',
+        title: 'Alkalinity low for stony corals',
+        explanation: 'Stony corals use alkalinity (carbonate) to build skeleton. When it runs low, growth stops and tissue starts to recede. Dose alkalinity buffer, or do a water change with salt mix.',
+        value: `${chem.alk.toFixed(1)} dKH`, recommended: `${REEF_TARGETS.alk[0]}-${REEF_TARGETS.alk[1]} dKH`,
+        affected: coralGroups(corals.filter((d) => getDecor(d.defId).coral?.group !== 'soft')),
+        consequences: ['Stony corals stop growing', 'Tissue recession'],
+        actions: [fixAction('doseAlk', 'Dose alkalinity buffer'), fixAction('water25', '25% water change with salt mix'), { label: 'Reef care: dosing pump', nav: 'reef' }],
+        help: 'alkalinity',
+      });
+    }
+    if (sps.length && chem.alk > 11.5) {
+      add({
+        id: 'alk_high', severity: 'warning', category: 'water', icon: 'attention',
+        title: 'Alkalinity too high for SPS',
+        explanation: 'Very high alkalinity burns the growing tips of small-polyp stony corals. Stop dosing alkalinity until it falls back.',
+        value: `${chem.alk.toFixed(1)} dKH`, recommended: `${REEF_TARGETS.alk[0]}-${REEF_TARGETS.alk[1]} dKH`,
+        consequences: ['Burnt tips on SPS'], actions: [fixAction('water25', '25% water change'), { label: 'Reef care', nav: 'reef' }], help: 'alkalinity',
+      });
+    }
+    if (stony.length && chem.calcium < REEF_TARGETS.calcium[0]) {
+      add({
+        id: 'calcium_low', severity: chem.calcium < 360 ? 'warning' : 'advice', category: 'water', icon: 'attention',
+        title: 'Calcium low',
+        explanation: 'Stony corals take calcium from the water with the alkalinity. Below about 360 ppm they cannot build skeleton.',
+        value: `${Math.round(chem.calcium)} ppm`, recommended: `${REEF_TARGETS.calcium[0]}-${REEF_TARGETS.calcium[1]} ppm`,
+        consequences: ['Stony corals stop growing'], actions: [fixAction('doseCa', 'Dose calcium'), fixAction('water25', '25% water change with salt mix')], help: 'calcium',
+      });
+    }
+    if (stony.length && chem.magnesium < REEF_TARGETS.magnesium[0]) {
+      add({
+        id: 'magnesium_low', severity: chem.magnesium < 1150 ? 'warning' : 'advice', category: 'water', icon: 'attention',
+        title: 'Magnesium low',
+        explanation: 'Magnesium stops calcium and carbonate from dropping out of the water as grit. When it is low, alkalinity and calcium fall faster and are hard to hold.',
+        value: `${Math.round(chem.magnesium)} ppm`, recommended: `${REEF_TARGETS.magnesium[0]}-${REEF_TARGETS.magnesium[1]} ppm`,
+        consequences: ['Alkalinity and calcium fall faster', 'Slower coral growth'], actions: [fixAction('doseMg', 'Dose magnesium'), fixAction('water25', '25% water change with salt mix')], help: 'magnesium',
+      });
+    }
+    const swing = reefState(tank).alkSwing ?? 0;
+    if (stony.length && swing > ALK_SWING_LIMIT) {
+      add({
+        id: 'alk_swing', severity: 'warning', category: 'water', icon: 'attention',
+        title: 'Alkalinity swinging',
+        explanation: 'Big daily jumps in alkalinity stress stony corals more than a steady, slightly low level. Dose smaller amounts more often, or fit a dosing pump that tops up gradually.',
+        value: `${swing.toFixed(1)} dKH today`, recommended: `under ${ALK_SWING_LIMIT} dKH a day`,
+        consequences: ['Stony corals stressed'], actions: [{ label: 'Reef care: dosing pump', nav: 'reef' }], help: 'alkalinity',
+      });
+    }
+    const assessed = corals.map((d) => ({ d, a: assessCoral(tank, d) }));
+    const by = (key: string) => assessed.filter((x) => x.a.notes.some((n) => n.key === key && !n.good)).map((x) => x.d);
+    const light = by('light');
+    if (light.length) {
+      const bright = light.filter((d) => assessCoral(tank, d).bleachPerDay > 0);
+      add({
+        id: 'coral_light', severity: bright.length ? 'warning' : 'advice', category: 'habitat', icon: 'attention',
+        title: bright.length ? 'Corals getting too much light' : 'Corals not getting enough light',
+        explanation: 'Each coral wants a band of light (PAR). Light is strongest at the top of the rockwork and weakest on the sand. Move corals up or down, or change the reef light.',
+        affected: coralGroups(light),
+        value: light.map((d) => { const a = assessCoral(tank, d); return `${getDecor(d.defId).name} ${a.par} PAR (wants ${a.traits.par[0]}-${a.traits.par[1]})`; }).slice(0, 3).join('; '),
+        consequences: bright.length ? ['Bleaching', 'Health loss'] : ['Slow growth', 'Slow decline if very dim'],
+        actions: [{ label: 'Move corals (Aquascape)', nav: 'aquascape' }, { label: 'Reef care: lighting', nav: 'reef' }],
+        help: 'par',
+      });
+    }
+    const flow = by('flow');
+    if (flow.length) {
+      add({
+        id: 'coral_flow', severity: 'advice', category: 'habitat', icon: 'attention',
+        title: 'Water movement wrong for some corals',
+        explanation: 'Corals need water moving over them to bring food and carry waste away; too much and they stay shut. Flow is strongest high on the rockwork.',
+        affected: coralGroups(flow),
+        consequences: ['Slow growth', 'Polyps retracted or waste settling'],
+        actions: [{ label: 'Move corals (Aquascape)', nav: 'aquascape' }, { label: 'Reef care: wavemaker', nav: 'reef' }],
+        help: 'flow',
+      });
+    }
+    const stung = assessed.filter((x) => x.a.stungBy.length).map((x) => x.d);
+    if (stung.length) {
+      add({
+        id: 'coral_sting', severity: 'warning', category: 'habitat', icon: 'attention',
+        title: 'Corals stinging each other',
+        explanation: 'Aggressive corals reach neighbours with sweeper tentacles or chemicals. Give them space: move them further apart side to side, or to a different height.',
+        affected: coralGroups(stung),
+        value: [...new Set(assessed.flatMap((x) => x.a.stungBy))].join(', ') + ' doing the stinging',
+        consequences: ['Health loss on the stung coral'],
+        actions: [{ label: 'Move corals (Aquascape)', nav: 'aquascape' }],
+        help: 'coral_aggression',
+      });
+    }
+    const nitrate = by('nitrate');
+    if (nitrate.length && w.nitrate > 1) {
+      add({
+        id: 'coral_nutrients', severity: 'advice', category: 'water', icon: 'attention',
+        title: 'Nitrate wrong for some corals',
+        explanation: 'Soft corals cope with some nitrate; SPS want very little. Water changes, a skimmer and fewer fish lower it.',
+        affected: coralGroups(nitrate), value: `${Math.round(w.nitrate)} ppm`,
+        consequences: ['Browning', 'Slow decline'], actions: [fixAction('water25', '25% water change')], help: 'nitrate',
+      });
+    }
+    const weak = corals.filter((d) => d.health < 0.5 || (d.bleach ?? 0) > 0.4);
+    if (weak.length) {
+      add({
+        id: 'coral_sick', severity: weak.some((d) => d.health < 0.25) ? 'critical' : 'warning', category: 'livestock', icon: 'sick',
+        title: `${weak.length} coral${weak.length > 1 ? 's' : ''} in poor health`,
+        explanation: 'Corals recover once light, flow and chemistry suit them. Open Reef care to see what each coral is missing.',
+        affected: coralGroups(weak), consequences: ['Death risk', 'Cannot be fragged', 'Customers notice pale corals'],
+        actions: [{ label: 'Reef care', nav: 'reef' }],
+        help: 'bleaching',
+      });
+    }
+  }
+
+  // --- Invertebrates ------------------------------------------------------------
+  const inverts = alive.filter((f) => isInvert(getSpecies(f.speciesId)));
+  if (inverts.length) {
+    const atRisk = inverts.filter((p) => alive.some((h) => canEat(getSpecies(h.speciesId), h.sizeCm, getSpecies(p.speciesId), p.sizeCm)));
+    if (atRisk.length) {
+      const hunters = [...new Set(alive.filter((h) => atRisk.some((p) => canEat(getSpecies(h.speciesId), h.sizeCm, getSpecies(p.speciesId), p.sizeCm))).map((h) => getSpecies(h.speciesId).commonName))];
+      add({
+        id: 'predation', severity: 'warning', category: 'stocking', icon: 'attention',
+        title: 'Invertebrates are being hunted',
+        explanation: `${hunters.join(', ')} will eat shrimp small enough to swallow, and hermit crabs kill snails for their shells. Cover slows it down; separate tanks stop it.`,
+        affected: bySpecies(atRisk), consequences: ['Inverts eaten', 'Stress'],
+        actions: [{ label: 'Move them apart', nav: 'livestock' }, { label: 'Add cover (moss, rock)', nav: 'aquascape' }],
+        help: 'inverts',
+      });
+    }
+    const soft = inverts.filter((f) => { const sp = getSpecies(f.speciesId); return (sp.tags.includes('shell_builder') || sp.tags.includes('moults')) && w.gh < sp.hardness.min; });
+    if (soft.length) {
+      add({
+        id: 'minerals', severity: 'warning', category: 'water', icon: 'attention',
+        title: 'Water too soft for shells and moulting',
+        explanation: 'Snails build shell and shrimp build new skin from minerals in the water. In soft water shells erode and moults fail. Limestone or a tap-water change raises hardness; active shrimp soil lowers it.',
+        value: `${w.gh.toFixed(0)} dGH`, recommended: soft.map((f) => getSpecies(f.speciesId)).filter((sp, i, a) => a.indexOf(sp) === i).map((sp) => `${sp.commonName} ${sp.hardness.min}+`).join(', '),
+        affected: bySpecies(soft), consequences: ['Shell erosion', 'Failed moults', 'Deaths'],
+        actions: [{ label: 'Add Holey Limestone', nav: 'aquascape' }, fixAction('water25', '25% water change (tap water is harder)')],
+        help: 'minerals',
+      });
+    }
+  }
+
+  // --- Enclosures: climate and husbandry ------------------------------------------
+  if (isEnclosure(tank)) {
+    const landAnimals = alive.filter((f) => isLandAnimal(getSpecies(f.speciesId)));
+    const byKey = new Map<string, { issue: TerraIssue; fish: FishEntity[] }>();
+    for (const f of landAnimals) {
+      for (const i of terraIssues(f, tank, alive)) {
+        const k = i.key === 'hides' && /warm side/.test(i.text) ? 'warm_hide' : i.key;
+        const e = byKey.get(k) ?? { issue: i, fish: [] };
+        if (i.damage > e.issue.damage) e.issue = i;
+        e.fish.push(f);
+        byKey.set(k, e);
+      }
+    }
+    const META: Record<string, { title: string; explanation: string; actions: DiagAction[]; help: string; consequences: string[]; category: DiagCategory }> = {
+      humidity_low: { title: 'Enclosure too dry', explanation: 'Amphibians breathe partly through their skin and dry out fast; reptiles shed badly. Mist, close the vents a little, or fit an automatic mister. Damp substrate and plants hold humidity.', actions: [fixAction('mist', 'Mist now'), { label: 'Mister and vents', nav: 'equipment' }], help: 'humidity', consequences: ['Dehydration', 'Stress'], category: 'habitat' },
+      humidity_high: { title: 'Enclosure too humid', explanation: 'Desert animals get skin and breathing problems in damp, still air. Open the vents and mist less.', actions: [{ label: 'Open the vents', nav: 'equipment' }], help: 'humidity', consequences: ['Respiratory problems', 'Mould'], category: 'habitat' },
+      cold: { title: 'Too cold', explanation: 'Reptiles and amphibians cannot make their own heat. A basking lamp warms the enclosure in the day.', actions: [{ label: 'Basking lamp', nav: 'equipment' }], help: 'basking', consequences: ['Slow digestion', 'Health loss'], category: 'equipment' },
+      hot: { title: 'Too hot', explanation: 'Overheating kills frogs and crested geckos quickly. Turn the lamp down or off and open the vents.', actions: [{ label: 'Lamp and vents', nav: 'equipment' }], help: 'basking', consequences: ['Heat stress', 'Deaths'], category: 'equipment' },
+      basking: { title: 'No basking spot', explanation: 'Desert reptiles warm up under a lamp to digest their food and stay active.', actions: [{ label: 'Fit a basking lamp', nav: 'equipment' }], help: 'basking', consequences: ['Poor digestion', 'Stress'], category: 'equipment' },
+      ventilation: { title: 'Stale air', explanation: 'Still, wet air breeds mould and respiratory infections. Open the mesh vents.', actions: [{ label: 'Open the vents', nav: 'equipment' }], help: 'ventilation', consequences: ['Mould', 'Respiratory problems'], category: 'equipment' },
+      mould: { title: 'Mould spreading', explanation: 'Mould grows in warm, wet, still air with waste to feed on. Spot clean, ventilate, and add springtails and isopods to keep it down.', actions: [fixAction('spotClean', 'Spot clean'), { label: 'Vents and clean-up crew', nav: 'equipment' }], help: 'mould', consequences: ['Infections', 'Customer impression'], category: 'cleanliness' },
+      waste: { title: 'Dirty enclosure', explanation: 'Droppings and dead feeder insects build up. A clean-up crew of springtails and isopods eats most of it.', actions: [fixAction('spotClean', 'Spot clean')], help: 'mould', consequences: ['Mould', 'Stress'], category: 'cleanliness' },
+      dish: { title: 'Water dish empty', explanation: 'Animals drink from and soak in the dish. It fouls and dries out in about three days.', actions: [fixAction('dish', 'Refresh the water dish')], help: 'humidity', consequences: ['Dehydration'], category: 'livestock' },
+      calcium: { title: 'Calcium running low', explanation: 'Frogs and reptiles need calcium for their bones. Dust feeder insects with calcium powder (bought in the stockroom); UVB helps them use it.', actions: [fixAction('feed', 'Feed dusted insects'), { label: 'UVB tube', nav: 'equipment' }], help: 'calcium_dust', consequences: ['Soft bones', 'Slow decline'], category: 'livestock' },
+      uvb: { title: 'No UVB light', explanation: 'UVB lets reptiles and some frogs make vitamin D3 and use calcium.', actions: [{ label: 'Fit a UVB tube', nav: 'equipment' }], help: 'calcium_dust', consequences: ['Calcium used faster'], category: 'equipment' },
+      hides: { title: 'Not enough hides', explanation: 'Geckos and tarantulas want a dark hide each. Cork bark and slate caves give one.', actions: [{ label: 'Add a hide (Aquascape)', nav: 'aquascape' }], help: 'caves', consequences: ['Stress'], category: 'habitat' },
+      warm_hide: { title: 'No warm hide', explanation: 'Desert geckos digest in a hide on the warm side. A slate cave under the lamp works.', actions: [{ label: 'Add a slate cave (Aquascape)', nav: 'aquascape' }], help: 'basking', consequences: ['Mild stress'], category: 'habitat' },
+      climbing: { title: 'Nothing to climb', explanation: 'Tree frogs and crested geckos live off the ground. Add a climbing branch or a vine.', actions: [{ label: 'Add a branch or vine (Aquascape)', nav: 'aquascape' }], help: 'habitat', consequences: ['Stress'], category: 'habitat' },
+      pool: { title: 'Needs a pool', explanation: 'Fire-bellied toads spend much of their time sitting in water. Keep them in a paludarium.', actions: [{ label: 'Move them', nav: 'livestock' }], help: 'paludarium', consequences: ['Dehydration', 'Stress'], category: 'stocking' },
+      crickets: { title: 'Loose crickets at night', explanation: 'Uneaten crickets wander about and nibble sleeping animals. Feed what they will eat; spot clean leftovers.', actions: [fixAction('spotClean', 'Spot clean')], help: 'feeders', consequences: ['Stress', 'Bites'], category: 'livestock' },
+      space: { title: 'Enclosure crowded', explanation: 'Each animal wants a certain amount of floor and climbing space.', actions: [{ label: 'Move or sell some', nav: 'livestock' }], help: 'stocking', consequences: ['Stress', 'Fights'], category: 'stocking' },
+      rival: { title: 'Animals fighting', explanation: 'Tarantulas must live alone, and two adult male geckos fight. Separate them.', actions: [{ label: 'Separate them', nav: 'livestock' }], help: 'stocking', consequences: ['Injuries', 'Deaths'], category: 'stocking' },
+    };
+    for (const [k, { issue, fish }] of byKey) {
+      const m = META[k] ?? META.waste;
+      const sev: Severity = issue.damage > 0.15 ? 'critical' : issue.damage > 0 || issue.stress >= 10 ? 'warning' : 'advice';
+      add({
+        id: `terra_${k}`, severity: sev, category: m.category, icon: sev === 'critical' ? (k === 'mould' || k === 'waste' ? 'dirty' : 'toxic') : k === 'mould' || k === 'waste' ? 'dirty' : 'attention',
+        title: m.title, explanation: m.explanation, value: issue.text,
+        affected: bySpecies(fish), consequences: m.consequences, actions: m.actions, help: m.help,
+      });
+    }
+  }
+
   // --- Feeding and health -------------------------------------------------
   const hungry = alive.filter((f) => f.hunger > 60);
   const avgHunger = alive.length ? alive.reduce((s, f) => s + f.hunger, 0) / alive.length : 0;
@@ -269,7 +475,7 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
     const want = alive.reduce((s, f) => s + (appetite(f) * f.hunger) / 100, 0);
     add({
       id: 'hungry', severity: avgHunger > 78 ? 'critical' : 'warning', category: 'livestock', icon: 'hungry',
-      title: `${hungry.length} fish are hungry`,
+      title: `${hungry.length} ${isEnclosure(tank) ? 'animals' : 'fish'} are hungry`,
       explanation: 'Hungry fish stop growing, get stressed and lose health. Feed what they can finish; leftovers foul the water.',
       value: `Average hunger ${Math.round(avgHunger)}%`, recommended: 'under 50%',
       affected: bySpecies(hungry),
@@ -324,12 +530,12 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
         help: 'groups',
       });
     }
-    if (tank.litres < sp.minTankLitres) {
+    if ((isLandAnimal(sp) && isEnclosure(tank) ? landVolume(tank) : tank.litres) < sp.minTankLitres) {
       add({
         id: `small_${sp.id}`, severity: 'warning', category: 'stocking', icon: 'attention',
         title: `Tank too small for ${sp.commonName}`,
         explanation: 'Fish in undersized tanks are stunted and stressed.',
-        value: `${tank.litres}L`, recommended: `${sp.minTankLitres}L+`,
+        value: `${isLandAnimal(sp) && isEnclosure(tank) ? landVolume(tank) : tank.litres}L`, recommended: `${sp.minTankLitres}L+`,
         affected: [{ label: sp.commonName, count: n }],
         consequences: ['Stunted growth', 'Stress'],
         actions: [{ label: 'Move them to a bigger tank', nav: 'livestock' }],
@@ -351,7 +557,8 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
   }
 
   // --- Habitat -------------------------------------------------------------
-  if (alive.length && coverPct < needs.coverPct - 2) {
+  // Land-only enclosures judge shelter by hides and plants (enclosure block below).
+  if (alive.length && !isLandOnly(tank) && coverPct < needs.coverPct - 2) {
     const short = needs.coverPct - coverPct;
     const shy = needs.coverBy.filter((c) => c.pct > coverPct);
     add({
@@ -474,13 +681,22 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
     });
   }
 
+  if (isLandOnly(tank)) {
+    const WATER_ONLY = new Set(['ammonia', 'nitrite', 'nitrate', 'cycle', 'temp_cold', 'temp_warm', 'ph', 'salinity', 'wrong_water', 'oxygen', 'algae', 'waste', 'cloudy', 'filter', 'heater', 'openspace', 'sand']);
+    for (let i = issues.length - 1; i >= 0; i--) if (WATER_ONLY.has(issues[i].id)) issues.splice(i, 1);
+  }
   issues.sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity]);
 
   // --- Scores -----------------------------------------------------------------
   const welfare = alive.length ? alive.reduce((s, f) => s + f.health * 0.6 + (100 - f.stress) * 0.4, 0) / alive.length : 100;
   const tempPenalty = (cold.length + hot.length) * 15 + badPh.length * 8;
-  const water = clamp(waterQualityScore(w) - tempPenalty, 0, 100);
-  const cleanliness = clamp(100 - tank.glassDirt * 35 - tank.algae * 35 - w.cloudiness * 40 - Math.max(0, waste - 30) * 0.4, 0, 100);
+  // Enclosures without water score their climate in place of water quality.
+  const climatePenalty = issues.filter((i) => i.id.startsWith('terra_') && i.category !== 'cleanliness').reduce((n, i) => n + (i.severity === 'critical' ? 30 : i.severity === 'warning' ? 15 : 5), 0);
+  const water = isLandOnly(tank) ? clamp(100 - climatePenalty, 0, 100) : clamp(waterQualityScore(w) - tempPenalty - climatePenalty * 0.5, 0, 100);
+  const tr = tank.terra;
+  const cleanliness = isLandOnly(tank)
+    ? clamp(100 - tank.glassDirt * 35 - (tr?.waste ?? 0) * 50 - (tr?.mould ?? 0) * 60, 0, 100)
+    : clamp(100 - tank.glassDirt * 35 - tank.algae * 35 - w.cloudiness * 40 - Math.max(0, waste - 30) * 0.4 - (tr?.mould ?? 0) * 30, 0, 100);
   const coverScore = needs.coverPct ? Math.min(1, coverPct / needs.coverPct) : 1;
   const caveScore = needs.caveSlots ? Math.min(1, scape.caveSlots / needs.caveSlots) : 1;
   const habitat = clamp(100 * (0.55 * coverScore + 0.3 * caveScore + 0.15 * (needs.openSpace ? Math.min(1, scape.openSpace / needs.openSpace) : 1)) - (issues.some((i) => i.id === 'sand' || i.id === 'wood') ? 8 : 0), 0, 100);
@@ -492,6 +708,7 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
     needs,
     scape,
     coverPct,
+    kind: isLandOnly(tank) ? 'land' : isEnclosure(tank) ? 'paludarium' : 'aquarium',
   };
 }
 

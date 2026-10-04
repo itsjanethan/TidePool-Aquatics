@@ -185,6 +185,42 @@ export function buildPlant(def: DecorDef, scale: number, seed: number, health: n
       }
       break;
     }
+    case 'bromeliad': {
+      // Stiff strap leaves in a rosette; the young centre leaves blush red.
+      const n = count(5, 7);
+      for (let i = 0; i < n; i++) {
+        const age = 1 - i / Math.max(1, n - 1);
+        const side = i % 2 ? 1 : -1;
+        leaf({ x: rng.range(-1, 1) * scale, y: 0, angle: side * (0.15 + age * 1.05) + rng.range(-0.06, 0.06), length: H * (0.55 + 0.45 * age), width: H * 0.12, bend: side * age * 0.3, shape: 'sword', petiole: 0.05, col: mixC(hex('#d8304a'), hex('#4a8a3a'), Math.min(1, age * 1.4)), phase: rng.range(0, 6), sway: 0.2 * scale, age });
+      }
+      break;
+    }
+    case 'pothos': {
+      // Vines arching up and over, heart-shaped leaves along them, some variegated.
+      const vines = count(1, 2);
+      for (let v = 0; v < vines; v++) {
+        const dir = v % 2 ? 1 : -1;
+        const leavesOnVine = count(3, 5);
+        for (let i = 0; i < leavesOnVine; i++) {
+          const t = (i + 1) / leavesOnVine;
+          const x = dir * W * 0.38 * Math.sin(t * 1.4) + rng.range(-1, 1) * scale;
+          const y = -H * (0.85 * Math.sin(t * 2.2) + 0.08);
+          const age = 1 - t;
+          leaf({ x, y: Math.min(0, y), angle: dir * rng.range(0.4, 1.3), length: H * 0.24, width: H * 0.14, bend: dir * 0.2, shape: 'oval', petiole: 0.2, col: mixC(hex('#3a8a34'), hex('#d8d070'), rng.chance(0.4) ? 0.35 : 0.05), phase: rng.range(0, 6), sway: 0.3 * scale, age });
+        }
+      }
+      break;
+    }
+    case 'bfern': {
+      const n = count(5, 8);
+      for (let i = 0; i < n; i++) {
+        const age = rng.next();
+        const side = i % 2 ? 1 : -1;
+        const angle = side * rng.range(0.2, 1.2);
+        leaf({ x: rng.range(-2, 2) * scale, y: 0, angle, length: H * rng.range(0.7, 1.05), width: H * 0.1, bend: side * 0.7, shape: 'fern', petiole: 0.1, col: mixC(hex('#6ab84a'), hex('#3a7a2a'), age), phase: rng.range(0, 6), sway: 0.4 * scale, age });
+      }
+      break;
+    }
     case 'moss': {
       mossCol = hex('#3f7a34');
       const n = count(2, 5);

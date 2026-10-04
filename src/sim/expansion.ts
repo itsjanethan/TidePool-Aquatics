@@ -8,6 +8,8 @@ import { spend } from './economy';
 import { idleRefusal } from './idle';
 import { overallReputation } from './reputation';
 import { createTank, type ActionResult } from './tank';
+import { defaultTerra } from './terrarium';
+import { PALUDARIUM_WATER, VIVARIUM_ROOM_TEMP } from '../data/terra';
 import type { DecorItem, GameState } from './types';
 import { OBJECTIVES } from './progression';
 
@@ -77,10 +79,19 @@ export function buyExpansion(state: GameState, id: string): ActionResult {
       backgroundId: et.background,
     });
     t.waterType = et.waterType ?? 'freshwater';
-    t.decor = et.decor.map(([defId, x, layer], i): DecorItem => ({ uid: `d_${et.id}_${i}`, defId, x, layer, flip: x > 0.5, health: 1, size: getDecor(defId).kind === 'plant' ? 0.7 : 1 }));
+    t.decor = et.decor.map(([defId, x, layer], i): DecorItem => ({ uid: `d_${et.id}_${i}`, defId, x, layer, flip: x > 0.5, health: 1, size: getDecor(defId).kind === 'plant' || getDecor(defId).kind === 'coral' ? 0.7 : 1 }));
+    if (et.reef) t.reef = { ...et.reef };
+    if (et.habitat) {
+      // Enclosures: a climate instead of (or, in a paludarium, beside) the water.
+      t.habitat = et.habitat;
+      t.terra = { ...defaultTerra(et.habitat), ...et.terra };
+      if (et.habitat === 'paludarium') t.litres = Math.round(t.litres * PALUDARIUM_WATER);
+    }
+    if (et.airStone) t.airStone = true;
     t.ownedSubstrates = [et.substrate];
     t.ownedBackgrounds = [et.background];
-    t.water.temperature = et.heater ? (et.setpoint ?? 25) : 17;
+    // Enclosures (and paludarium pools) start at the heated vivarium room's temperature.
+    t.water.temperature = et.heater ? (et.setpoint ?? 25) : et.habitat ? VIVARIUM_ROOM_TEMP : 17;
     // New systems arrive with seeded (half-cycled) filters, but they still need checking.
     t.water.aob = 0.45;
     t.water.nob = 0.35;
@@ -89,6 +100,12 @@ export function buyExpansion(state: GameState, id: string): ActionResult {
       t.water.ph = 8.2;
       t.water.gh = 14;
       t.skimmer = true;
+    }
+    if (et.water) {
+      // Active-soil tanks start buffered; reef systems start with a little nitrate for the corals.
+      if (et.water.ph !== undefined) t.water.ph = et.water.ph;
+      if (et.water.gh !== undefined) t.water.gh = et.water.gh;
+      if (et.water.nitrate !== undefined) t.water.nitrate = et.water.nitrate;
     }
     state.tanks[t.id] = t;
     state.tankOrder.push(t.id);

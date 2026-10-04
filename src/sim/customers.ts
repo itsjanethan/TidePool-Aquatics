@@ -9,6 +9,7 @@ import type { Rng } from '../core/rng';
 import { ARCHETYPES, FIRST_NAMES, PROBLEMS, THOUGHTS, type ArchetypeDef, type ProblemDef } from '../data/customers';
 import { getDecor, getDryGood } from '../data/catalog';
 import { availablePlants, plantValue } from './plants';
+import { availableFrags } from './reef';
 import { EQUIPMENT_WANTS, getRetailItem, RETAIL_ITEMS } from '../data/retail';
 import { availableRetail, retailPrice, retailUnlocked } from './retail';
 import { getSpecies, SPECIES } from '../data/species';
@@ -88,7 +89,7 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
     ? ARCHETYPES.find((a) => a.id === profile!.archetype) ?? ARCHETYPES[0]
     : opts.archetype
       ? ARCHETYPES.find((a) => a.id === opts.archetype) ?? ARCHETYPES[0]
-      : rng.weighted(ARCHETYPES, (a) => a.weight * (a.id === 'enthusiast' ? 0.5 + state.reputation.quality / 50 : 1));
+      : rng.weighted(ARCHETYPES, (a) => (a.floor && !state.unlocks.floors.includes(a.floor) ? 0 : a.weight) * (a.id === 'enthusiast' ? 0.5 + state.reputation.quality / 50 : 1));
 
   if (!profile) {
     profile = {
@@ -144,6 +145,7 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
   } else if (goal === 'advice_stocking') {
     goalData.tankLitres = rng.pick(arch.tankSizes);
     goalData.heated = rng.chance(arch.heatedChance);
+    if (arch.habitats?.length) goalData.habitat = rng.pick(arch.habitats);
   } else if (goal === 'problem') {
     goalData.problemId = problemId ?? rng.pick(PROBLEMS).id;
   }
@@ -216,6 +218,8 @@ function planAfterEntering(state: GameState, ctx: CustomerContext, c: CustomerSt
     for (let i = 0; i < n && pool.length; i++) c.browseQueue.push(pool.splice(rng.int(0, pool.length - 1), 1)[0]);
     // Potted plants for sale sit on the shelves; some browsers look there too.
     if (availablePlants(state).length && rng.chance(0.45)) c.browseQueue.splice(rng.int(0, c.browseQueue.length), 0, PLANT_SHELF);
+    // Reef keepers come for the frag rack.
+    if (state.unlocks.floors.includes('reef') && availableFrags(state).length && rng.chance(c.archetype === 'enthusiast' || c.archetype === 'hobbyist' ? 0.45 : 0.2)) c.browseQueue.splice(rng.int(0, c.browseQueue.length), 0, FRAG_RACK);
     c.phase = 'browsing';
   }
   nextBrowseTarget(state, ctx, c);
@@ -310,6 +314,8 @@ function think(state: GameState, c: CustomerState, text: string, minutes = 6): v
 }
 
 export const PLANT_SHELF = 'shelf1';
+/** Coral frags for sale on the reef floor. */
+export const FRAG_RACK = 'fragrack';
 
 function hasPurchases(c: CustomerState): boolean {
   return c.basket.length > 0 || c.addOns.length > 0 || (c.plantUids?.length ?? 0) > 0 || (c.equipment?.length ?? 0) > 0;
@@ -446,6 +452,29 @@ function evaluatePlants(state: GameState, ctx: CustomerContext, c: CustomerState
   if (c.plantUids.length) think(state, c, ctx.rng.pick(['Nice plants!', 'Ooh, a fern.', 'Lovely and healthy.']));
 }
 
+/** Customer looks over the coral frags on the frag rack. Enthusiasts pay for healthy, larger pieces. */
+function evaluateFrags(state: GameState, ctx: CustomerContext, c: CustomerState): void {
+  const frags = availableFrags(state).sort((a, b) => b.health * plantPrice(state, b) - a.health * plantPrice(state, a));
+  if (!frags.length) return;
+  let budget = c.traits.budget - checkoutQuote(state, c).total;
+  const keen = c.archetype === 'enthusiast' ? 0.75 : c.archetype === 'hobbyist' ? 0.55 : 0.3;
+  if (!ctx.rng.chance(keen)) return;
+  const want = ctx.rng.int(1, c.traits.budget > 80 ? 3 : 2);
+  let picked = 0;
+  for (const p of frags) {
+    if (picked >= want) break;
+    // Experienced buyers pass on weak or bleached frags.
+    if (p.health < 0.55 + c.traits.qualityFocus * 0.25) continue;
+    const price = plantPrice(state, p);
+    if (price > budget) continue;
+    reservePlant(c, p.uid, state);
+    budget -= price;
+    picked++;
+  }
+  if (picked) think(state, c, ctx.rng.pick(['Gorgeous frag!', 'That colour!', 'One for my reef.']));
+  else think(state, c, 'Nothing for my reef today.');
+}
+
 function reservePlant(c: CustomerState, uid: string, state: GameState): void {
   const p = state.storage.plants.find((x) => x.uid === uid);
   if (!p || p.reservedBy) return;
@@ -453,11 +482,13 @@ function reservePlant(c: CustomerState, uid: string, state: GameState): void {
   (c.plantUids ??= []).push(uid);
 }
 
-/** Sale price of a potted plant (player can scale all plant prices). */
+/** Sale price of a potted plant or coral frag (player can scale all plant prices and all frag prices). */
 export function plantPrice(state: GameState, p: { defId: string; size: number; health: number }): number {
-  return round(plantValue(p) * (state.prices[PLANT_PRICE_KEY] ?? 1), 2);
+  const key = getDecor(p.defId).kind === 'coral' ? FRAG_PRICE_KEY : PLANT_PRICE_KEY;
+  return round(plantValue(p) * (state.prices[key] ?? 1), 2);
 }
 export const PLANT_PRICE_KEY = '_plants';
+export const FRAG_PRICE_KEY = '_frags';
 
 /** Adds the best affordable potted plant to the basket. Returns true if accepted. */
 export function offerPlant(state: GameState, c: CustomerState, rng: Rng): boolean {
@@ -648,6 +679,7 @@ export function updateCustomers(state: GameState, ctx: CustomerContext, dtMin: n
         c.waitMinutes -= dtMin;
         if (c.waitMinutes <= 0) {
           if (c.currentTankId === PLANT_SHELF) evaluatePlants(state, ctx, c);
+          else if (c.currentTankId === FRAG_RACK) evaluateFrags(state, ctx, c);
           else if (c.currentTankId?.startsWith('retail')) evaluateRetail(state, ctx, c);
           else if (c.currentTankId && state.tanks[c.currentTankId]) evaluateTank(state, ctx, c, c.currentTankId);
           if (c.phase === 'browsing') nextBrowseTarget(state, ctx, c);
@@ -805,7 +837,7 @@ export function checkoutQuote(state: GameState, c: CustomerState): { lines: Quot
   }
   for (const [defId, prices] of plantGroups) {
     const total = round(prices.reduce((a, b) => a + b, 0), 2);
-    lines.push({ label: `${getDecor(defId).name} (plant)`, qty: prices.length, unit: round(total / prices.length, 2), total });
+    lines.push({ label: `${getDecor(defId).name} (${getDecor(defId).kind === 'coral' ? 'frag' : 'plant'})`, qty: prices.length, unit: round(total / prices.length, 2), total });
   }
   for (const id of c.addOns) {
     const g = getDryGood(id);
@@ -978,13 +1010,14 @@ function reserveForAdvice(state: GameState, c: CustomerState, speciesId: string)
 
 export function adviceSetupText(c: CustomerState): string {
   const L = c.goalData.tankLitres ?? 60;
+  if (c.goalData.habitat) return `I have a ${L}-litre ${c.goalData.habitat}${c.goalData.heated ? ' with a basking lamp' : ''}. What could live in it?`;
   return `I have a ${L}-litre tank ${c.goalData.heated ? 'with a heater' : 'with no heater'}. What fish could I keep in it?`;
 }
 
 /** Player recommends a species (or null = "nothing suitable in stock"). */
 export function resolveAdvice(state: GameState, ctx: CustomerContext, c: CustomerState, speciesId: string | null): AdviceResult {
   if (state.idle) return { reply: IDLE_MESSAGE, success: false };
-  const setup = { litres: c.goalData.tankLitres ?? 60, heated: !!c.goalData.heated };
+  const setup = { litres: c.goalData.tankLitres ?? 60, heated: !!c.goalData.heated, habitat: c.goalData.habitat };
   state.stats.adviceGiven += 1;
   c.thought = null;
   const stock = inStockSpecies(state);

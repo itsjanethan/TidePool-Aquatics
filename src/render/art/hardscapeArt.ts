@@ -223,6 +223,45 @@ export function ensureHardscapeTexture(scene: Phaser.Scene, def: DecorDef, scale
       }
       break;
     }
+    case 'reefrock': {
+      // A reef arch: two rubble pillars joined by a bridge of rock, ledges for corals,
+      // a dark cave under the arch, coralline algae in pink and purple over the top.
+      contactShadow(img, w / 2, w);
+      const base = hex('#bfae94');
+      const lumps: Array<[number, number, number, number]> = [
+        // pillars (x, y, rx, ry as fractions)
+        [0.16, 0.78, 0.15, 0.22], [0.22, 0.56, 0.13, 0.2], [0.18, 0.36, 0.12, 0.16],
+        [0.8, 0.8, 0.16, 0.2], [0.76, 0.58, 0.14, 0.19], [0.82, 0.4, 0.11, 0.15],
+        // bridge
+        [0.36, 0.3, 0.14, 0.13], [0.52, 0.24, 0.15, 0.13], [0.66, 0.3, 0.13, 0.13],
+        // top ledges
+        [0.44, 0.13, 0.09, 0.08], [0.6, 0.14, 0.08, 0.07], [0.28, 0.2, 0.08, 0.07],
+      ];
+      for (const [i, [fx, fy, frx, fry]] of lumps.entries()) {
+        rock(img, w * fx, h * fy, w * frx, h * fry, lit(base, 0.9 + (i % 3) * 0.06), seed + i * 7, { grain: 0.24, pits: 0.85 });
+      }
+      // Cave under the arch.
+      const cx = w * 0.5;
+      const cy = h * 0.86;
+      for (let y = -h * 0.42; y <= h * 0.1; y++) for (let x = -w * 0.2; x <= w * 0.2; x++) {
+        const d = Math.hypot(x / (w * 0.2), y / (h * 0.42));
+        if (d <= 1 && cy + y < h - 2) img.set(cx + x, cy + y, mixC([14, 18, 26], [40, 50, 66], Math.max(0, -y / (h * 0.42)) * 0.4), d > 0.92 ? 0.55 : 0.92);
+      }
+      const coral: RGB[] = [hex('#c45a9a'), hex('#9a4ac0'), hex('#e07ab0'), hex('#7a3aa0'), hex('#d0708a')];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (img.data[i + 3] < 220) continue;
+        const n = fbm(x * 0.1, y * 0.1, seed + 31);
+        const upper = 1 - y / h;
+        if (n > 0.62 - upper * 0.12) {
+          const c = coral[Math.floor(h2(x >> 2, y >> 2, seed) * coral.length)];
+          img.set(x, y, lit(c, 0.7 + upper * 0.5), 0.8);
+        } else if (n < 0.22) img.set(x, y, [36, 30, 34], 0.6);
+        // Light from above catches the upper faces.
+        if (y > 0 && img.data[((y - 1) * w + x) * 4 + 3] < 40) img.set(x, y, [255, 246, 230], 0.35);
+      }
+      break;
+    }
     case 'mopani':
     case 'spiderwood': {
       const mop = def.art === 'mopani';
@@ -288,6 +327,66 @@ export function ensureHardscapeTexture(scene: Phaser.Scene, def: DecorDef, scale
       const dr = Math.max(2, w * 0.17);
       for (let y = -h * 0.42; y <= 0; y++) for (let x = -dr; x <= dr; x++) {
         if (Math.hypot(x / dr, y / (h * 0.42)) <= 1) img.set(w / 2 + x, h - 1 + y, [24, 14, 6], 1);
+      }
+      break;
+    }
+    case 'cork': {
+      // A curved tube of cork bark lying as an arch: rough, deeply fissured outer
+      // bark in grey-browns, a paler cut rim, and a dark hollow underneath.
+      contactShadow(img, w / 2, w * 1.02);
+      const bark = hex('#5a4a3c');
+      const pale = hex('#a8865e');
+      const cx = w / 2;
+      const rx = w * 0.48;
+      const ry = h * 0.96;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const dx = (x - cx) / rx;
+          const dy = (h - 1 - y) / ry;
+          const rough = (fbm(x * 0.25, y * 0.25, seed) - 0.5) * 0.12;
+          const d = Math.hypot(dx, dy) + rough;
+          if (d > 1) continue;
+          const inner = Math.hypot(dx / 0.72, dy / 0.66);
+          if (inner < 1) {
+            // Hollow: dark, a little warmer near the rim.
+            img.set(x, y, lit([34, 24, 16], 0.7 + (1 - inner) * 0.2 + Math.max(0, inner - 0.85) * 2), 1);
+            continue;
+          }
+          const ang = Math.atan2(dy, dx);
+          const nz = Math.sqrt(Math.max(0, 1 - d * d));
+          let c = lit(bark, 0.6 + 0.6 * Math.max(0, nz * 0.5 + Math.cos(ang - 2.2) * 0.4));
+          // Fissures run along the curve of the bark.
+          const f = noise(ang * 9, d * 6, seed + 5);
+          if (f > 0.68) c = lit(c, 0.5);
+          else if (f < 0.2) c = mixC(c, pale, 0.25);
+          if (h2(x, y, seed) < 0.06) c = lit(c, 1.15);
+          // Lichen speckles.
+          if (fbm(x * 0.3, y * 0.3, seed + 31) > 0.74) c = mixC(c, [150, 160, 120], 0.4);
+          // Cut edge where the tube meets the hollow.
+          if (inner < 1.12) c = mixC(c, pale, 0.55);
+          if (d > 0.93) c = lit(c, 0.72);
+          img.set(x, y, c, 1);
+        }
+      }
+      break;
+    }
+    case 'litter': {
+      // A low drift of dry leaves: oak and magnolia in browns, tans and rust.
+      const cols: RGB[] = [hex('#6a4426'), hex('#8a5a2e'), hex('#a8743c'), hex('#5a3a22'), hex('#b8864a'), hex('#7a3a22')];
+      const n = Math.round(w * 0.7);
+      for (let i = 0; i < n; i++) {
+        const lx = rng.range(2, w - 2);
+        const ly = h - 1 - rng.range(0, h * 0.7) * (1 - Math.abs(lx / w - 0.5) * 1.2);
+        const len = rng.range(3, 6) * scale;
+        const wid = len * rng.range(0.35, 0.5);
+        const a = rng.range(-0.6, 0.6);
+        const base = rng.pick(cols);
+        for (let u = -len; u <= len; u++) for (let v = -wid; v <= wid; v++) {
+          if ((u / len) ** 2 + (v / wid) ** 2 > 1) continue;
+          let c = lit(base, 0.8 + (v < 0 ? 0.25 : 0) + (rng.chance(0.08) ? -0.2 : 0));
+          if (Math.abs(v) < 0.6) c = lit(c, 0.78); // midrib
+          img.set(lx + Math.cos(a) * u - Math.sin(a) * v, ly + Math.sin(a) * u * 0.5 + Math.cos(a) * v * 0.5, c, 1);
+        }
       }
       break;
     }

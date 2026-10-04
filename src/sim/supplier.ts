@@ -7,9 +7,10 @@ import { round } from '../core/math';
 import type { Rng } from '../core/rng';
 import { FOOD_TUB, getDryGood } from '../data/catalog';
 import { getSpecies, SPECIES } from '../data/species';
-import { spend } from './economy';
+import { earn, spend } from './economy';
 import { createFish, newId } from './fish';
-import type { GameState, SupplierOrderLine, SupplierState } from './types';
+import { habitatRefusal, isLandAnimal } from './terrarium';
+import type { GameState, SupplierOrder, SupplierOrderLine, SupplierState } from './types';
 
 export interface SupplierDef {
   id: string;
@@ -79,6 +80,32 @@ export const SUPPLIERS: SupplierDef[] = [
     minOrder: 40,
     level: 3,
   },
+  {
+    id: 'reefworks',
+    name: 'Reefworks Invertebrates',
+    blurb: 'Shrimp and snail breeders plus a marine clean-up crew. Packed in breather bags, two-day delivery.',
+    deliveryDays: 2,
+    costMultiplier: 1,
+    quality: [0.5, 0.85],
+    doaRisk: 0.03,
+    species: ['cherry_shrimp', 'crystal_shrimp', 'amano_shrimp', 'nerite_snail', 'mystery_snail', 'cleaner_shrimp', 'hermit_crab', 'turbo_snail'],
+    stockRange: [6, 30],
+    minOrder: 20,
+    level: 5,
+  },
+  {
+    id: 'canopy',
+    name: 'Canopy Captive Breeders',
+    blurb: 'Captive-bred frogs, geckos and tarantulas from a licensed breeder. Small batches, shipped warm, two-day delivery.',
+    deliveryDays: 2,
+    costMultiplier: 1,
+    quality: [0.55, 0.88],
+    doaRisk: 0.02,
+    species: ['dart_frog', 'whites_tree_frog', 'fire_bellied_toad', 'rose_tarantula', 'leopard_gecko', 'crested_gecko'],
+    stockRange: [2, 10],
+    minOrder: 30,
+    level: 6,
+  },
 ];
 
 /** Suppliers that trade with a shop of this level. */
@@ -139,7 +166,9 @@ export function placeOrder(state: GameState, supplierId: string, lines: Array<Om
     if (!state.tanks[l.tankId]) return { ok: false, message: 'Pick a tank for every line.' };
     const sp = getSpecies(l.speciesId);
     const tw = state.tanks[l.tankId].waterType ?? 'freshwater';
-    if (sp.waterType !== tw) return { ok: false, message: `${sp.commonName} is a ${sp.waterType} fish and cannot go in ${state.tanks[l.tankId].name} (${tw}).` };
+    const wrong = habitatRefusal(sp, state.tanks[l.tankId]);
+    if (wrong) return { ok: false, message: wrong };
+    if (!isLandAnimal(sp) && sp.waterType !== tw) return { ok: false, message: `${sp.commonName} is a ${sp.waterType} fish and cannot go in ${state.tanks[l.tankId].name} (${tw}).` };
     priced.push({ ...l, unitCost: s.unitCost });
   }
   if (!priced.length) return { ok: false, message: 'The order is empty.' };
@@ -149,6 +178,28 @@ export function placeOrder(state: GameState, supplierId: string, lines: Array<Om
   for (const l of priced) st.stock.find((x) => x.speciesId === l.speciesId)!.available -= l.quantity;
   state.orders.push({ id: newId(state, 'o'), supplierId, lines: priced, placedDay: day, arrivalDay: day + def.deliveryDays, total });
   return { ok: true, message: `Order placed: £${total.toFixed(2)}. Arrives ${def.deliveryDays === 1 ? 'tomorrow' : `in ${def.deliveryDays} days`} at opening.` };
+}
+
+/** Refund when cancelling: in full on the day the order was placed, 75% after that. */
+export function cancelRefund(order: SupplierOrder, day: number): number {
+  return round(order.total * (day <= order.placedDay ? 1 : 0.75), 2);
+}
+
+/** Cancels an undelivered order: refunds it and returns the fish to the supplier's list. */
+export function cancelOrder(state: GameState, orderId: string, day: number): OrderResult {
+  if (state.idle) return idleRefusal();
+  const i = state.orders.findIndex((o) => o.id === orderId);
+  if (i < 0) return { ok: false, message: 'That order has already arrived or was cancelled.' };
+  const o = state.orders[i];
+  const refund = cancelRefund(o, day);
+  state.orders.splice(i, 1);
+  const st = state.suppliers[o.supplierId];
+  for (const l of o.lines) {
+    const s = st?.stock.find((x) => x.speciesId === l.speciesId);
+    if (s) s.available += l.quantity;
+  }
+  earn(state, refund, `Cancelled order ${o.id}`);
+  return { ok: true, message: `Order ${o.id} cancelled. Refunded £${refund.toFixed(2)}${refund < o.total ? ' (75%: it had already been dispatched)' : ''}.` };
 }
 
 /** Delivers due orders into their target tanks. Returns summary lines. */

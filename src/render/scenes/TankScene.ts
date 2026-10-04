@@ -6,6 +6,7 @@ import Phaser from 'phaser';
 import { controller } from '../../game/GameController';
 import { eat } from '../../sim/fish';
 import { feedTank } from '../../sim/tank';
+import { enclosureFeeder, isEnclosure, isLandOnly, isPaludarium } from '../../sim/terrarium';
 import { AMMONIA_PER_FOOD_EATEN } from '../../sim/water';
 import { TankRenderer } from '../tankRenderer';
 import { TankViewScreen } from '../../ui/screens/tankView';
@@ -38,10 +39,16 @@ export class TankScene extends Phaser.Scene {
         const t = controller.state.tanks[this.tankId];
         const took = eat(fish, units);
         t.food = Math.max(0, t.food - took);
-        t.water.ammonia += (took * AMMONIA_PER_FOOD_EATEN) / t.litres;
+        // Land-only enclosures have no water to foul.
+        if (!isLandOnly(t)) t.water.ammonia += (took * AMMONIA_PER_FOOD_EATEN) / t.litres;
         return took;
       },
       onSelect: () => this.overlay?.refreshFish(),
+    });
+    // A tap that misses every sprite selects the nearest animal within about a fingertip (26 CSS px).
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (over.length) return;
+      this.tankRenderer.selectNearest(p.worldX, p.worldY, (26 * view.k) / this.cameras.main.zoom);
     });
     // Show any leftover food already in the water as settled pellets.
     this.overlay = new TankViewScreen(c, this);
@@ -87,7 +94,14 @@ export class TankScene extends Phaser.Scene {
     const before = t.food;
     const res = c.perform(feedTank(c.state, t, amount), true);
     if (res.ok) {
-      this.tankRenderer.dropFood(Math.max(0, t.food - before));
+      const added = Math.max(0, t.food - before);
+      if (!isEnclosure(t)) this.tankRenderer.dropFood(added);
+      else {
+        // Food left loose (insects on land, flakes in a paludarium pool) carries its units;
+        // hungry land animals ate straight away in the sim, so show a cosmetic handful too.
+        if (added > 0.01) this.tankRenderer.dropFood(added);
+        if (enclosureFeeder(c.state, t) && (isPaludarium(t) || added <= 0.01)) this.tankRenderer.dropFeeders(6);
+      }
       c.ui.toast(res.message, 'good', 2000);
     }
   }

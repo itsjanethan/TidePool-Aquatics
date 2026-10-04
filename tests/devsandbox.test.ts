@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EXPANSIONS } from '../src/data/expansions';
 import { applyPreset, createSandbox, PRESETS } from '../src/dev/sandbox';
 import { Simulation } from '../src/sim/simulation';
 import { FLOORS } from '../src/data/floors';
@@ -20,7 +21,7 @@ describe('Developer Sandbox fixture', () => {
     const s = createSandbox();
     expect(isSandboxState(s)).toBe(true);
     expect(s.flags.devUsed).toBe(true);
-    expect(s.shopLevel).toBe(4);
+    expect(s.shopLevel).toBe(Math.max(...EXPANSIONS.map((e) => e.level)));
     expect(new Set(s.unlocks.floors)).toEqual(new Set(FLOORS.map((f) => f.id)));
     expect(s.unlocks.marine).toBe(true);
     for (const sp of SPECIES) {
@@ -51,7 +52,8 @@ describe('Developer Sandbox fixture', () => {
     for (let h = 0; h < 72; h++) sim.advance(60);
     // Sales remove fish; deaths are what would show an unhealthy fixture.
     expect(s.stats.fishDied).toBeLessThan(alive * 0.05);
-  });
+    // Three simulated days of every floor (now six) take a few seconds on a slow runner.
+  }, 30000);
 
   it('presets use the real rules (marine needs a marine tank)', () => {
     const s = createSandbox();

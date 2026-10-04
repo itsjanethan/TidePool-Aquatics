@@ -168,6 +168,8 @@ export interface FishEnv {
   stressTarget: number;
   /** ppt; absent/0 = freshwater. */
   salinity?: number;
+  /** Extra damage per hour from outside the water model (enclosure climate), with causes. */
+  extra?: { damage: number; causes: string[] };
 }
 
 /** Health damage per hour from the environment. Exported for tests/UI. */
@@ -202,7 +204,9 @@ export function environmentalDamage(f: FishEntity, env: FishEnv): { damage: numb
   if (env.gh < sp.hardness.min - 1 || env.gh > sp.hardness.max + 2) {
     const dev = env.gh < sp.hardness.min ? sp.hardness.min - env.gh : env.gh - sp.hardness.max;
     dmg += dev * 0.15 * sens;
-    causes.push('hardness');
+    // Soft water dissolves snail shells and makes shrimp moults fail.
+    const soft = env.gh < sp.hardness.min;
+    causes.push(soft && sp.tags.includes('shell_builder') ? 'shell erosion (water too soft)' : soft && sp.tags.includes('moults') ? 'failed moult (water too soft)' : 'hardness');
   }
   const salt = salinityDamage(sp.waterType, env.salinity ?? 0);
   if (salt > 0) {
@@ -212,6 +216,10 @@ export function environmentalDamage(f: FishEntity, env: FishEnv): { damage: numb
   if (env.oxygen < 4.5) {
     dmg += (4.5 - env.oxygen) * 3;
     causes.push('oxygen');
+  }
+  if (env.extra && env.extra.damage > 0) {
+    dmg += env.extra.damage;
+    causes.push(...env.extra.causes);
   }
   if (f.hunger > 75) {
     dmg += (f.hunger - 75) * 0.12;

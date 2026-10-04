@@ -32,6 +32,8 @@ const THEMES: Record<FloorTheme, { floorA: string; floorB: string; grout: string
   cool: { floorA: '#c9a878', floorB: '#bf9d6c', grout: '#a7845a', wall: '#a9c8d8', wallStripe: '#9cbccc', skirting: '#6e7d88', skirtingHi: '#8e9ea8', plank: true },
   marine: { floorA: '#2f4a66', floorB: '#2a4360', grout: '#203650', wall: '#1d4f7a', wallStripe: '#1a4770', skirting: '#18324c', skirtingHi: '#2a5a80' },
   basement: { floorA: '#9a9a94', floorB: '#93938c', grout: '#7c7c76', wall: '#7d8088', wallStripe: '#757880', skirting: '#4c4e54', skirtingHi: '#62656c' },
+  reef: { floorA: '#2c5a62', floorB: '#28545c', grout: '#1e444c', wall: '#2a7a86', wallStripe: '#26707c', skirting: '#1a4048', skirtingHi: '#2a6070' },
+  vivarium: { floorA: '#a87a4a', floorB: '#9c7044', grout: '#7a5432', wall: '#6a8a4a', wallStripe: '#628244', skirting: '#4a3a24', skirtingHi: '#6a5434', plank: true },
 };
 
 function drawFloorTile(ctx: Ctx, ox: number, oy: number, variant: number, theme: FloorTheme = 'shop'): void {
@@ -111,6 +113,16 @@ export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key =
       drawWindow(ctx, 26 * TILE + 2, 4);
     } else if (layout.theme === 'marine') {
       for (const x of [3, 9, 15, 21, 27]) drawPorthole(ctx, x * TILE - 8, 6);
+    } else if (layout.theme === 'reef') {
+      // A painted reef mural along the back wall: rock, branching and plate corals.
+      for (const x of [2, 8, 15, 22, 27]) drawReefMural(ctx, x * TILE - 6, x);
+    } else if (layout.theme === 'vivarium') {
+      // Hanging foliage along the back wall and a warm skylight.
+      drawWindow(ctx, 26 * TILE + 2, 4);
+      for (let x = 16; x < (layout.width - 1) * TILE; x += 10) {
+        const len = 6 + ((x * 7) % 11);
+        for (let y = 0; y < len; y += 2) px(ctx, x + ((y >> 1) % 2), 3 + y, y % 4 ? '#3a7a3a' : '#5aa04a', 3, 2);
+      }
     } else if (layout.theme === 'basement') {
       // Pipes along the wall and a caged lamp.
       px(ctx, 16, 6, '#5a5e66', layout.width * TILE - 32, 3);
@@ -194,6 +206,39 @@ function drawStoreDetail(ctx: Ctx, layout: FloorLayout): void {
   }
 }
 
+function drawReefMural(ctx: Ctx, x: number, seed: number): void {
+  const rng = new Rng(seed * 13 + 5);
+  // Rock base.
+  px(ctx, x, 20, '#3a5a62', 28, 4);
+  px(ctx, x + 3, 17, '#44666e', 20, 4);
+  px(ctx, x + 6, 15, '#4c7078', 12, 3);
+  const corals = ['#f07a5a', '#f0c040', '#a060d0', '#5ad0a0', '#f0a0c0', '#60b0f0'];
+  for (let i = 0; i < 4; i++) {
+    const cx = x + 3 + rng.int(0, 22);
+    const c = rng.pick(corals);
+    const kind = rng.int(0, 2);
+    if (kind === 0) {
+      // Branching coral.
+      px(ctx, cx, 9, c, 1, 8);
+      px(ctx, cx - 2, 11, c, 1, 4);
+      px(ctx, cx + 2, 10, c, 1, 5);
+      px(ctx, cx - 2, 11, c, 3, 1);
+      px(ctx, cx, 8, shade(c, 0.3), 1, 1);
+    } else if (kind === 1) {
+      // Plate.
+      px(ctx, cx - 3, 14, c, 7, 2);
+      px(ctx, cx - 2, 13, shade(c, 0.25), 5, 1);
+    } else {
+      // Soft polyps.
+      for (let k = 0; k < 4; k++) px(ctx, cx - 2 + k, 14 - (k % 2), c, 1, 2);
+    }
+  }
+  // A small fish.
+  const fx = x + rng.int(4, 20);
+  px(ctx, fx, 6, '#f08030', 4, 2);
+  px(ctx, fx - 1, 6, '#ffffff', 1, 2);
+}
+
 function drawPorthole(ctx: Ctx, x: number, y: number): void {
   px(ctx, x + 3, y, '#8a9aa8', 10, 16);
   px(ctx, x, y + 3, '#8a9aa8', 16, 10);
@@ -231,7 +276,7 @@ function drawPlaque(ctx: Ctx, x: number, y: number): void {
 }
 
 export function propTextureKey(p: PropPlacement): string {
-  return p.kind === 'stairs' ? `prop-stairs-${p.dir ?? 'up'}` : `prop-${p.kind}-${p.w}x${p.h}`;
+  return p.kind === 'stairs' ? `prop-stairs-${p.dir ?? 'up'}` : `prop-${p.kind}${p.style ? `-${p.style}` : ''}-${p.w}x${p.h}`;
 }
 
 /** Generates textures for every prop kind/size used by a layout. */
@@ -245,7 +290,10 @@ export function makePropTextures(scene: Phaser.Scene, layout: FloorLayout): void
     const h = p.h * TILE;
     switch (p.kind) {
       case 'tank':
-        makeTexture(scene, key, w, h + 2, (ctx) => drawTankProp(ctx, w, h));
+        makeTexture(scene, key, w, h + 2, (ctx) => drawTankProp(ctx, w, h, p.style));
+        break;
+      case 'fragrack':
+        makeTexture(scene, key, w, h + 2, (ctx) => drawFragRack(ctx, w, h));
         break;
       case 'counter':
         makeTexture(scene, key, w, h + 10, (ctx) => drawCounter(ctx, w, h + 10));
@@ -282,8 +330,60 @@ export function tankWaterRect(w: number): { x: number; y: number; w: number; h: 
   return { x: 2, y: 5, w: w - 4, h: 14 };
 }
 
-function drawTankProp(ctx: Ctx, w: number, h: number): void {
+function drawTankProp(ctx: Ctx, w: number, h: number, style?: PropPlacement['style']): void {
   const P = SHOP_PALETTE;
+  if (style === 'reef') {
+    // Reef system: slim LED fixture hanging over an open-top tank, black cabinet.
+    px(ctx, 0, 0, '#12161e', w, 4);
+    for (let x = 2; x < w - 2; x += 3) px(ctx, x, 2, x % 2 ? '#7a8aff' : '#e8f4ff', 2, 1);
+    px(ctx, 0, 4, '#1a1e26', w, 17);
+    px(ctx, 1, 4, '#141820', w - 2, 16);
+    px(ctx, 0, 20, '#14161c', w, h - 20 + 2);
+    px(ctx, 1, 21, '#262a34', w - 2, h - 22);
+    px(ctx, 1, 21, '#3a4050', w - 2, 1);
+    px(ctx, 2, h - 4, '#2a6aa8', w - 4, 1);
+    const doors = Math.max(1, Math.round(w / 16));
+    const dw = (w - 2) / doors;
+    for (let i = 0; i < doors; i++) {
+      const dx = 1 + Math.round(i * dw);
+      outlineRect(ctx, dx + 1, 23, Math.round(dw) - 2, h - 27, '#14161c');
+      px(ctx, dx + Math.round(dw / 2) - 1, 26, '#9ab0c8', 2, 1);
+    }
+    px(ctx, w / 2 - 5, 21, '#d8e4f0', 10, 3);
+    px(ctx, 0, h, '#0c0e12', w, 2);
+    return;
+  }
+  if (style === 'terrarium' || style === 'paludarium') {
+    // Front-opening glass enclosure: mesh top, framed glass doors, wooden cabinet.
+    px(ctx, 0, 0, '#5a5e66', w, 4);
+    for (let x = 1; x < w - 1; x += 2) px(ctx, x, 1, '#9aa0a8', 1, 2);
+    px(ctx, 0, 4, '#2a2420', w, 17);
+    px(ctx, 1, 4, '#1d2028', w - 2, 16);
+    px(ctx, Math.round(w / 2) - 1, 4, '#2a2420', 2, 17);
+    px(ctx, 0, 20, '#5a3a22', w, h - 20 + 2);
+    px(ctx, 1, 21, '#8a5a36', w - 2, h - 22);
+    px(ctx, 1, 21, '#a8744a', w - 2, 1);
+    outlineRect(ctx, 3, 23, w - 6, h - 26, '#5a3a22');
+    px(ctx, w / 2 - 5, 21, '#f2eee0', 10, 3);
+    if (style === 'paludarium') px(ctx, w / 2 - 3, 22, '#3a7ac8', 6, 1);
+    px(ctx, 0, h, shade('#5a3a22', -0.3), w, 2);
+    return;
+  }
+  if (style === 'nano') {
+    // Nano tank on a white gloss cabinet.
+    px(ctx, 0, 0, '#3a3f4a', w, 4);
+    px(ctx, 1, 1, '#5a606e', w - 2, 1);
+    px(ctx, 0, 4, P.metal, w, 17);
+    px(ctx, 1, 4, '#1d2028', w - 2, 16);
+    px(ctx, 0, 20, '#b8b4ac', w, h - 20 + 2);
+    px(ctx, 1, 21, '#ece8e0', w - 2, h - 22);
+    px(ctx, 1, 21, '#ffffff', w - 2, 1);
+    outlineRect(ctx, 3, 23, w - 6, h - 26, '#c8c4bc');
+    px(ctx, w / 2 - 1, 26, '#9a968e', 2, 1);
+    px(ctx, w / 2 - 5, 21, '#2a2e38', 10, 2);
+    px(ctx, 0, h, shade('#b8b4ac', -0.3), w, 2);
+    return;
+  }
   // Hood / light.
   px(ctx, 0, 0, P.metal, w, 4);
   px(ctx, 1, 1, P.metalHi, w - 2, 1);
@@ -304,6 +404,35 @@ function drawTankProp(ctx: Ctx, w: number, h: number): void {
   // Label plate.
   px(ctx, w / 2 - 5, 21, '#f2eee0', 10, 3);
   px(ctx, 0, h, shade(P.woodLo, -0.3), w, 2);
+}
+
+/** Frag rack: a shallow, blue-lit frag tank with rows of plugged frags. */
+function drawFragRack(ctx: Ctx, w: number, h: number): void {
+  const rng = new Rng(77);
+  px(ctx, 0, 0, '#12161e', w, 3);
+  for (let x = 2; x < w - 2; x += 3) px(ctx, x, 1, x % 2 ? '#7a8aff' : '#e8f4ff', 2, 1);
+  // Shallow glass tray.
+  px(ctx, 0, 6, '#1a1e26', w, 12);
+  px(ctx, 1, 7, '#2a6aa8', w - 2, 10);
+  px(ctx, 1, 7, '#4a90c8', w - 2, 2);
+  const corals = ['#f07a5a', '#f0c040', '#a060d0', '#5ad0a0', '#ff6a8a', '#60b0f0', '#9affd0'];
+  for (let row = 0; row < 2; row++) {
+    for (let x = 3; x < w - 3; x += 4) {
+      const y = 10 + row * 4;
+      px(ctx, x, y + 1, '#c8c8c0', 3, 1);
+      const c = rng.pick(corals);
+      px(ctx, x, y - 1, c, 3, 2);
+      px(ctx, x + 1, y - 2, shade(c, 0.3), 1, 1);
+    }
+  }
+  px(ctx, 1, 16, '#c8c0a8', w - 2, 1);
+  // Black stand with a price board.
+  px(ctx, 0, 18, '#14161c', w, h - 18 + 2);
+  px(ctx, 1, 19, '#262a34', w - 2, h - 20);
+  px(ctx, w / 2 - 9, 21, '#f4f0e8', 18, 7);
+  px(ctx, w / 2 - 7, 23, '#2a6aa8', 10, 1);
+  px(ctx, w / 2 - 7, 25, '#c05a3a', 7, 1);
+  px(ctx, 0, h, '#0c0e12', w, 2);
 }
 
 function drawCounter(ctx: Ctx, w: number, h: number): void {

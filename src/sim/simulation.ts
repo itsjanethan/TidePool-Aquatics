@@ -16,6 +16,7 @@ import { dailyReputationUpdate } from './reputation';
 import { maybeRefreshSuppliers, processDeliveries } from './supplier';
 import { tickTank } from './tank';
 import { tickBreeding } from './breeding';
+import { tickPredation } from './inverts';
 import { recoverDemand } from './economy';
 import { ambientTemperature, CLOSE_HOUR, dayOf, hourOf, MINUTES_PER_DAY, OPEN_HOUR } from './time';
 import type { GameState, LedgerDay, LogEntry, RepDimension, StaffProposal } from './types';
@@ -151,8 +152,12 @@ export class Simulation {
         onDeath: (f, tank, cause) => {
           this.log(`A ${displayName(f)} died in ${tank.name} (${cause}).`, 'bad');
         },
+        onCoralDeath: (name, tank, cause) => {
+          this.log(`A ${name} died in ${tank.name} (${cause}).`, 'bad');
+        },
       });
       tickBreeding(s, t, dtHours, this.rng, { log: (text, kind) => this.log(text, kind) });
+      tickPredation(s, t, dtHours, this.rng, (text) => this.log(text, 'bad'));
     }
   }
 

@@ -4,6 +4,8 @@ import { formatMoney, round } from '../../core/math';
 import { DRY_GOODS, FOOD_TUB } from '../../data/catalog';
 import { getSpecies } from '../../data/species';
 import { lineWarnings, orderWarnings, projectedStocking } from '../../sim/orderCheck';
+import { incomingCount, incomingSummary } from '../../sim/incoming';
+import { openAllIncoming, outlookEl } from './incoming';
 import { dailyRunningCosts } from '../../sim/economy';
 import { fishInTank } from '../../sim/fish';
 import { OBJECTIVES, markObjective } from '../../sim/progression';
@@ -25,6 +27,7 @@ import { locked } from './locks';
 import { openStaffHub } from './staff';
 import { openProgression } from './progression';
 import { openRetail } from './retail';
+import { openTanksOverview } from './overview';
 import { retailUnlocked } from '../../sim/retail';
 import { openProposals } from '../../sim/staff';
 
@@ -71,6 +74,8 @@ export function openOffice(c: GameController): void {
       { label: 'Help', right: 'H', action: () => c.openHelp() },
       { label: 'Shop', header: true },
       locked(c, 'order', { label: 'Order livestock', hint: 'Buy fish from suppliers. Delivered at opening time.', action: () => openSuppliers(c) }),
+      { label: 'All tanks', hint: 'Every tank on every floor with its status and worst problem, most urgent first.', action: () => openTanksOverview(c) },
+      { label: 'Incoming deliveries', right: s.orders.length ? `${s.orders.length} order${s.orders.length > 1 ? 's' : ''}` : 'none', hint: 'Livestock on order: what, for which tank, arriving when. Cancel from here.', action: () => openAllIncoming(c) },
       { label: 'Stockroom', hint: 'Food, dry goods, potted plants and stored decor.', action: () => openStockroom(c) },
       ...(retailUnlocked(s) ? [{ label: 'Equipment retail', hint: 'Basement stock: tanks, filters, heaters, bundles.', action: () => openRetail(c) }] : []),
       { label: `Staff (${s.staff.length})`, right: props ? `${props} suggestion${props > 1 ? 's' : ''}` : '', hint: 'Your team, hiring, roles and staff suggestions.', action: () => openStaffHub(c) },
@@ -181,7 +186,7 @@ function openOrder(c: GameController, supplierId: string): void {
         h('div', { class: 'small' }, sup.blurb),
         h('div', { class: 'row' }, h('span', null, `${fish} fish to ${tanks.length} tank${tanks.length === 1 ? '' : 's'}`), h('b', null, `Total ${formatMoney(total())}`)),
         h('div', { class: 'row small' }, h('span', null, `Arrives ${arrive}, 09:00`), h('span', null, `Balance ${formatMoney(s.money)}`)),
-        tanks.length ? h('div', { class: 'small' }, tanks.map((id) => `${s.tanks[id].name} ${Math.round(projectedStocking(s, id, cart) * 100)}%`).join(' · ') + ' stocked after delivery') : null,
+        tanks.length ? h('div', { class: 'small' }, tanks.map((id) => `${s.tanks[id].name} ${Math.round(projectedStocking(s, id, cart) * 100)}%${incomingCount(s, id) ? ` (incl. ${incomingCount(s, id)} already on order)` : ''}`).join(' · ') + ' stocked after delivery') : null,
         warns ? h('div', { class: 'warn small' }, `${warns} warning${warns > 1 ? 's' : ''}. Lines marked ⚠ have problems.`) : null);
     },
     items: items(),
@@ -208,6 +213,24 @@ function editLine(c: GameController, supplierId: string, line: CartLine, cart: C
       draft.quantity = draft.quantity >= maxQty() ? 1 : Math.min(maxQty(), draft.quantity < 5 ? 5 : draft.quantity + 5);
       scr.refresh(items());
     };
+    const chooseTank = () => {
+      const pickItems: MenuItem[] = s.tankOrder.map((id) => {
+        const tk = s.tanks[id];
+        const trial = { ...draft, tankId: id };
+        const ws = lineWarnings(s, trial, [...cart.filter((l) => l !== line), trial]).filter((w) => w.severity === 'warn');
+        const total = projectedStocking(s, id, [...cart.filter((l) => l !== line), trial]);
+        const inc = incomingSummary(s, id);
+        return {
+          label: `${tk.name}${inc ? ' · on order' : ''}${ws.length ? ' ⚠' : ''}`,
+          right: `${Math.round(total * 100)}% after`,
+          hint: `${tk.litres}L ${tk.water.temperature.toFixed(0)}°C. ${speciesSummary(s, id) || 'Empty'}.${inc ? ` ${inc}.` : ''}${ws.length ? ` ⚠ ${ws[0].text}` : ''}`,
+          action: () => { draft.tankId = id; c.ui.remove(pick); scr.refresh(items()); },
+        };
+      });
+      pickItems.push({ label: 'Back', action: () => c.ui.remove(pick) });
+      const pick = c.ui.menu({ title: `Deliver ${draft.quantity} ${sp.commonName} to…`, body: h('div', { class: 'small' }, '"after" = stocking once this line and anything already on order arrive. "on order" = livestock already ordered for that tank.'), items: pickItems, className: 'wide tall' });
+      pick.menu.select(Math.max(0, s.tankOrder.indexOf(draft.tankId)));
+    };
     const cycle = (d: number) => {
       const i = s.tankOrder.indexOf(draft.tankId);
       draft.tankId = s.tankOrder[(i + d + s.tankOrder.length) % s.tankOrder.length];
@@ -218,9 +241,10 @@ function editLine(c: GameController, supplierId: string, line: CartLine, cart: C
       {
         label: `Deliver to ${t.name}${warns.length ? ' ⚠' : ''}`,
         right: `${t.litres}L ${t.water.temperature.toFixed(0)}°C`,
-        hint: warns[0]?.text ?? `Looks suitable. Currently: ${speciesSummary(s, t.id) || 'empty'}.`,
+        hint: warns[0]?.text ?? `Looks suitable. Currently: ${speciesSummary(s, t.id) || 'empty'}.${incomingSummary(s, t.id) ? ` ${incomingSummary(s, t.id)}.` : ''}`,
         onLeft: () => cycle(-1),
         onRight: () => cycle(1),
+        action: () => chooseTank(),
       },
       {
         label: isNew ? 'Add to order' : 'Update line',
@@ -243,6 +267,8 @@ function editLine(c: GameController, supplierId: string, line: CartLine, cart: C
       const res = assess();
       return h('div', null,
         h('div', { class: 'small' }, `${sp.description} Needs ${sp.temperature.min}-${sp.temperature.max}°C, pH ${sp.ph.min}-${sp.ph.max}, ${sp.minTankLitres}L+, groups of ${sp.minGroupSize}+.`),
+        h('div', { class: 'section-title' }, `${s.tanks[draft.tankId].name} with this line`),
+        outlookEl(c, draft.tankId, [...cart.filter((l) => l !== line), draft], 'in this order'),
         res.length
           ? h('div', null, ...res.map((w) => h('div', { class: `${w.severity === 'warn' ? 'warn' : 'dim'} small` }, `${w.severity === 'warn' ? '⚠ ' : ''}${w.text}`)))
           : h('div', { class: 'good small' }, 'Suitable for the chosen tank.'),
@@ -259,7 +285,7 @@ export function openStockroom(c: GameController): void {
     { label: 'Fish food', header: true },
     locked(c, 'buy', { label: `Buy food tub (+${FOOD_TUB.units})`, right: formatMoney(FOOD_TUB.cost), hint: `In stock: ${Math.floor(s.foodUnits)} portions`, action: () => { const r = buyFoodTub(s); c.ui.toast(r.message, r.ok ? 'good' : 'warn'); scr.refresh(items()); } }),
     { label: 'Dry goods for sale (packs of 5)', header: true },
-    ...DRY_GOODS.filter((g) => !g.marine || s.unlocks.marine).map((g) => locked(c, 'buy', {
+    ...DRY_GOODS.filter((g) => (!g.marine || s.unlocks.marine) && (!g.floor || s.unlocks.floors.includes(g.floor))).map((g) => locked(c, 'buy', {
       label: g.name,
       right: `${s.dryGoods[g.id] ?? 0} · ${formatMoney(g.wholesale * 5)}`,
       hint: `${g.description} Sells for ${formatMoney(g.retail)}.`,

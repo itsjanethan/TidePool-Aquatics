@@ -101,6 +101,10 @@ export interface WaterState {
   cloudiness: number; // 0..1
   /** Marine tanks: salinity in ppt (35 ppt ≈ SG 1.026). Absent for freshwater. */
   salinity?: number;
+  /** Marine tanks: alkalinity (dKH), calcium and magnesium (ppm). Absent = natural seawater (see sim/reef.ts). */
+  alk?: number;
+  calcium?: number;
+  magnesium?: number;
 }
 
 export interface DecorItem {
@@ -112,8 +116,10 @@ export interface DecorItem {
   layer: 0 | 1 | 2;
   flip: boolean;
   health: number; // plants 0..1
-  /** Plants: growth size (1 = mature). Hardscape: always 1. */
+  /** Plants and corals: growth size (1 = mature). Hardscape: always 1. */
   size: number;
+  /** Corals: 0..1 bleaching (loss of colour from heat or too much light). */
+  bleach?: number;
 }
 
 /** A loose plant in the shop (cutting or uprooted plant), for planting or sale. */
@@ -173,6 +179,58 @@ export interface TankState {
   forSale?: boolean;
   /** Marine: protein skimmer installed. */
   skimmer?: boolean;
+  /** Reef equipment and chemistry history (marine tanks; absent = standard light, no wavemaker). */
+  reef?: ReefState;
+  /** Enclosure kind (vivarium floor). Absent = aquarium. */
+  habitat?: 'vivarium' | 'terrarium' | 'paludarium';
+  /** Enclosure climate and husbandry (vivariums, terrariums, paludariums). */
+  terra?: TerraState;
+}
+
+/** Climate and care state of an enclosure (see sim/terrarium.ts). */
+export interface TerraState {
+  /** Relative humidity, %. */
+  humidity: number;
+  /** Air temperature, °C. */
+  airTemp: number;
+  /** Substrate moisture 0 (dust dry) .. 1 (soaked). */
+  moisture: number;
+  /** Mould on the substrate and decor, 0..1. */
+  mould: number;
+  /** Droppings and dead feeders, 0..1. */
+  waste: number;
+  /** Ventilation setting 0..1 (mesh opening). */
+  vent: number;
+  /** Automatic mister fitted. */
+  mister: boolean;
+  /** Basking lamp thermostat, °C; null = no lamp. */
+  heatLamp: number | null;
+  uvb: boolean;
+  /** Springtails and isopods living in the substrate. */
+  bioactive: boolean;
+  /** Calcium supplement in the animals' diet, 0..1 (dusted feeds top it up). */
+  calcium: number;
+  /** Water dish freshness, 0 (empty, fouled) .. 1. */
+  dish: number;
+  /** Minute of the last misting (visual mist and droplets). */
+  lastMist?: number;
+}
+
+export interface ReefState {
+  /** Reef light id (data/reef.ts REEF_LIGHTS). */
+  light: string;
+  /** Wavemaker level 0..2. */
+  wavemaker: number;
+  /** Dosing pump: tops alkalinity and calcium up each night from stock. */
+  doser?: boolean;
+  /** Alkalinity at the start of the day, to measure swings. */
+  alkDayStart?: number;
+  /** Largest swing seen today (dKH). */
+  alkSwing?: number;
+  /** Day the swing figures belong to. */
+  day?: number;
+  /** Dosing pump: fractional supplement units used (whole units leave the stockroom). */
+  doserAcc?: { alk: number; calcium: number };
 }
 
 export type CustomerGoal = 'browse' | 'buy_specific' | 'advice_stocking' | 'problem' | 'buy_equipment';
@@ -215,6 +273,8 @@ export interface CustomerState {
     tankLitres?: number;
     heated?: boolean;
     problemId?: string;
+    /** Enclosure keepers asking advice: the kind of enclosure they own. */
+    habitat?: 'vivarium' | 'terrarium';
   };
   phase: CustomerPhase;
   x: number;

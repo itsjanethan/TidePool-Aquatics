@@ -3,6 +3,7 @@
  * of the tank menu, issue detail screens with predicted effects and links to
  * the action that helps, and the full status page.
  */
+import { openReefCare } from './reef';
 import type { GameController } from '../../game/GameController';
 import { getSpecies } from '../../data/species';
 import { FIXES, type FixId } from '../../sim/preview';
@@ -29,8 +30,8 @@ export function overviewEl(report: TankReport, maxIssues = 3): HTMLElement {
     'div',
     { class: 'tank-overview' },
     h('div', { class: `overall overall-${report.status}` }, `Overall: ${STATUS_LABEL[report.status].toUpperCase()}`),
-    report.status === 'empty' ? null : scoreRow('Fish welfare', s.welfare, 'welfare'),
-    scoreRow('Water', s.water, 'water_quality'),
+    report.status === 'empty' ? null : scoreRow(report.kind === 'aquarium' ? 'Fish welfare' : 'Animal welfare', s.welfare, 'welfare'),
+    report.kind === 'land' ? scoreRow('Climate', s.water, 'humidity') : scoreRow(report.kind === 'paludarium' ? 'Water & climate' : 'Water', s.water, 'water_quality'),
     scoreRow('Cleanliness', s.cleanliness, 'cleanliness'),
     report.status === 'empty' ? null : scoreRow('Habitat', s.habitat, 'habitat'),
     scoreRow('Stocking', s.stocking, 'stocking', true),
@@ -60,6 +61,7 @@ export function navigate(c: GameController, tankId: string, nav: NavId, parent?:
   else if (nav === 'waterTest') openWaterTest(c, tankId);
   else if (nav === 'maintenance') openMaintenanceFor(c, tankId, parent);
   else if (nav === 'order') openSuppliers(c);
+  else if (nav === 'reef') openReefCare(c, tankId, parent);
 }
 
 function actionItem(c: GameController, tankId: string, a: DiagAction, refresh: () => void, parent?: MenuScreen): MenuItem {

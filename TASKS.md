@@ -4,6 +4,7 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 
 ## Next up (priority order)
 
+0. **Comparison follow-ups (COMPARISON.md, ranked).** Start with standing orders for consumables, the real-device pass, floor overlays and staff suggestions as an inbox. Acceptance per item in COMPARISON.md's table; tests for each sim change; screenshots for each UI change.
 1. **Public playtest of v0.4.0.** Deploy to GitHub Pages, collect Copy Playtest Report texts. Watch for: diagnostics wording, whether players find Help (H / ?), staff wage balance at level 2, Idle Mode clarity, whether the progression requirements feel reachable. Acceptance: findings in TESTING.md, tuned numbers in DECISIONS.md.
 2. **Human playtest and balance pass (v0.2.0 carry-over).** Watch a first-time player for 3 in-game days and a returning player for 2 weeks. Check day 1 to 3 feel busy but fair, breeding is discovered without help, mid-game money growth feels rewarding (long-run bot only earns £10 to £15/day). Acceptance: documented findings in TESTING.md and tuned numbers in DECISIONS.md.
 2. **Visual polish follow-ups.** Egg sprites on glass and plants for egg layers; disease visuals once disease exists; leaf litter and blackwater tannin as an aquascape option; hand-tuned per-species profile tweaks in the gallery (pleco head width, cory dorsal spine); the bot should scoop duckweed in long runs.
@@ -20,8 +21,8 @@ Agents: pick the highest item in **Next up** that is not blocked, mark it IN PRO
 
 Later expansions, in this order (roadmap only; see ROADMAP.md, do not start before Milestones 2 to 4):
 
-1. Corals and aquatic invertebrates (freshwater shrimp, snails and crayfish; marine inverts and corals; alkalinity, calcium and magnesium; reef lighting and flow; fragging).
-2. Vivariums, paludariums and related habitats (frogs and other amphibians, spiders, reptiles, land invertebrates; humidity, misting, temperature gradients, UVB, ventilation; feeder insects).
+1. Corals and aquatic invertebrates: first pass DONE (feat/reef-floor). Remaining: crayfish, mussels, urchins and starfish, copper sensitivity, berried females and colour grades.
+2. Vivariums, paludariums and related habitats: first pass DONE (feat/vivarium-floor). Remaining: riparium, newts and axolotls, shedding and moulting, temperature gradients beyond the basking spot, feeder cultures as living stock, herp staff skills.
 3. Ant keeping as a dedicated expansion (formicaria, colony growth, brood, foraging, hibernation).
 
 Follow-ups from 0.5:
@@ -55,6 +56,8 @@ Other:
 
 ## Done
 
+- 2026-10-04: Incoming livestock by destination tank: parcel tag in the shop, On order in the tank menu and tank view, outlook in ordering (now, on order, after delivery, stocking breakdown), destination picker with stocking after delivery, warnings that include placed orders, order cancellation, staff proposals aware of outstanding orders. Tests in `tests/incoming.test.ts`.
+- 2026-10-04: Aquascape items explain what they give, which score components they change, the score now and after (and once grown), caps, fish care and trade-offs, all from the real scoring; on-screen placement buttons for touch. Tests in `tests/scapepreview.test.ts`.
 - 2026-10-04: Rapid taps no longer zoom the page on mobile (touch-action plus touch guards on controls and the game area), no duplicate actions, rotation releases held buttons, menu opens during a tap-to-move walk. Tests in `tests/tapguard.test.ts`; emulated check `scripts/tap-zoom-check.mjs`. Real iPhone check still to do.
 - 2026-10-03: Not for sale for individual fish: enforced in `sellable`, `completeSale` and `sellFishToTrade`; protecting releases reservations and updates the order; fish details toggle, badges in livestock lists and the fish card, bulk select with feedback; unprotect always confirms. Tests in `tests/protection.test.ts`.
 - 2026-10-03: Aquarium visuals tied to tank state (pearling, mulm, surface film, hardscape shade and algae, light ramp, surface reflections on High), Auto quality (steps down only), reduced motion setting, staggered plant redraws, bounded per-tank texture caches. Profiling tools and before/after numbers in TESTING.md (headless, CPU-rasterised; no real-device numbers). Tests in `tests/visuals.test.ts`.

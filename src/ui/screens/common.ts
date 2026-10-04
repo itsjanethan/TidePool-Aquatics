@@ -1,10 +1,15 @@
 /** Shared UI fragments: tank status, water readout, fish cards. */
+import { reefChem } from '../../sim/reef';
+import { isLandOnly } from '../../sim/terrarium';
+import { enclosureLine } from './enclosure';
+import { REEF_TARGETS } from '../../data/reef';
 import { MARINE_SAFE, sgLabel, TARGET_SALINITY } from '../../sim/marine';
 import { diagnoseTank, STATUS_LABEL } from '../../sim/tankDiagnostics';
 import { paintFishPortrait } from '../../render/art/fishPainter';
+import { critterColours, isCritterShape, paintCritterSheet } from '../../render/art/critterArt';
 import { phenotypeOf } from '../../sim/phenotype';
 import { clamp, formatMoney, round } from '../../core/math';
-import { getFilter, getHeater } from '../../data/catalog';
+import { getDecor, getFilter, getHeater } from '../../data/catalog';
 import { getSpecies } from '../../data/species';
 import { summarizeAquascape } from '../../sim/aquascape';
 import { stockingRatio, stressTarget } from '../../sim/compat';
@@ -34,11 +39,13 @@ export function tankHeader(state: GameState, tank: TankState, withStatus = true)
   return h(
     'div',
     { class: 'tank-header' },
-    h('div', { class: 'row' }, h('span', null, `${tank.litres}L · ${tank.lengthCm}cm long`), h('span', null, `${tank.water.temperature.toFixed(1)}°C`)),
-    h('div', { class: 'row' }, h('span', null, `${filter.name} · ${heater}`)),
+    tank.habitat
+      ? h('div', { class: 'row' }, h('span', null, enclosureLine(tank)))
+      : h('div', { class: 'row' }, h('span', null, `${tank.litres}L · ${tank.lengthCm}cm long`), h('span', null, `${tank.water.temperature.toFixed(1)}°C`)),
+    isLandOnly(tank) ? null : h('div', { class: 'row' }, h('span', null, `${filter.name} · ${heater}`)),
     !withStatus ? null : h('div', { class: 'row' }, h('span', null, 'Stocking'), meter(Math.min(1, ratio), ratio > 1 ? 'bad' : ratio > 0.8 ? 'warn' : 'good'), h('span', null, `${Math.round(ratio * 100)}%`)),
     h('div', { class: 'row' }, h('span', null, 'Aquascape'), meter(scape.beauty / 100, 'blue'), h('span', null, `${Math.round(scape.beauty)}`)),
-    h('div', { class: 'row' }, h('span', { class: `tag tag-${cyc}` }, cyc.toUpperCase()), tank.forSale === false ? h('span', { class: 'tag tag-closed' }, 'NOT FOR SALE') : h('span', null, ''), withStatus ? h('span', { class: 'status' }, tankStatusLine(state, tank)) : h('span', null, '')),
+    h('div', { class: 'row' }, isLandOnly(tank) ? h('span', { class: 'tag tag-cycled' }, (tank.habitat ?? '').toUpperCase()) : h('span', { class: `tag tag-${cyc}` }, cyc.toUpperCase()), tank.forSale === false ? h('span', { class: 'tag tag-closed' }, 'NOT FOR SALE') : h('span', null, ''), withStatus ? h('span', { class: 'status' }, tankStatusLine(state, tank)) : h('span', null, '')),
   );
 }
 
@@ -88,6 +95,14 @@ export function waterReadings(state: GameState, tank: TankState): Reading[] {
       label: 'Salinity', value: sgLabel(sal), level: bad ? 'bad' : warn ? 'warn' : 'good',
       note: sal > TARGET_SALINITY + 0.8 ? 'Rising from evaporation. Top off with RO water.' : sal < TARGET_SALINITY - 0.8 ? 'Low. Water changes need salt mix.' : 'Right on target (SG 1.026).',
     });
+  }
+  if (tank.waterType === 'marine') {
+    const c = reefChem(w);
+    const lv = (v: number, r: [number, number]): Reading['level'] => (v < r[0] * 0.93 || v > r[1] * 1.1 ? 'bad' : v < r[0] || v > r[1] ? 'warn' : 'good');
+    const corals = tank.decor.some((d) => getDecor(d.defId).kind === 'coral');
+    out.push({ label: 'Alkalinity', value: `${c.alk.toFixed(1)} dKH`, level: corals ? lv(c.alk, REEF_TARGETS.alk) : 'good', note: corals ? `Reef target ${REEF_TARGETS.alk[0]}-${REEF_TARGETS.alk[1]}. Stony corals use it up.` : 'Only matters once stony corals are added.' });
+    out.push({ label: 'Calcium', value: `${Math.round(c.calcium)} ppm`, level: corals ? lv(c.calcium, REEF_TARGETS.calcium) : 'good', note: `Reef target ${REEF_TARGETS.calcium[0]}-${REEF_TARGETS.calcium[1]}.` });
+    out.push({ label: 'Magnesium', value: `${Math.round(c.magnesium)} ppm`, level: corals ? lv(c.magnesium, REEF_TARGETS.magnesium) : 'good', note: `Reef target ${REEF_TARGETS.magnesium[0]}-${REEF_TARGETS.magnesium[1]}.` });
   }
   let ghNote = 'Fine.';
   let ghLevel: Reading['level'] = 'good';
@@ -201,7 +216,14 @@ export function speciesSummary(state: GameState, tankId: string): string {
 
 /** A large painted portrait of this individual (same painter as the tank sprites). */
 export function specimen(f: FishEntity): HTMLElement {
-  const img = paintFishPortrait(phenotypeOf(f), Math.round(150 * clamp(f.sizeCm / f.adultSizeCm, 0.4, 1.05)));
+  const sp = getSpecies(f.speciesId);
+  const L = Math.round(150 * clamp(f.sizeCm / f.adultSizeCm, 0.4, 1.05));
+  const img = isCritterShape(sp.body.shape)
+    ? (() => {
+        const sheet = paintCritterSheet(sp.body.shape, critterColours(getMorph(sp, f.morphId)), L * (sp.body.shape === 'shrimp' ? 0.55 : 0.6), !f.alive);
+        return { width: sheet.width, height: sheet.height, data: sheet.frames[1] };
+      })()
+    : paintFishPortrait(phenotypeOf(f), L);
   const cv = document.createElement('canvas');
   cv.width = img.width;
   cv.height = img.height;
