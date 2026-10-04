@@ -124,9 +124,10 @@ void main() {
       float c = pow((c1 + c2) * 0.5, 1.3) * 1.9;
       // Lit surfaces catch it; the bed most, open water a little (particles).
       float onBed = smoothstep(-0.06, 0.02, depth - 0.92);
-      float surfaceK = mix(0.35, 1.0, onBed) * smoothstep(0.0, 0.1, lum);
+      float surfaceK = mix(0.1, 1.0, max(onBed, 0.45 * smoothstep(0.55, 0.85, depth))) * smoothstep(0.0, 0.1, lum);
       float k = uAmt.x * c * surfaceK * lightHere * lightTop * uLit * (1.0 - 0.35 * depth);
-      col += col * k * 2.2 + uLightCol * k * 0.07;
+      // Bright beds (white sand) take less so the network never clips to white.
+      col += col * k * 2.2 * (1.0 - 0.6 * smoothstep(0.35, 0.85, lum)) + uLightCol * k * 0.07;
     }
     // Light shafts from the surface.
     if (uAmt.y > 0.0) {

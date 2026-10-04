@@ -12,6 +12,7 @@ import { Rng } from '../../core/rng';
 import type { DecorDef } from '../../data/catalog';
 import type { CoralForm } from '../../data/reef';
 import { hexToRgb, mix, shade } from './pixel';
+import { relief } from './relief';
 
 export const CORAL_FRAMES = 6;
 /** Colonies are drawn larger than their catalogue footprint so they read as reef, not trinkets. */
@@ -56,7 +57,8 @@ interface Paint {
 function dot(p: Paint, x: number, y: number, c: string, w = 1, h = 1): void {
   if (x + w < 0 || y + h < 0 || x >= p.w || y >= p.h) return;
   p.ctx.fillStyle = c;
-  p.ctx.fillRect(p.ox + Math.round(Math.max(0, x)), Math.round(Math.max(0, y)), Math.max(1, Math.round(Math.min(w, p.w - x))), Math.max(1, Math.round(h)));
+  // Sub-pixel rectangles: frames are painted supersampled and filtered down.
+  p.ctx.fillRect(p.ox + Math.max(0, x), Math.max(0, y), Math.max(1, Math.min(w, p.w - x)), Math.max(1, h));
 }
 
 function disc(p: Paint, cx: number, cy: number, rx: number, ry: number, c: string): void {
@@ -314,29 +316,49 @@ function paintForm(form: CoralForm, p: Paint): void {
   }
 }
 
-/** Builds (or reuses) the sheet for a coral's current look. */
+/** Supersampling factor for coral frames (painted large, filtered down). */
+const SS = 2;
+
+/**
+ * Builds (or reuses) the sheet for a coral's current look. Frames are painted
+ * at SS times the size and filtered down (soft, anti-aliased tissue), then
+ * relit as micro-relief so polyps, ridges and skeleton read as solid living
+ * tissue; drawn with linear filtering. `w`/`h` are in texture pixels.
+ */
 export function ensureCoralTexture(scene: Phaser.Scene, look: CoralLook): { key: string; w: number; h: number } {
-  const key = coralKey(look);
+  const key = `${coralKey(look)}:v2`;
   const g = coralGrowth(look.size);
   const w = Math.max(6, Math.round(look.def.width * look.scale * g * CORAL_DISPLAY));
   const h = Math.max(6, Math.round(look.def.height * look.scale * g * CORAL_DISPLAY));
   if (scene.textures.exists(key)) return { key, w, h };
   const t = look.def.coral!;
   const ill = (c: string) => mix(mix(c, '#f4f2ee', look.bleach * 0.85), '#7a6a4a', (1 - look.health) * 0.45);
-  const tex = scene.textures.createCanvas(key, w * CORAL_FRAMES, h)!;
+  const fw = w + 1;
+  const tex = scene.textures.createCanvas(key, fw * CORAL_FRAMES, h)!;
   const ctx = tex.getContext();
-  ctx.imageSmoothingEnabled = false;
+  const big = document.createElement('canvas');
+  big.width = w * SS;
+  big.height = h * SS;
+  const bctx = big.getContext('2d')!;
   // Detail scale: canvas pixels per reference pixel, a little smaller on young colonies.
-  const S = Math.max(1, (w / look.def.width) * 0.9);
+  const S = Math.max(1, (w / look.def.width) * 0.9) * SS;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   for (let f = 0; f < CORAL_FRAMES; f++) {
+    bctx.clearRect(0, 0, big.width, big.height);
     paintForm(t.form, {
-      ctx, ox: f * w, w, h, S,
+      ctx: bctx, ox: 0, w: w * SS, h: h * SS, S,
       base: ill(t.colours.base), tip: ill(t.colours.tip), ext: look.ext,
       phase: (f / CORAL_FRAMES) * Math.PI * 2, rng: new Rng(look.seed * 31 + 7),
     });
+    ctx.drawImage(big, 0, 0, big.width, big.height, f * fw, 0, w, h);
   }
+  const img = ctx.getImageData(0, 0, fw * CORAL_FRAMES, h);
+  relief({ w: fw * CORAL_FRAMES, h, data: img.data }, 0.45, look.seed, look.scale / 2);
+  ctx.putImageData(img, 0, 0);
   tex.refresh();
-  for (let f = 0; f < CORAL_FRAMES; f++) tex.add(String(f), 0, f * w, 0, w, h);
+  tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+  for (let f = 0; f < CORAL_FRAMES; f++) tex.add(String(f), 0, f * fw, 0, w, h);
   return { key, w, h };
 }
 

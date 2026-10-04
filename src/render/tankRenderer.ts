@@ -294,6 +294,27 @@ export class TankRenderer {
     this.applyOpticsMode();
   }
 
+  /**
+   * A vertical cylinder (tube, heater, filter body) shaded across its width:
+   * lit from the upper left, a narrow highlight, a darker far edge. Flat on
+   * the Canvas renderer, which has no gradient fills.
+   */
+  private cylinder(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, c: number, a = 1): void {
+    if (!this.smoothPlants) {
+      g.fillStyle(c, a).fillRect(x, y, w, h);
+      return;
+    }
+    const k = (m: number) => {
+      const r = Math.min(255, ((c >> 16) & 255) * m);
+      const gg = Math.min(255, ((c >> 8) & 255) * m);
+      const b = Math.min(255, (c & 255) * m);
+      return (r << 16) | (gg << 8) | b;
+    };
+    const s = x + w * 0.32;
+    g.fillGradientStyle(k(0.62), k(1.45), k(0.62), k(1.45), a).fillRect(x, y, s - x, h);
+    g.fillGradientStyle(k(1.45), k(0.45), k(1.45), k(0.45), a).fillRect(s, y, x + w - s, h);
+  }
+
   /** Hardscape painted at the view's detail; sizes returned in tank canvas pixels. */
   private hardscape(def: ReturnType<typeof getDecor>, scale: number): { key: string; w: number; h: number } {
     const tex = ensureHardscapeTexture(this.scene, def, scale * this.detail);
@@ -428,28 +449,28 @@ export class TankRenderer {
       this.buildEnclosureKit(g);
       return;
     }
+    const cyl = (x: number, y: number, w: number, h: number, c: number, a = 1) => this.cylinder(g, x, y, w, h, c, a);
     if (filter.id === 'sponge') {
       const fx = VIEW.right - 34 * R;
-      g.fillStyle(0x2a2a30).fillRect(fx - 2 * R, VIEW.floor - 42 * R, 24 * R, 4 * R);
-      for (let y = 0; y < 34 * R; y++) {
-        const c = Phaser.Display.Color.GetColor(52 + (y % 6 < 3 ? 6 : 0), 52, 62);
-        g.fillStyle(c).fillRect(fx, VIEW.floor - 38 * R + y, 20 * R, 1);
+      cyl(fx - 2 * R, VIEW.floor - 42 * R, 24 * R, 4 * R, 0x2a2a30);
+      // Foam: a dark cylinder with an open-cell texture.
+      cyl(fx, VIEW.floor - 38 * R, 20 * R, 34 * R, 0x3c3c48);
+      for (let k = 0; k < 160; k++) {
+        const px = fx + vr.range(1, 19) * R;
+        const py = VIEW.floor - 38 * R + vr.range(1, 33) * R;
+        g.fillStyle(0x15151b, 0.5).fillCircle(px, py, vr.range(0.3, 0.8) * R);
       }
-      g.fillStyle(0x1f1f26, 0.6).fillRect(fx + 15 * R, VIEW.floor - 38 * R, 5 * R, 34 * R);
-      g.fillStyle(0xb8c0ca).fillRect(fx + 9 * R, VIEW.surface - 4 * R, 2 * R, VIEW.floor - VIEW.surface - 38 * R);
-      g.fillStyle(0xffffff, 0.35).fillRect(fx + 9 * R, VIEW.surface - 4 * R, R, VIEW.floor - VIEW.surface - 38 * R);
+      cyl(fx + 9 * R, VIEW.surface - 4 * R, 2 * R, VIEW.floor - VIEW.surface - 38 * R, 0xb8c0ca, 0.85);
     } else if (filter.id === 'hang_on') {
-      g.fillStyle(0x30343e).fillRect(VIEW.right - 58 * R, VIEW.frameTop - 4 * R, 46 * R, 22 * R);
+      cyl(VIEW.right - 58 * R, VIEW.frameTop - 4 * R, 46 * R, 22 * R, 0x30343e);
       g.fillStyle(0x4a505e).fillRect(VIEW.right - 56 * R, VIEW.frameTop - 2 * R, 42 * R, 3 * R);
-      g.fillStyle(0x262a33).fillRect(VIEW.right - 30 * R, VIEW.surface, 7 * R, 100 * R);
-      g.fillStyle(0x3a3f4c).fillRect(VIEW.right - 30 * R, VIEW.surface, 2 * R, 100 * R);
+      cyl(VIEW.right - 30 * R, VIEW.surface, 7 * R, 100 * R, 0x2a2e38);
       g.fillStyle(0x9fd6ff, 0.45).fillRect(VIEW.right - 52 * R, VIEW.surface - 2 * R, 18 * R, 8 * R);
     } else {
-      g.fillStyle(0x262a33).fillRect(VIEW.right - 28 * R, VIEW.surface - 6 * R, 6 * R, 160 * R);
-      g.fillStyle(0x3a3f4c).fillRect(VIEW.right - 28 * R, VIEW.surface - 6 * R, 2 * R, 160 * R);
-      for (let k = 0; k < 6; k++) g.fillStyle(0x1a1d24).fillRect(VIEW.right - 29 * R, VIEW.surface + (120 + k * 5) * R, 8 * R, 2 * R);
-      g.fillStyle(0x262a33).fillRect(VIEW.left + 40 * R, VIEW.surface - 6 * R, 6 * R, 40 * R);
-      g.fillStyle(0x262a33).fillRect(VIEW.left + 40 * R, VIEW.surface + 30 * R, 22 * R, 6 * R);
+      cyl(VIEW.right - 28 * R, VIEW.surface - 6 * R, 6 * R, 160 * R, 0x2a2e38);
+      for (let k = 0; k < 6; k++) cyl(VIEW.right - 29 * R, VIEW.surface + (120 + k * 5) * R, 8 * R, 2 * R, 0x1a1d24);
+      cyl(VIEW.left + 40 * R, VIEW.surface - 6 * R, 6 * R, 40 * R, 0x2a2e38);
+      g.fillStyle(0x262a33).fillRoundedRect(VIEW.left + 40 * R, VIEW.surface + 30 * R, 22 * R, 6 * R, 3 * R);
     }
     const wm = reefState(t).wavemaker ?? 0;
     if (t.waterType === 'marine' && wm > 0) {
@@ -472,11 +493,12 @@ export class TankRenderer {
     }
     if (t.heaterId) {
       const hx = VIEW.left + 12 * R;
-      g.fillStyle(0xcfe4ec, 0.35).fillRect(hx, VIEW.surface + 8 * R, 8 * R, 112 * R);
-      g.fillStyle(0xffffff, 0.35).fillRect(hx + R, VIEW.surface + 8 * R, R, 112 * R);
-      for (let y = 0; y < 90 * R; y += 3 * R) g.fillStyle(0x8a5a3a, 0.5).fillRect(hx + 3 * R, VIEW.surface + 20 * R + y, 2 * R, R);
-      g.fillStyle(0x2a2a30).fillRect(hx - R, VIEW.surface - 4 * R, 10 * R, 14 * R);
-      g.fillStyle(0x2a2a30).fillRect(hx - R, VIEW.surface + 118 * R, 10 * R, 4 * R);
+      // Glass heater: a clear tube with the element coil inside, black caps.
+      cyl(hx, VIEW.surface + 8 * R, 8 * R, 112 * R, 0xcfe4ec, 0.32);
+      for (let y = 0; y < 90 * R; y += 2 * R) g.fillStyle(0x8a5a3a, 0.45).fillEllipse(hx + 4 * R, VIEW.surface + 20 * R + y, 3.2 * R, 0.9 * R);
+      g.fillStyle(0xffffff, 0.5).fillRect(hx + 1.5 * R, VIEW.surface + 9 * R, 0.6 * R, 110 * R);
+      cyl(hx - R, VIEW.surface - 4 * R, 10 * R, 14 * R, 0x2a2a30);
+      cyl(hx - R, VIEW.surface + 118 * R, 10 * R, 4 * R, 0x2a2a30);
       this.heaterGlow = this.scene.add.rectangle(hx + 4 * R, VIEW.surface + 66 * R, 3 * R, 84 * R, 0xff7a2a, 0).setDepth(3.1).setBlendMode(Phaser.BlendModes.ADD);
     }
     this.equipment = g;
@@ -642,28 +664,41 @@ export class TankRenderer {
           }
         }
         ctx.putImageData(img, 0, 0);
+        // Spot algae: small hard green discs with a darker centre.
         for (let i = 0; i < 900; i++) {
           const x = r.range(0, W);
           const y = r.chance(0.6) ? r.range(H * 0.5, H) : r.range(0, H);
-          ctx.fillStyle = r.pick(['rgba(40,90,30,0.6)', 'rgba(60,110,40,0.5)']);
-          ctx.fillRect(Math.round(x), Math.round(y), RES, RES);
+          const rad = r.range(0.4, 1.1) * RES;
+          ctx.fillStyle = r.pick(['rgba(40,90,30,0.55)', 'rgba(60,110,40,0.45)']);
+          ctx.beginPath();
+          ctx.arc(x, y, rad, 0, Math.PI * 2);
+          ctx.fill();
         }
       });
       makeTexture(s, 'overlay-dirt', W, H, (ctx) => {
         const r = new Rng(91);
-        for (let i = 0; i < W * H * 0.02; i++) {
-          ctx.fillStyle = r.pick(['rgba(120,110,80,0.22)', 'rgba(140,130,90,0.16)']);
-          ctx.fillRect(Math.round(r.range(0, W)), Math.round(r.range(0, H)), RES, RES);
+        // Dried spots and water marks on the glass, then soft wipe streaks.
+        for (let i = 0; i < W * H * 0.006; i++) {
+          ctx.fillStyle = r.pick(['rgba(120,110,80,0.2)', 'rgba(140,130,90,0.14)', 'rgba(200,200,190,0.1)']);
+          ctx.beginPath();
+          ctx.arc(r.range(0, W), r.range(0, H), r.range(0.3, 1.4) * RES, 0, Math.PI * 2);
+          ctx.fill();
         }
+        ctx.lineCap = 'round';
         for (let i = 0; i < 70; i++) {
-          ctx.fillStyle = 'rgba(150,140,110,0.22)';
           const x = r.range(0, W);
           const y = r.range(0, H);
           const len = r.range(20, 80) * RES;
-          for (let k = 0; k < len; k += RES) ctx.fillRect(Math.round(x + k), Math.round(y + Math.sin(k * 0.05) * 3), RES, RES);
+          ctx.strokeStyle = 'rgba(150,140,110,0.14)';
+          ctx.lineWidth = r.range(1, 3) * RES;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          for (let k = 0; k < len; k += RES * 2) ctx.lineTo(x + k, y + Math.sin(k * 0.05) * 3);
+          ctx.stroke();
         }
       });
     }
+    for (const k of ['overlay-algae', 'overlay-dirt']) s.textures.get(k).setFilter(Phaser.Textures.FilterMode.LINEAR);
     return {
       cloud: s.add.rectangle(VIEW.left, VIEW.surface - 3 * RES, W, H, 0xdfe8e0, 0).setOrigin(0, 0).setDepth(30),
       algae: s.add.image(VIEW.left, VIEW.surface - 3 * RES, 'overlay-algae').setOrigin(0, 0).setDepth(31).setAlpha(0),
@@ -782,13 +817,14 @@ export class TankRenderer {
 
   private addCoralView(item: DecorItem, scale: number): void {
     const def = getDecor(item.defId);
-    const look = this.coralLook(item, scale);
+    const look = this.coralLook(item, scale * this.detail);
     const tex = ensureCoralTexture(this.scene, look);
+    const D = this.detail;
     useTexture(this.scene, 'coral', tex.key, 48, this.decorViews.filter((d) => d.coral).map((d) => d.coral!.sprite.texture.key));
     const spot = this.coralSpot(item);
-    const sprite = this.scene.add.sprite(Math.round(spot.x), Math.round(spot.y), tex.key, '0').setOrigin(0.5, 1).setDepth(spot.depth).setFlipX(item.flip);
-    const glow = this.scene.add.sprite(Math.round(spot.x), Math.round(spot.y), tex.key, '0').setOrigin(0.5, 1).setDepth(spot.depth + 0.01).setFlipX(item.flip).setBlendMode(Phaser.BlendModes.ADD).setTint(coralGlow(def)).setAlpha(0);
-    this.decorViews.push({ item, plant: null, image: null, x: spot.x, baseY: spot.y, layer: item.layer, coral: { sprite, glow, phase: (hashUid(item.uid) % 100) / 100 * CORAL_FRAMES, w: tex.w, h: tex.h } });
+    const sprite = this.scene.add.sprite(spot.x, spot.y, tex.key, '0').setOrigin(0.5, 1).setDepth(spot.depth).setFlipX(item.flip).setScale(1 / D);
+    const glow = this.scene.add.sprite(spot.x, spot.y, tex.key, '0').setOrigin(0.5, 1).setDepth(spot.depth + 0.01).setFlipX(item.flip).setBlendMode(Phaser.BlendModes.ADD).setTint(coralGlow(def)).setAlpha(0).setScale(1 / D);
+    this.decorViews.push({ item, plant: null, image: null, x: spot.x, baseY: spot.y, layer: item.layer, coral: { sprite, glow, phase: (hashUid(item.uid) % 100) / 100 * CORAL_FRAMES, w: tex.w / D, h: tex.h / D } });
   }
 
   /** Shows a translucent preview of a decor item; null clears it. */
@@ -805,8 +841,8 @@ export class TankRenderer {
     const scale = decorScale(this.tank);
     if (def.kind === 'plant') this.ghostPlant = buildPlant(def, scale, 4242, 1, spec.size);
     else if (def.kind === 'coral') {
-      const tex = ensureCoralTexture(this.scene, { def, scale, size: spec.size, health: 1, bleach: 0, ext: 1, seed: 4242 });
-      this.ghostImage = this.scene.add.image(0, 0, tex.key, '0').setOrigin(0.5, 1).setDepth(27);
+      const tex = ensureCoralTexture(this.scene, { def, scale: scale * this.detail, size: spec.size, health: 1, bleach: 0, ext: 1, seed: 4242 });
+      this.ghostImage = this.scene.add.image(0, 0, tex.key, '0').setOrigin(0.5, 1).setDepth(27).setScale(1 / this.detail);
     } else {
       const tex = this.hardscape(def, scale);
       this.ghostImage = this.scene.add.image(0, 0, tex.key).setOrigin(0.5, 1).setDepth(27).setScale(1 / this.detail);
@@ -1227,11 +1263,16 @@ export class TankRenderer {
     this.selectRing.clear();
     const sel = this.selectedId ? this.agents.get(this.selectedId) : null;
     if (sel) {
-      const bob = Math.round(Math.sin(this.time * 5) * 2 * RES);
-      const x = Math.round(sel.x);
-      const y = Math.round(sel.y - sel.height / 2 - 8 * RES + bob);
-      this.selectRing.fillStyle(0x20202a, 1).fillTriangle(x - 5 * RES, y - RES, x + 5 * RES, y - RES, x, y + 5 * RES);
-      this.selectRing.fillStyle(0xfff27a, 1).fillTriangle(x - 4 * RES, y, x + 4 * RES, y, x, y + 4 * RES);
+      // A soft glowing pointer that floats above the animal (smooth, sub-pixel).
+      const bob = (this.calm ? 0.5 : 1) * Math.sin(this.time * 4) * 1.6 * RES;
+      const x = sel.x;
+      const y = sel.y - sel.height / 2 - 8 * RES + bob;
+      const g = this.selectRing;
+      g.fillStyle(0xfff27a, 0.18).fillCircle(x, y + 1.5 * RES, 6 * RES);
+      g.fillStyle(0x14141c, 0.85).fillTriangle(x - 5.2 * RES, y - 1.2 * RES, x + 5.2 * RES, y - 1.2 * RES, x, y + 5.4 * RES);
+      if (this.smoothPlants) g.fillGradientStyle(0xfffbd0, 0xfffbd0, 0xf2c640, 0xf2c640, 1);
+      else g.fillStyle(0xfff27a, 1);
+      g.fillTriangle(x - 4 * RES, y, x + 4 * RES, y, x, y + 4 * RES);
     } else if (this.selectedId && !this.getState().fish[this.selectedId]) {
       this.selectedId = null;
     }
@@ -1504,20 +1545,36 @@ function hashUid(uid: string): number {
 
 function ensureSharedTextures(s: Phaser.Scene): void {
   if (!s.textures.exists('bubble')) {
-    makeTexture(s, 'bubble', 8 * RES, 8 * RES, (ctx) => {
-      const r = 4 * RES;
-      for (let y = 0; y < 2 * r; y++) {
-        for (let x = 0; x < 2 * r; x++) {
-          const d = Math.hypot(x + 0.5 - r, y + 0.5 - r) / r;
-          if (d > 1) continue;
-          const rim = d > 0.72 ? 0.75 : 0.12;
-          ctx.fillStyle = `rgba(225,245,255,${rim})`;
-          ctx.fillRect(x, y, 1, 1);
-        }
-      }
+    // An air bubble seen in water: nearly clear centre, a bright refracting rim
+    // (brighter below, where it focuses light from above), a window glint.
+    const B = 8 * RES * 3;
+    const tex = makeTexture(s, 'bubble-hd', B, B, (ctx) => {
+      const r = B / 2 - 1;
+      const g = ctx.createRadialGradient(B / 2, B / 2, r * 0.2, B / 2, B / 2, r);
+      g.addColorStop(0, 'rgba(225,245,255,0.06)');
+      g.addColorStop(0.7, 'rgba(225,245,255,0.16)');
+      g.addColorStop(0.92, 'rgba(235,250,255,0.85)');
+      g.addColorStop(1, 'rgba(200,230,245,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(B / 2, B / 2, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(B / 2, B / 2 + r * 0.55, r * 0.5, r * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.fillRect(Math.round(r * 0.6), Math.round(r * 0.55), RES, RES);
+      ctx.beginPath();
+      ctx.ellipse(B / 2 - r * 0.35, B / 2 - r * 0.38, r * 0.2, r * 0.13, -0.6, 0, Math.PI * 2);
+      ctx.fill();
     });
+    tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    // Same display size as before: a frame a third of the painted size.
+    tex.add('__ds', 0, 0, 0, B, B);
+    makeTexture(s, 'bubble', 8 * RES, 8 * RES, (ctx) => {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(tex.getSourceImage() as HTMLCanvasElement, 0, 0, B, B, 0, 0, 8 * RES, 8 * RES);
+    }).setFilter(Phaser.Textures.FilterMode.LINEAR);
   }
   if (!s.textures.exists('caustics')) {
     const TW = 160 * RES;
@@ -1644,8 +1701,8 @@ function ensureBackground(s: Phaser.Scene, id: string, height = VIEW.subBottom -
       } else if (id === 'blue') {
         k *= 0.94 + n2(x / (40 * RES), y / (40 * RES), 8) * 0.12;
       }
-      // Fine dithering keeps gradients pixel-like.
-      if ((x + y) % 2 === 0) k += 0.012;
+      // A whisper of grain so long gradients never band.
+      k += (n2(x * 0.9, y * 0.9, 31) - 0.5) * 0.02;
       const i = (y * W + x) * 4;
       d[i] = Math.min(255, r * k);
       d[i + 1] = Math.min(255, g * k);
@@ -1653,9 +1710,49 @@ function ensureBackground(s: Phaser.Scene, id: string, height = VIEW.subBottom -
       d[i + 3] = 255;
     }
   }
+  // Depth of field: the back wall sits well behind the focal plane, so it is soft.
+  if (id === 'rocky' || id === 'none' || id === 'blue') boxBlur(d, W, waterH, id === 'rocky' ? 2 * RES : RES, 2);
   ctx.putImageData(img, 0, 0);
   tex.refresh();
+  tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
   return key;
+}
+
+/** In-place separable box blur of RGBA data (radius r px, `passes` times). */
+function boxBlur(d: Uint8ClampedArray, w: number, h: number, r: number, passes: number): void {
+  const tmp = new Float32Array(Math.max(w, h) * 4);
+  for (let p = 0; p < passes; p++) {
+    for (const horizontal of [true, false]) {
+      const lines = horizontal ? h : w;
+      const len = horizontal ? w : h;
+      for (let l = 0; l < lines; l++) {
+        const idx = (k: number) => (horizontal ? l * w + k : k * w + l) * 4;
+        for (let k = 0; k < len; k++) {
+          let rr = 0;
+          let gg = 0;
+          let bb = 0;
+          let n = 0;
+          for (let o = -r; o <= r; o++) {
+            const kk = Math.min(len - 1, Math.max(0, k + o));
+            const i = idx(kk);
+            rr += d[i];
+            gg += d[i + 1];
+            bb += d[i + 2];
+            n++;
+          }
+          tmp[k * 4] = rr / n;
+          tmp[k * 4 + 1] = gg / n;
+          tmp[k * 4 + 2] = bb / n;
+        }
+        for (let k = 0; k < len; k++) {
+          const i = idx(k);
+          d[i] = tmp[k * 4];
+          d[i + 1] = tmp[k * 4 + 1];
+          d[i + 2] = tmp[k * 4 + 2];
+        }
+      }
+    }
+  }
 }
 
 function hexRgb(h: string): [number, number, number] {

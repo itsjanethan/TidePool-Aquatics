@@ -57,6 +57,7 @@ class Buf {
     const tex = scene.textures.createCanvas(key, this.w, this.h)!;
     tex.getContext().putImageData(new ImageData(this.data, this.w, this.h), 0, 0);
     tex.refresh();
+    tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
   }
 }
 
@@ -150,12 +151,14 @@ export function ensureCondensation(scene: Phaser.Scene, w: number, h: number, re
   if (scene.textures.exists(key)) return key;
   const img = new Buf(w, h);
   const rng = new Rng(404);
-  for (let y = 0; y < h; y += res) {
-    for (let x = 0; x < w; x += res) {
+  // A soft fog, per texel, thicker low and at the edges, broken by a fine mottle of droplets.
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
       const edge = Math.max(0, 1 - Math.min(x, w - x) / (w * 0.18));
       const n = fbm(x / (40 * res), y / (40 * res), 9);
-      const a = (0.06 + (y / h) * 0.08 + edge * 0.12) * (0.6 + n * 0.8);
-      for (let k = 0; k < res; k++) for (let j = 0; j < res; j++) img.set(x + k, y + j, [230, 240, 244], a);
+      const fine = noise(x / (1.6 * res), y / (1.6 * res), 19);
+      const a = (0.06 + (y / h) * 0.08 + edge * 0.12) * (0.6 + n * 0.8) * (0.7 + fine * 0.6);
+      img.set(x, y, [230, 240, 244], a);
     }
   }
   // Beads of water, some running down in streaks.
@@ -163,10 +166,14 @@ export function ensureCondensation(scene: Phaser.Scene, w: number, h: number, re
     const x = rng.range(0, w);
     const y = rng.range(0, h);
     const r = rng.range(0.6, 2.2) * res;
-    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    // A bead: clear centre, a darker refracting rim below and a bright glint above.
+    for (let dy = -r - 1; dy <= r + 1; dy++) for (let dx = -r - 1; dx <= r + 1; dx++) {
       const d = Math.hypot(dx, dy) / r;
-      if (d > 1) continue;
-      img.set(x + dx, y + dy, d > 0.7 ? [200, 216, 224] : [244, 250, 255], d > 0.7 ? 0.5 : 0.28);
+      const cover = Math.min(1, Math.max(0, (1 - d) * r + 0.5));
+      if (cover <= 0) continue;
+      const rim = Math.max(0, d - 0.6) / 0.4;
+      const lower = dy > 0 ? 1 : 0.4;
+      img.set(x + dx, y + dy, rim > 0 ? [190, 206, 214] : [244, 250, 255], (0.2 + rim * 0.35 * lower) * cover);
     }
     img.set(x - r * 0.3, y - r * 0.4, [255, 255, 255], 0.9);
     if (rng.chance(0.08)) for (let k = 0; k < rng.range(10, 40) * res; k++) img.set(x + Math.sin(k * 0.1) * 0.6, y + r + k, [236, 246, 250], 0.32);
@@ -300,17 +307,26 @@ export function paintLandWall(id: string, W: number, H: number, res: number): Ui
       let c: RGB;
       let h: number;
       if (id === 'desert_wall') {
+        // Sandstone: beds of uneven thickness (a warped vertical coordinate), each
+        // with a rounded weathered face, crisp undercut, vertical joints, soft
+        // honeycomb pockets and iron staining.
         const wob = noise(x / (70 * r), 0, 21) * 10 * r + noise(x / (20 * r), 1, 22) * 3 * r;
-        const yy = y + wob;
+        const yy = y + wob + noise(y / (38 * r), 2, 28) * 14 * r;
         const bed = 26 * r;
         const layer = Math.floor(yy / bed);
         const f = (yy - layer * bed) / bed;
-        // Each bed bulges out at the top and is undercut below.
-        h = 0.55 + 0.35 * Math.sin(Math.min(1, f * 1.15) * Math.PI * 0.85) - (f > 0.88 ? (f - 0.88) * 3 : 0);
-        h += (fbm(x / (5 * r), y / (5 * r), 25) - 0.5) * 0.12 - (fbm(x / (9 * r), y / (7 * r), 27) > 0.76 ? 0.18 : 0);
-        h += Math.abs(Math.sin(f * Math.PI * 5 + noise(x / (30 * r), layer, 26) * 2)) < 0.07 ? -0.04 : 0;
-        c = mixC([218, 170, 114], [152, 100, 60], t * 0.5 + h2(layer, 5, 24) * 0.3);
-        c = lit(c, 0.84 + h2(layer, 3, 23) * 0.26);
+        const sm = (e0: number, e1: number, v: number) => {
+          const q = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+          return q * q * (3 - 2 * q);
+        };
+        h = 0.5 + 0.28 * sm(0, 0.3, f) - 0.32 * sm(0.82, 1, f) + (h2(layer, 9, 29) - 0.5) * 0.12;
+        const joint = 1 - Math.abs(noise(x / (55 * r), layer * 3.1, 30) * 2 - 1);
+        h -= Math.pow(joint, 40) * 0.16;
+        h -= 0.12 * sm(0.66, 0.82, fbm(x / (6 * r), y / (5 * r), 27));
+        h += (fbm(x / (3 * r), y / (3 * r), 25) - 0.5) * 0.06;
+        c = mixC([220, 172, 116], [150, 98, 58], t * 0.45 + h2(layer, 5, 24) * 0.3);
+        c = mixC(c, [168, 92, 52], Math.max(0, fbm(x / (40 * r), y / (30 * r), 32) - 0.55) * 1.2);
+        c = lit(c, 0.86 + h2(layer, 3, 23) * 0.22);
       } else if (id === 'cork_wall') {
         const pw = 46 * r;
         const sx = x + noise(y / (30 * r), 0, 3) * 10 * r;
@@ -354,7 +370,7 @@ export function paintLandWall(id: string, W: number, H: number, res: number): Ui
   // Light from the lamp above and slightly left; shading from the height slope,
   // occlusion from how deep a point sits, and the wall darkening toward the floor.
   const out = new Uint8ClampedArray(new ArrayBuffer(W * H * 4));
-  const relief = id === 'desert_wall' ? 7 * r : 9 * r;
+  const relief = id === 'desert_wall' ? 5 * r : 9 * r;
   for (let y = 0; y < H; y++) {
     const t = y / H;
     for (let x = 0; x < W; x++) {
