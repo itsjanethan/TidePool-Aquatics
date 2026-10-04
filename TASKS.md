@@ -55,6 +55,7 @@ Other:
 
 ## Done
 
+- 2026-10-04: Incoming livestock by destination tank: parcel tag in the shop, On order in the tank menu and tank view, outlook in ordering (now, on order, after delivery, stocking breakdown), destination picker with stocking after delivery, warnings that include placed orders, order cancellation, staff proposals aware of outstanding orders. Tests in `tests/incoming.test.ts`.
 - 2026-10-04: Aquascape items explain what they give, which score components they change, the score now and after (and once grown), caps, fish care and trade-offs, all from the real scoring; on-screen placement buttons for touch. Tests in `tests/scapepreview.test.ts`.
 - 2026-10-04: Rapid taps no longer zoom the page on mobile (touch-action plus touch guards on controls and the game area), no duplicate actions, rotation releases held buttons, menu opens during a tap-to-move walk. Tests in `tests/tapguard.test.ts`; emulated check `scripts/tap-zoom-check.mjs`. Real iPhone check still to do.
 - 2026-10-03: Not for sale for individual fish: enforced in `sellable`, `completeSale` and `sellFishToTrade`; protecting releases reservations and updates the order; fish details toggle, badges in livestock lists and the fish card, bulk select with feedback; unprotect always confirms. Tests in `tests/protection.test.ts`.

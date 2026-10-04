@@ -1,4 +1,5 @@
 /** Non-blocking overlay for the tank inspection view. */
+import { incomingCount, incomingSummary } from '../../sim/incoming';
 import type { GameController } from '../../game/GameController';
 import type { Action } from '../../input/input';
 import type { TankScene } from '../../render/scenes/TankScene';
@@ -66,6 +67,7 @@ export class TankViewScreen implements Screen {
       h('span', { class: 'tv-status' }, tankStatusLine(s, t)),
       waiting ? h('span', { class: 'tv-waiting' }, `${waiting} at till`) : null,
       help ? h('span', { class: 'tv-waiting' }, `${help} need help`) : null,
+      incomingCount(s, t.id) ? h('span', { class: 'tv-incoming', title: incomingSummary(s, t.id) ?? '' }, `${incomingCount(s, t.id)} on order`) : null,
       h('span', { class: 'tv-clock' }, `${clockString(s.minute)}${t.lightOn ? '' : ' (lights off)'}`),
     ];
     if (this.c.idle) parts.splice(1, 0, h('span', { class: 'tv-idle' }, 'IDLE MODE · BUSINESS PAUSED'));

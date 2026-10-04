@@ -88,6 +88,14 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
 
+## 2026-10-04: Incoming livestock is part of every tank's future
+
+- **One source of truth: `state.orders`.** Incoming views (`sim/incoming.ts`) read placed orders directly, so deliveries, cancellations and save/load can never leave them stale.
+- **Order checks include placed orders.** `projectedStocking`, compatibility and group-size checks now add livestock already on its way (`withOutstanding`). Cart lines carry no order id and placed lines do, so nothing is counted twice. Staff stock proposals use the same checks and rank tanks by stocking after outstanding deliveries.
+- **Specific, non-blocking warnings.** Overstock warnings break the total down (now + already ordered + this order). Ordering more of a species already incoming warns with the order id, arrival day and the combined count after delivery, and the order can still be placed: deliberate repeat orders are legitimate.
+- **Visible but never mistaken for arrived stock.** A parcel tag on the tank in the shop (not an alert bubble), "On order (N) · not arrived" in the tank menu, "N on order" in the tank view, a destination picker showing each tank's stocking after delivery, and an outlook (in the tank now, on order, after delivery, stocking breakdown) in the order line editor and per tank.
+- **Orders can be cancelled** from the office PC or the tank: full refund on the day placed, 75% after dispatch, and the fish go back on the supplier's list.
+
 ## 2026-10-04: Aquascape explanations come from the real scoring
 
 - **No second set of numbers.** `summarizeAquascape` now returns its layout components (substrate, background, variety, number of items, fullness, spread, depth, item looks) with their maxima; the score is still their sum. Previews run the real placement (`addDecor`, `plantFromStorage`, `placeDecorFromStorage`, or the move) on a copy of the game and score it with the same function, so an explanation can never disagree with the result. Tested for every decor item at several positions.

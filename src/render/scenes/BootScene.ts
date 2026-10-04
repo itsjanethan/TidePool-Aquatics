@@ -66,6 +66,15 @@ function makeIcons(scene: Phaser.Scene): void {
       px(ctx, 6, 4, '#5a3a1a', 1, 1);
     }),
   );
+  // Livestock on order: a small parcel tag (not a bubble, so it never reads as an alert).
+  makeTexture(scene, 'icon-incoming', 9, 8, (ctx) => {
+    px(ctx, 0, 1, '#22202c', 9, 7);
+    px(ctx, 1, 2, '#c8955a', 7, 5);
+    px(ctx, 1, 2, '#dcae74', 7, 1);
+    px(ctx, 4, 2, '#f4ead0', 1, 5);
+    px(ctx, 2, 0, '#22202c', 5, 1);
+    px(ctx, 3, 1, '#7ad0ff', 3, 1);
+  });
   makeTexture(scene, 'icon-dirty', 9, 10, (ctx) =>
     bubble(ctx, '#7ab04a', () => {
       px(ctx, 2, 2, '#3a6a2a', 2, 2);
