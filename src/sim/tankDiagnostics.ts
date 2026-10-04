@@ -16,6 +16,9 @@ import { appetite, fishInTank } from './fish';
 import { coverPercent, tankNeeds, type TankNeeds } from './habitat';
 import { previewFix, previewLine, wastePercent, type FixId } from './preview';
 import { cycleStatus, waterQualityScore } from './water';
+import { assessCoral, coralsIn, reefChem, reefState } from './reef';
+import { ALK_SWING_LIMIT, REEF_TARGETS } from '../data/reef';
+import { canEat, isInvert } from './inverts';
 import type { FishEntity, GameState, TankState } from './types';
 
 export type Severity = 'critical' | 'warning' | 'advice';
@@ -23,7 +26,7 @@ export type DiagCategory = 'livestock' | 'water' | 'cleanliness' | 'habitat' | '
 /** Overworld icon for an issue. Each maps to exactly one meaning. */
 export type AlertIcon = 'dead' | 'toxic' | 'sick' | 'hungry' | 'dirty' | 'attention';
 /** Screens a recommendation can jump to. */
-export type NavId = 'aquascape' | 'livestock' | 'equipment' | 'waterTest' | 'maintenance' | 'order';
+export type NavId = 'aquascape' | 'livestock' | 'equipment' | 'waterTest' | 'maintenance' | 'order' | 'reef';
 
 export interface DiagAction {
   label: string;
@@ -260,6 +263,160 @@ export function diagnoseTank(state: GameState, tank: TankState, withPreviews = f
       actions: [{ label: 'Add an air stone', nav: 'equipment' }],
       help: 'oxygen',
     });
+  }
+
+  // --- Reef: chemistry and corals ---------------------------------------------
+  const corals = coralsIn(tank);
+  if (corals.length) {
+    const defs = corals.map((d) => getDecor(d.defId));
+    const stony = defs.filter((d) => d.coral && d.coral.group !== 'soft');
+    const sps = defs.filter((d) => d.coral?.group === 'sps');
+    const chem = reefChem(w);
+    const coralGroups = (list: typeof corals) => {
+      const m = new Map<string, number>();
+      for (const d of list) m.set(getDecor(d.defId).name, (m.get(getDecor(d.defId).name) ?? 0) + 1);
+      return [...m.entries()].map(([label, count]) => ({ label, count }));
+    };
+    if (stony.length && chem.alk < REEF_TARGETS.alk[0]) {
+      add({
+        id: 'alk_low', severity: chem.alk < 6.5 ? 'critical' : 'warning', category: 'water', icon: chem.alk < 6.5 ? 'toxic' : 'attention',
+        title: 'Alkalinity low for stony corals',
+        explanation: 'Stony corals use alkalinity (carbonate) to build skeleton. When it runs low, growth stops and tissue starts to recede. Dose alkalinity buffer, or do a water change with salt mix.',
+        value: `${chem.alk.toFixed(1)} dKH`, recommended: `${REEF_TARGETS.alk[0]}-${REEF_TARGETS.alk[1]} dKH`,
+        affected: coralGroups(corals.filter((d) => getDecor(d.defId).coral?.group !== 'soft')),
+        consequences: ['Stony corals stop growing', 'Tissue recession'],
+        actions: [fixAction('doseAlk', 'Dose alkalinity buffer'), fixAction('water25', '25% water change with salt mix'), { label: 'Reef care: dosing pump', nav: 'reef' }],
+        help: 'alkalinity',
+      });
+    }
+    if (sps.length && chem.alk > 11.5) {
+      add({
+        id: 'alk_high', severity: 'warning', category: 'water', icon: 'attention',
+        title: 'Alkalinity too high for SPS',
+        explanation: 'Very high alkalinity burns the growing tips of small-polyp stony corals. Stop dosing alkalinity until it falls back.',
+        value: `${chem.alk.toFixed(1)} dKH`, recommended: `${REEF_TARGETS.alk[0]}-${REEF_TARGETS.alk[1]} dKH`,
+        consequences: ['Burnt tips on SPS'], actions: [fixAction('water25', '25% water change'), { label: 'Reef care', nav: 'reef' }], help: 'alkalinity',
+      });
+    }
+    if (stony.length && chem.calcium < REEF_TARGETS.calcium[0]) {
+      add({
+        id: 'calcium_low', severity: chem.calcium < 360 ? 'warning' : 'advice', category: 'water', icon: 'attention',
+        title: 'Calcium low',
+        explanation: 'Stony corals take calcium from the water with the alkalinity. Below about 360 ppm they cannot build skeleton.',
+        value: `${Math.round(chem.calcium)} ppm`, recommended: `${REEF_TARGETS.calcium[0]}-${REEF_TARGETS.calcium[1]} ppm`,
+        consequences: ['Stony corals stop growing'], actions: [fixAction('doseCa', 'Dose calcium'), fixAction('water25', '25% water change with salt mix')], help: 'calcium',
+      });
+    }
+    if (stony.length && chem.magnesium < REEF_TARGETS.magnesium[0]) {
+      add({
+        id: 'magnesium_low', severity: chem.magnesium < 1150 ? 'warning' : 'advice', category: 'water', icon: 'attention',
+        title: 'Magnesium low',
+        explanation: 'Magnesium stops calcium and carbonate from dropping out of the water as grit. When it is low, alkalinity and calcium fall faster and are hard to hold.',
+        value: `${Math.round(chem.magnesium)} ppm`, recommended: `${REEF_TARGETS.magnesium[0]}-${REEF_TARGETS.magnesium[1]} ppm`,
+        consequences: ['Alkalinity and calcium fall faster', 'Slower coral growth'], actions: [fixAction('doseMg', 'Dose magnesium'), fixAction('water25', '25% water change with salt mix')], help: 'magnesium',
+      });
+    }
+    const swing = reefState(tank).alkSwing ?? 0;
+    if (stony.length && swing > ALK_SWING_LIMIT) {
+      add({
+        id: 'alk_swing', severity: 'warning', category: 'water', icon: 'attention',
+        title: 'Alkalinity swinging',
+        explanation: 'Big daily jumps in alkalinity stress stony corals more than a steady, slightly low level. Dose smaller amounts more often, or fit a dosing pump that tops up gradually.',
+        value: `${swing.toFixed(1)} dKH today`, recommended: `under ${ALK_SWING_LIMIT} dKH a day`,
+        consequences: ['Stony corals stressed'], actions: [{ label: 'Reef care: dosing pump', nav: 'reef' }], help: 'alkalinity',
+      });
+    }
+    const assessed = corals.map((d) => ({ d, a: assessCoral(tank, d) }));
+    const by = (key: string) => assessed.filter((x) => x.a.notes.some((n) => n.key === key && !n.good)).map((x) => x.d);
+    const light = by('light');
+    if (light.length) {
+      const bright = light.filter((d) => assessCoral(tank, d).bleachPerDay > 0);
+      add({
+        id: 'coral_light', severity: bright.length ? 'warning' : 'advice', category: 'habitat', icon: 'attention',
+        title: bright.length ? 'Corals getting too much light' : 'Corals not getting enough light',
+        explanation: 'Each coral wants a band of light (PAR). Light is strongest at the top of the rockwork and weakest on the sand. Move corals up or down, or change the reef light.',
+        affected: coralGroups(light),
+        value: light.map((d) => { const a = assessCoral(tank, d); return `${getDecor(d.defId).name} ${a.par} PAR (wants ${a.traits.par[0]}-${a.traits.par[1]})`; }).slice(0, 3).join('; '),
+        consequences: bright.length ? ['Bleaching', 'Health loss'] : ['Slow growth', 'Slow decline if very dim'],
+        actions: [{ label: 'Move corals (Aquascape)', nav: 'aquascape' }, { label: 'Reef care: lighting', nav: 'reef' }],
+        help: 'par',
+      });
+    }
+    const flow = by('flow');
+    if (flow.length) {
+      add({
+        id: 'coral_flow', severity: 'advice', category: 'habitat', icon: 'attention',
+        title: 'Water movement wrong for some corals',
+        explanation: 'Corals need water moving over them to bring food and carry waste away; too much and they stay shut. Flow is strongest high on the rockwork.',
+        affected: coralGroups(flow),
+        consequences: ['Slow growth', 'Polyps retracted or waste settling'],
+        actions: [{ label: 'Move corals (Aquascape)', nav: 'aquascape' }, { label: 'Reef care: wavemaker', nav: 'reef' }],
+        help: 'flow',
+      });
+    }
+    const stung = assessed.filter((x) => x.a.stungBy.length).map((x) => x.d);
+    if (stung.length) {
+      add({
+        id: 'coral_sting', severity: 'warning', category: 'habitat', icon: 'attention',
+        title: 'Corals stinging each other',
+        explanation: 'Aggressive corals reach neighbours with sweeper tentacles or chemicals. Give them space: move them further apart side to side, or to a different height.',
+        affected: coralGroups(stung),
+        value: [...new Set(assessed.flatMap((x) => x.a.stungBy))].join(', ') + ' doing the stinging',
+        consequences: ['Health loss on the stung coral'],
+        actions: [{ label: 'Move corals (Aquascape)', nav: 'aquascape' }],
+        help: 'coral_aggression',
+      });
+    }
+    const nitrate = by('nitrate');
+    if (nitrate.length && w.nitrate > 1) {
+      add({
+        id: 'coral_nutrients', severity: 'advice', category: 'water', icon: 'attention',
+        title: 'Nitrate wrong for some corals',
+        explanation: 'Soft corals cope with some nitrate; SPS want very little. Water changes, a skimmer and fewer fish lower it.',
+        affected: coralGroups(nitrate), value: `${Math.round(w.nitrate)} ppm`,
+        consequences: ['Browning', 'Slow decline'], actions: [fixAction('water25', '25% water change')], help: 'nitrate',
+      });
+    }
+    const weak = corals.filter((d) => d.health < 0.5 || (d.bleach ?? 0) > 0.4);
+    if (weak.length) {
+      add({
+        id: 'coral_sick', severity: weak.some((d) => d.health < 0.25) ? 'critical' : 'warning', category: 'livestock', icon: 'sick',
+        title: `${weak.length} coral${weak.length > 1 ? 's' : ''} in poor health`,
+        explanation: 'Corals recover once light, flow and chemistry suit them. Open Reef care to see what each coral is missing.',
+        affected: coralGroups(weak), consequences: ['Death risk', 'Cannot be fragged', 'Customers notice pale corals'],
+        actions: [{ label: 'Reef care', nav: 'reef' }],
+        help: 'bleaching',
+      });
+    }
+  }
+
+  // --- Invertebrates ------------------------------------------------------------
+  const inverts = alive.filter((f) => isInvert(getSpecies(f.speciesId)));
+  if (inverts.length) {
+    const atRisk = inverts.filter((p) => alive.some((h) => canEat(getSpecies(h.speciesId), h.sizeCm, getSpecies(p.speciesId), p.sizeCm)));
+    if (atRisk.length) {
+      const hunters = [...new Set(alive.filter((h) => atRisk.some((p) => canEat(getSpecies(h.speciesId), h.sizeCm, getSpecies(p.speciesId), p.sizeCm))).map((h) => getSpecies(h.speciesId).commonName))];
+      add({
+        id: 'predation', severity: 'warning', category: 'stocking', icon: 'attention',
+        title: 'Invertebrates are being hunted',
+        explanation: `${hunters.join(', ')} will eat shrimp small enough to swallow, and hermit crabs kill snails for their shells. Cover slows it down; separate tanks stop it.`,
+        affected: bySpecies(atRisk), consequences: ['Inverts eaten', 'Stress'],
+        actions: [{ label: 'Move them apart', nav: 'livestock' }, { label: 'Add cover (moss, rock)', nav: 'aquascape' }],
+        help: 'inverts',
+      });
+    }
+    const soft = inverts.filter((f) => { const sp = getSpecies(f.speciesId); return (sp.tags.includes('shell_builder') || sp.tags.includes('moults')) && w.gh < sp.hardness.min; });
+    if (soft.length) {
+      add({
+        id: 'minerals', severity: 'warning', category: 'water', icon: 'attention',
+        title: 'Water too soft for shells and moulting',
+        explanation: 'Snails build shell and shrimp build new skin from minerals in the water. In soft water shells erode and moults fail. Limestone or a tap-water change raises hardness; active shrimp soil lowers it.',
+        value: `${w.gh.toFixed(0)} dGH`, recommended: soft.map((f) => getSpecies(f.speciesId)).filter((sp, i, a) => a.indexOf(sp) === i).map((sp) => `${sp.commonName} ${sp.hardness.min}+`).join(', '),
+        affected: bySpecies(soft), consequences: ['Shell erosion', 'Failed moults', 'Deaths'],
+        actions: [{ label: 'Add Holey Limestone', nav: 'aquascape' }, fixAction('water25', '25% water change (tap water is harder)')],
+        help: 'minerals',
+      });
+    }
   }
 
   // --- Feeding and health -------------------------------------------------

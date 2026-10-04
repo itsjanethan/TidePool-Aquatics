@@ -50,7 +50,7 @@ export const STAFF_END = 18 * 60 + 30;
 export const MAX_STAFF = 6;
 export const APPLICANT_DAYS = 3;
 /** Base minutes for each job before speed and personality. */
-export const JOB_MINUTES: Record<FixId, number> = { feed: 3, water25: 20, water50: 30, glass: 8, algae: 10, vacuum: 15, filter: 12, removeDead: 4, topoff: 6 };
+export const JOB_MINUTES: Record<FixId, number> = { feed: 3, water25: 20, water50: 30, glass: 8, algae: 10, vacuum: 15, filter: 12, removeDead: 4, topoff: 6, doseAlk: 4, doseCa: 4, doseMg: 4 };
 
 export interface StaffContext {
   grids: GridLookup;
@@ -236,8 +236,8 @@ function releaseTask(state: GameState, m: StaffEntity): void {
 const SEV_WEIGHT = { critical: 100, warning: 50, advice: 10 };
 /** Jobs a role may take, in no particular order. */
 const ROLE_FIXES: Record<StaffRole, FixId[]> = {
-  maintenance: ['removeDead', 'water50', 'water25', 'topoff', 'feed', 'filter', 'vacuum', 'algae', 'glass'],
-  floater: ['removeDead', 'water50', 'water25', 'topoff', 'feed', 'filter', 'vacuum', 'algae', 'glass'],
+  maintenance: ['removeDead', 'water50', 'water25', 'topoff', 'doseAlk', 'doseCa', 'doseMg', 'feed', 'filter', 'vacuum', 'algae', 'glass'],
+  floater: ['removeDead', 'water50', 'water25', 'topoff', 'doseAlk', 'doseCa', 'doseMg', 'feed', 'filter', 'vacuum', 'algae', 'glass'],
   stock: ['removeDead', 'feed'],
   sales: ['removeDead'],
 };

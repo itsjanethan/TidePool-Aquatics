@@ -17,6 +17,8 @@ import { fishInTank } from './fish';
 import { coverPercent, tankNeeds } from './habitat';
 import { MAX_DECOR, placeDecorFromStorage, plantFromStorage } from './plants';
 import { addDecor } from './tank';
+import { assessCoral, perchText } from './reef';
+import type { Perch } from '../data/reef';
 import type { GameState } from './types';
 
 export interface PlacementSpec {
@@ -68,6 +70,20 @@ export interface ScapeExplanation {
   care: CareLine[];
   /** Costs of this placement, such as lost swimming space. */
   tradeoffs: string[];
+  /** Corals: what this spot gives the coral itself (light, flow, neighbours). */
+  coral?: CoralSpot;
+}
+
+export interface CoralSpot {
+  perch: Perch;
+  where: string;
+  par: number;
+  parRange: [number, number];
+  flow: number;
+  flowRange: [number, number];
+  /** Growth per day at this spot as a fraction of ideal (0..1). */
+  growthFactor: number;
+  lines: CareLine[];
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -105,7 +121,7 @@ export function explainPlacement(state: GameState, tankId: string, p: PlacementS
   const placed = placeOnCopy(state, tankId, p);
   const afterTank = placed.state.tanks[tankId];
   const after = placed.ok ? summarizeAquascape(afterTank) : before;
-  const isPlant = def.kind === 'plant';
+  const isPlant = def.kind === 'plant' || def.kind === 'coral';
   let layoutGrown: number | undefined;
   if (placed.ok && isPlant && p.source !== 'move') {
     const grownSize = Math.min(def.maxSize ?? 1.4, 1.2);
@@ -122,8 +138,26 @@ export function explainPlacement(state: GameState, tankId: string, p: PlacementS
   const limits = describeLimits(tank.decor.length, before, after, p.source === 'move');
   const { care, tradeoffs } = describeCare(state, tankId, before, after);
 
+  let coral: CoralSpot | undefined;
+  if (placed.ok && def.kind === 'coral') {
+    const item = p.source === 'move' ? afterTank.decor.find((d) => d.uid === p.moveUid) : afterTank.decor[afterTank.decor.length - 1];
+    if (item) {
+      const a = assessCoral(afterTank, item);
+      coral = {
+        perch: a.perch,
+        where: perchText(a.perch, a.onRock, p.layer),
+        par: a.par,
+        parRange: a.traits.par,
+        flow: a.flow,
+        flowRange: a.traits.flow,
+        growthFactor: a.growthFactor,
+        lines: a.notes.map((n) => ({ text: n.text, good: n.good })),
+      };
+    }
+  }
   const cost = p.source === 'buy' ? def.cost : 0;
   return {
+    coral,
     name: def.name,
     kind: def.kind,
     allowed: placed.ok,
@@ -159,6 +193,7 @@ function describeProvides(def: ReturnType<typeof getDecor>, before: AquascapeSum
     if (what === 'fry_cover') out.push('Shelter for fry and eggs (breeding)');
     if (what === 'breeding_cave') out.push('Spawning cave for cave spawners');
     if (what === 'tall_plants') out.push('Tall background plant');
+    if (what === 'coral') out.push('Living coral: grows, and can be fragged for sale');
   }
   const uptake = after.nutrientUptake - before.nutrientUptake;
   if (uptake > 0.05) out.push(`Absorbs about ${round1(uptake)} ppm nitrate a day (more as it grows)`);

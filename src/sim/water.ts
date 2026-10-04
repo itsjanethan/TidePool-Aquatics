@@ -3,7 +3,7 @@
  * cloudiness. All concentrations in ppm (mg/L). See GAME_DESIGN.md "Water".
  */
 import { clamp, clamp01, smooth } from '../core/math';
-import { getFilter, getHeater } from '../data/catalog';
+import { getDecor, getFilter, getHeater, getSubstrate } from '../data/catalog';
 import type { AquascapeSummary } from './aquascape';
 import type { TankState, WaterState } from './types';
 
@@ -42,8 +42,14 @@ export function bioCapacityMax(tank: TankState): number {
   const filter = getFilter(tank.filterId);
   const conditionFactor = 0.35 + 0.65 * tank.filterCondition;
   // Live rock is porous and full of nitrifying bacteria.
-  const liveRock = tank.decor.filter((d) => d.defId === 'live_rock').length;
+  const liveRock = tank.decor.reduce((n, d) => n + liveRockWeight(d.defId), 0);
   return filter.capacity * conditionFactor + tank.litres * 0.004 + liveRock * 0.6;
+}
+
+/** Live rock filtration: a piece of live rock counts 1, a big reef arch about twice that. */
+export function liveRockWeight(defId: string): number {
+  const d = getDecor(defId);
+  return d.provides.includes('live_rock') ? Math.max(1, Math.round((d.width * d.height) / (66 * 46) * 0.6 * 10) / 10) : 0;
 }
 
 export interface WaterInputs {
@@ -136,10 +142,12 @@ export function tickWater(tank: TankState, inp: WaterInputs, dtHours: number): v
   w.nob = clamp(w.nob, MIN_BACTERIA, 1);
 
   // pH drifts with nitrate (acid) and decor buffers; hardness with limestone.
-  const phTarget = clamp(TAP_WATER.ph - w.nitrate * 0.012 + inp.scape.phEffect, 5.5, 8.8);
-  w.ph = smooth(w.ph, phTarget, 0.2, dtDays);
-  const ghTarget = TAP_WATER.gh + Math.max(0, inp.scape.phEffect) * 12;
-  w.gh = smooth(w.gh, ghTarget, 0.1, dtDays);
+  // Active soils buffer pH and soften the water, pulling back after water changes.
+  const buffer = getSubstrate(tank.substrateId).buffer;
+  const phTarget = clamp((buffer?.ph ?? TAP_WATER.ph) - w.nitrate * 0.012 + inp.scape.phEffect, 5.5, 8.8);
+  w.ph = smooth(w.ph, phTarget, buffer ? 0.7 : 0.2, dtDays);
+  const ghTarget = (buffer?.gh ?? TAP_WATER.gh) + Math.max(0, inp.scape.phEffect) * 12;
+  w.gh = smooth(w.gh, ghTarget, buffer ? 0.5 : 0.1, dtDays);
 
   // Oxygen.
   const aeration = filter.aeration * (0.4 + 0.6 * tank.filterCondition) + (tank.airStone ? 0.25 : 0);

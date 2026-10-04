@@ -30,13 +30,15 @@ import type { GameState, StaffRole, TankState } from '../sim/types';
 export const SANDBOX_SEED = 4242;
 export const SANDBOX_NAME = 'Developer Sandbox';
 
-export type SandboxPreset = 'planted' | 'breeding' | 'coldwater' | 'marine' | 'performance';
+export type SandboxPreset = 'planted' | 'breeding' | 'coldwater' | 'marine' | 'reef' | 'shrimp' | 'performance';
 
 export const PRESETS: Array<{ id: SandboxPreset; label: string; blurb: string; tank: string }> = [
   { id: 'planted', label: 'Planted aquarium', blurb: 'Dense mature plants, wood, floating cover, neons, corydoras and a bristlenose.', tank: 'M6' },
   { id: 'breeding', label: 'Breeding tank', blurb: 'Conditioned guppy pairs and an egg-scatterer pair in moss; not for sale.', tank: 'Q2' },
   { id: 'coldwater', label: 'Coldwater tank', blurb: 'Unheated 300L with fancy goldfish, canister filtration and hardy plants.', tank: 'U5' },
   { id: 'marine', label: 'Marine aquarium', blurb: 'Live rock, skimmer, salinity on target; clownfish, Banggai cardinals and a royal gramma.', tank: 'M1' },
+  { id: 'reef', label: 'Mixed reef', blurb: 'Reef LED and wavemaker; soft corals low, LPS mid, SPS on top; clownfish, cleaner shrimp and a clean-up crew.', tank: 'R2' },
+  { id: 'shrimp', label: 'Shrimp tank', blurb: 'Moss, active soil-free planted nano with a cherry shrimp colony and nerite snails.', tank: 'F1' },
   { id: 'performance', label: 'Performance test', blurb: `Population cap (${MAX_FISH_PER_TANK} fish), maximum decor and floating plants.`, tank: 'Q1' },
 ];
 
@@ -70,6 +72,8 @@ export function matureTank(t: TankState): void {
   if (t.waterType === 'marine') {
     w.salinity = 35;
     w.ph = 8.2;
+    // Reef systems run lean: corals (SPS above all) want very little nitrate.
+    if (t.reef) w.nitrate = 3;
   }
   t.algae = 0.05;
   t.glassDirt = 0.05;
@@ -91,7 +95,7 @@ function place(s: GameState, t: TankState, items: Array<[string, number, 0 | 1 |
     const r = addDecor(s, t, defId, x, layer);
     if (!r.ok) throw new Error(`Sandbox decor ${defId} in ${t.id}: ${r.message}`);
     const d = t.decor[t.decor.length - 1];
-    if (getDecor(defId).kind === 'plant') {
+    if (getDecor(defId).kind === 'plant' || getDecor(defId).kind === 'coral') {
       d.size = Math.min(getDecor(defId).maxSize ?? 1.5, size);
       d.health = 1;
     }
@@ -115,8 +119,9 @@ export function applyPreset(s: GameState, tankId: string, preset: SandboxPreset,
   const t = s.tanks[tankId];
   if (!t) throw new Error(`No tank ${tankId}`);
   const marine = t.waterType === 'marine';
-  if (preset === 'marine' && !marine) throw new Error(`${t.name} is a freshwater tank. Use a marine tank (M1 to M3).`);
-  if (preset !== 'marine' && marine) throw new Error(`${t.name} is a marine tank. Pick a freshwater tank for this preset.`);
+  const wantsMarine = preset === 'marine' || preset === 'reef';
+  if (wantsMarine && !marine) throw new Error(`${t.name} is a freshwater tank. Use a marine tank (M1 to M3, R1 to R3).`);
+  if (!wantsMarine && marine) throw new Error(`${t.name} is a marine tank. Pick a freshwater tank for this preset.`);
   const money = s.money;
   s.money = Math.max(s.money, 1e6);
   clearTank(s, t);
@@ -162,6 +167,32 @@ export function applyPreset(s: GameState, tankId: string, preset: SandboxPreset,
       stock(s, rng, t, 'clownfish', 2);
       stock(s, rng, t, 'banggai_cardinal', 4);
       stock(s, rng, t, 'royal_gramma', 1);
+      break;
+    case 'reef':
+      t.substrateId = 'sand';
+      t.backgroundId = 'black';
+      t.skimmer = true;
+      t.reef = { light: 'reef_led', wavemaker: 2, doser: true };
+      // Every coral where it is happy: SPS high, LPS on the sand under moderate light,
+      // soft corals in the middle, aggressive ones out of reach of each other.
+      place(s, t, [
+        ['live_rock', 0.06, 1], ['reef_rock', 0.3, 1], ['reef_rock', 0.72, 1], ['live_rock', 0.94, 1],
+        ['acropora', 0.3, 0], ['montipora', 0.72, 0], ['zoanthids', 0.8, 1], ['torch', 0.5, 2], ['hammer', 0.58, 2], ['mushroom', 0.92, 2], ['toadstool', 0.06, 1],
+      ], 1.2);
+      stock(s, rng, t, 'clownfish', 2);
+      stock(s, rng, t, 'cleaner_shrimp', 2);
+      stock(s, rng, t, 'hermit_crab', 3);
+      stock(s, rng, t, 'turbo_snail', 2);
+      break;
+    case 'shrimp':
+      if (!t.heaterId) buyHeater(s, t, 'heater_50');
+      setHeater(t, 23);
+      t.substrateId = 'aqua_soil';
+      t.backgroundId = 'black';
+      t.forSale = undefined;
+      place(s, t, [['java_moss', 0.2, 2], ['java_moss', 0.55, 2], ['java_fern', 0.8, 1], ['river_stone', 0.4, 2], ['mopani', 0.62, 0], ['anubias', 0.1, 1]], 1.3);
+      stock(s, rng, t, 'cherry_shrimp', 18);
+      stock(s, rng, t, 'nerite_snail', 3);
       break;
     case 'performance': {
       if (!t.heaterId) buyHeater(s, t, 'heater_150');
@@ -217,6 +248,10 @@ export function createSandbox(seed = SANDBOX_SEED): GameState {
     M3: [['banggai_cardinal', 4], ['royal_gramma', 1]],
     M4: [['german_blue_ram', 2]],
     M5: [['german_blue_ram', 2]],
+    R1: [['clownfish', 2], ['cleaner_shrimp', 1], ['hermit_crab', 4], ['turbo_snail', 2]],
+    R3: [['hermit_crab', 2]],
+    F2: [['amano_shrimp', 5], ['mystery_snail', 2]],
+    F3: [['crystal_shrimp', 14]],
   };
   for (const [tank, list] of Object.entries(fill)) for (const [sid, n] of list) stock(s, rng, s.tanks[tank], sid, n);
   s.tanks.C2.water.temperature = 21;
@@ -230,8 +265,10 @@ export function createSandbox(seed = SANDBOX_SEED): GameState {
   for (const r of RETAIL_ITEMS) s.retail[r.id] = 8;
   for (const g of DRY_GOODS) s.dryGoods[g.id] = 30;
   s.foodUnits = 8000;
-  for (const d of DECOR) if (d.kind !== 'plant') s.storage.decor[d.id] = 2;
+  for (const d of DECOR) if (d.kind !== 'plant' && d.kind !== 'coral') s.storage.decor[d.id] = 2;
   for (const d of DECOR) if (d.kind === 'plant') s.storage.plants.push({ uid: newId(s, 'pp'), defId: d.id, size: 0.8, health: 1, reservedBy: null });
+  // Coral frags on the frag rack (two of each).
+  for (const d of DECOR) if (d.kind === 'coral') for (let i = 0; i < 2; i++) s.storage.plants.push({ uid: newId(s, 'fr'), defId: d.id, size: 0.25 + i * 0.3, health: 1, reservedBy: null });
   s.storage.floating = Object.fromEntries(FLOATING.map((f) => [f.id, 6]));
   const day = dayOf(s.minute);
   for (const sup of SUPPLIERS) refreshSupplierStock(s, rng, sup.id, day);

@@ -442,7 +442,11 @@ body.compact.landscape .aq-info { max-height: 40vh; }
 .aq-place-buttons .tv-btn { color: var(--ink); min-width: calc(var(--px) * 22); }
 .aq-pb-ok { border-color: var(--good) !important; }
 body.compact.portrait .aquascape-ui.placing .aq-hint { top: var(--tank-bottom, 55%); bottom: 0; overflow-y: auto; align-content: start; background: #f8f6ec; }
-body.compact.landscape .aquascape-ui.placing .aq-hint { top: auto; bottom: 4px; max-height: 72%; overflow-y: auto; background: #f8f6ec; }
+body.compact.landscape .aquascape-ui.placing .aq-hint { top: 4px; bottom: 4px; left: auto; right: 4px; width: 47%; max-height: none; overflow-y: auto; align-content: start; background: #f8f6ec; }
+/* The details sit on the side away from the item being placed, so it stays in view. */
+body.compact.landscape .aquascape-ui.placing.ghost-right .aq-hint { left: 4px; right: auto; }
+/* Larger screens: details along the top of the tank, leaving the bed and rockwork visible. */
+body:not(.compact) .aquascape-ui.placing .aq-hint { bottom: auto; top: calc(var(--px) * 24); }
 
 .aquascape-ui.placing .aq-hint { text-align: left; }
 .aquascape-ui.placing .aq-place-buttons { justify-content: flex-start; }

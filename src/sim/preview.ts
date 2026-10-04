@@ -7,9 +7,10 @@ import { clamp } from '../core/math';
 import { feedingNeed } from './tank';
 import { cleanFilter, cleanGlass, doWaterChange, feedTank, removeDead, scrubAlgae, topOffTank, vacuumSubstrate, type ActionResult } from './tank';
 import { fishInTank } from './fish';
+import { doseReef, reefChem } from './reef';
 import type { GameState, TankState } from './types';
 
-export type FixId = 'feed' | 'water25' | 'water50' | 'glass' | 'algae' | 'vacuum' | 'filter' | 'removeDead' | 'topoff';
+export type FixId = 'feed' | 'water25' | 'water50' | 'glass' | 'algae' | 'vacuum' | 'filter' | 'removeDead' | 'topoff' | 'doseAlk' | 'doseCa' | 'doseMg';
 
 /** The sim function behind each fix. */
 export const FIXES: Record<FixId, { label: string; run: (s: GameState, t: TankState) => ActionResult }> = {
@@ -22,6 +23,9 @@ export const FIXES: Record<FixId, { label: string; run: (s: GameState, t: TankSt
   filter: { label: 'Rinse the filter', run: (s, t) => cleanFilter(s, t) },
   removeDead: { label: 'Remove dead fish', run: (s, t) => removeDead(s, t) },
   topoff: { label: 'Top off with RO water', run: (s, t) => topOffTank(s, t) },
+  doseAlk: { label: 'Dose alkalinity buffer', run: (s, t) => doseReef(s, t, 'alk') },
+  doseCa: { label: 'Dose calcium', run: (s, t) => doseReef(s, t, 'calcium') },
+  doseMg: { label: 'Dose magnesium', run: (s, t) => doseReef(s, t, 'magnesium') },
 };
 
 /** Player-facing tank metrics (percentages 0..100 unless noted). */
@@ -42,6 +46,10 @@ export interface TankMetrics {
   feedCover: number;
   /** Marine salinity ppt (0 for freshwater). */
   salinity: number;
+  /** Marine reef chemistry (0 for freshwater). */
+  alk: number;
+  calcium: number;
+  magnesium: number;
 }
 
 /** Detritus (mg/L) shown as a 0..100 waste level. */
@@ -64,6 +72,12 @@ export function tankMetrics(state: GameState, tank: TankState): TankMetrics {
     dead: fishInTank(state, tank.id, true).filter((f) => !f.alive).length,
     feedCover: need > 0.05 ? Math.min(999, Math.round((tank.food / need) * 100)) : 100,
     salinity: Math.round((tank.water.salinity ?? 0) * 10) / 10,
+    ...(tank.waterType === 'marine'
+      ? (() => {
+          const c = reefChem(tank.water);
+          return { alk: Math.round(c.alk * 10) / 10, calcium: Math.round(c.calcium), magnesium: Math.round(c.magnesium) };
+        })()
+      : { alk: 0, calcium: 0, magnesium: 0 }),
   };
 }
 
@@ -89,6 +103,9 @@ const LABEL: Record<keyof TankMetrics, string> = {
   dead: 'Dead fish',
   feedCover: 'Food vs need',
   salinity: 'Salinity',
+  alk: 'Alkalinity',
+  calcium: 'Calcium',
+  magnesium: 'Magnesium',
 };
 
 function fmt(key: keyof TankMetrics, v: number): string {
@@ -96,6 +113,8 @@ function fmt(key: keyof TankMetrics, v: number): string {
   if (key === 'nitrate') return `${v} ppm`;
   if (key === 'food') return `${v}`;
   if (key === 'salinity') return `SG ${(1 + v * 0.000752).toFixed(3)}`;
+  if (key === 'alk') return `${v.toFixed(1)} dKH`;
+  if (key === 'calcium' || key === 'magnesium') return `${v} ppm`;
   if (key === 'dead') return `${v}`;
   return `${v}%`;
 }
@@ -110,7 +129,7 @@ export function previewFix(state: GameState, tankId: string, fix: FixId): Action
   const changes: ActionPreview['changes'] = [];
   for (const k of Object.keys(LABEL) as Array<keyof TankMetrics>) {
     if (fix !== 'feed' && k === 'feedCover') continue;
-    if (Math.abs(after[k] - before[k]) < (k === 'ammonia' || k === 'nitrite' ? 0.005 : k === 'salinity' ? 0.05 : 0.5)) continue;
+    if (Math.abs(after[k] - before[k]) < (k === 'ammonia' || k === 'nitrite' ? 0.005 : k === 'salinity' || k === 'alk' ? 0.05 : 0.5)) continue;
     changes.push({ key: k, label: LABEL[k], from: fmt(k, before[k]), to: fmt(k, after[k]) });
   }
   return { fix, result, before, after, changes };

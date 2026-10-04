@@ -283,7 +283,7 @@ export function openStockroom(c: GameController): void {
     { label: 'Fish food', header: true },
     locked(c, 'buy', { label: `Buy food tub (+${FOOD_TUB.units})`, right: formatMoney(FOOD_TUB.cost), hint: `In stock: ${Math.floor(s.foodUnits)} portions`, action: () => { const r = buyFoodTub(s); c.ui.toast(r.message, r.ok ? 'good' : 'warn'); scr.refresh(items()); } }),
     { label: 'Dry goods for sale (packs of 5)', header: true },
-    ...DRY_GOODS.filter((g) => !g.marine || s.unlocks.marine).map((g) => locked(c, 'buy', {
+    ...DRY_GOODS.filter((g) => (!g.marine || s.unlocks.marine) && (!g.floor || s.unlocks.floors.includes(g.floor))).map((g) => locked(c, 'buy', {
       label: g.name,
       right: `${s.dryGoods[g.id] ?? 0} · ${formatMoney(g.wholesale * 5)}`,
       hint: `${g.description} Sells for ${formatMoney(g.retail)}.`,

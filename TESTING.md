@@ -202,3 +202,10 @@ A feature is done when it works in the playable game, not when the code exists:
 - Build each expansion via the dev panel; take the stairs; customers and staff appear on the floors they are on; marine tank shows salinity as SG in the water test and the diagnostics.
 - Hire staff; a stock clerk walks up with a suggestion: Approve / Review / Not now.
 - Copy Playtest Report copies text (or shows it to copy by hand).
+
+
+## Reef & Invertebrates floor (2026-10-04)
+
+- `tests/reef.test.ts`: expansion builds reef systems with the right equipment and every starting coral comfortable; light and flow by height on the rock; bleaching up high under strong light and starving on the sand; stony corals use alkalinity and calcium, soft corals barely; low alkalinity damage and the dosing fix in diagnostics; dose amounts, stock use and preview equality; dosing pump holds alkalinity and stops without stock; water change chemistry with and without salt; stinging by genus; fragging rules, frag rack separation and frag prices; level and water-type gating; aquascape coral preview equals the real assessment; save/load; coral death with a logged cause.
+- `tests/inverts.test.ts`: predation rules and logged predation over time; order warnings for shrimp into a goldfish tank; shell erosion naming and the minerals issue; cleaner shrimp lowering fish stress; grazing weight; brackish-larvae breeding block.
+- Visual review (Chromium, SwiftShader, sandbox `?sandbox`): reef floor overworld, R1/R2 reef tanks day and night, F1 cherry shrimp tank, Reef care, coral card, frag rack, aquascape coral placement at 960x640, 844x390 and 390x844. Emulation only, not a real device.

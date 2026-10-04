@@ -28,7 +28,12 @@ import { AdaptiveQuality, qualitySettings } from './quality';
 import { hardscapeTint, mulmAlpha, pearlRate, stepLightLevel, surfaceFilm } from './stateVisuals';
 import { portionCover } from '../sim/floating';
 import { makeTexture } from './art/pixel';
-import { FishAgent, type HideSpot, type Pellet, type TankWorld } from './fishBehaviour';
+import { FishAgent, type HideSpot, type Pellet } from './fishBehaviour';
+import { CritterAgent, type CritterWorld } from './critterBehaviour';
+import { isCritterShape } from './art/critterArt';
+import { CORAL_FRAMES, coralGlow, ensureCoralTexture } from './art/coralArt';
+import { getSpecies } from '../data/species';
+import { assessCoral, perchOf, reefLight, reefState, tankFlow } from '../sim/reef';
 import { beginFishFrame } from './art/fishArt';
 import { CANVAS_H, CANVAS_W, RES } from './res';
 
@@ -56,6 +61,8 @@ interface DecorView {
   x: number;
   baseY: number;
   layer: number;
+  /** Corals: animated polyp sheet, fluorescence overlay and frame phase. */
+  coral?: { sprite: Phaser.GameObjects.Sprite; glow: Phaser.GameObjects.Sprite; phase: number; w: number; h: number };
 }
 
 interface Bubble {
@@ -96,8 +103,8 @@ export function decorScale(tank: TankState): number {
 }
 
 export class TankRenderer {
-  world: TankWorld;
-  agents = new Map<string, FishAgent>();
+  world: CritterWorld;
+  agents = new Map<string, FishAgent | CritterAgent>();
   selectedId: string | null = null;
   private decorViews: DecorView[] = [];
   /** Plant drawing: [layer][bucket]. Plants are split into buckets redrawn on alternate frames so the cost is even. */
@@ -134,6 +141,8 @@ export class TankRenderer {
   private floating: FloatingLayer;
   private floatPreview: string | null = null;
   private waterTint: Phaser.GameObjects.Rectangle;
+  /** Reef tanks: additive actinic-blue wash over the water. */
+  private reefWash: Phaser.GameObjects.Rectangle;
   private frameNo = 0;
   private q = qualitySettings();
   private adaptive = new AdaptiveQuality();
@@ -168,6 +177,7 @@ export class TankRenderer {
       schools: new Map(),
       lightAt: (x, y) => this.lightAt(x, y),
       onEat: (agent, pellet) => this.eat(agent, pellet),
+      groundAt: (x) => this.baseYAt(1, x),
     };
     ensureSharedTextures(scene);
     scene.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x221d30).setOrigin(0, 0).setDepth(-10);
@@ -188,6 +198,7 @@ export class TankRenderer {
     this.rebuildDecor();
     this.floating = new FloatingLayer(scene, VIEW.left, VIEW.right, VIEW.surface, RES, hashUid(tankId));
     this.waterTint = scene.add.rectangle(VIEW.left, VIEW.surface - 3 * RES, W, VIEW.subBottom - VIEW.surface, 0x8a5418, 0).setOrigin(0, 0).setDepth(29.5);
+    this.reefWash = scene.add.rectangle(VIEW.left, VIEW.surface - 3 * RES, W, VIEW.subBottom - VIEW.surface, 0x2a4ab8, 0).setOrigin(0, 0).setDepth(29.6).setBlendMode(Phaser.BlendModes.ADD);
     this.syncFish();
     for (let i = 0; i < this.q.specks; i++) {
       const depth = vr.next();
@@ -258,7 +269,7 @@ export class TankRenderer {
 
   private rebuildEquipment(): void {
     const t = this.tank;
-    const key = `${t.filterId}|${t.heaterId}|${t.airStone}`;
+    const key = `${t.filterId}|${t.heaterId}|${t.airStone}|${t.reef?.wavemaker ?? 0}|${t.reef?.light ?? ''}`;
     if (key === this.equipKey) return;
     this.equipKey = key;
     this.equipment?.destroy();
@@ -289,6 +300,25 @@ export class TankRenderer {
       for (let k = 0; k < 6; k++) g.fillStyle(0x1a1d24).fillRect(VIEW.right - 29 * R, VIEW.surface + (120 + k * 5) * R, 8 * R, 2 * R);
       g.fillStyle(0x262a33).fillRect(VIEW.left + 40 * R, VIEW.surface - 6 * R, 6 * R, 40 * R);
       g.fillStyle(0x262a33).fillRect(VIEW.left + 40 * R, VIEW.surface + 30 * R, 22 * R, 6 * R);
+    }
+    const wm = reefState(t).wavemaker ?? 0;
+    if (t.waterType === 'marine' && wm > 0) {
+      // Wavemaker: a puck on the back glass, upper left, with a grille.
+      const wx = VIEW.left + 54 * R;
+      const wy = VIEW.surface + 26 * R;
+      const r = (wm > 1 ? 9 : 7) * R;
+      g.fillStyle(0x1a1d24).fillCircle(wx, wy, r);
+      g.fillStyle(0x2c303a).fillCircle(wx, wy, r - 2 * R);
+      for (let k = -2; k <= 2; k++) g.fillStyle(0x14161c).fillRect(wx - r + 3 * R, wy + k * 2 * R, (r - 3 * R) * 2, R);
+      g.fillStyle(0x3a8ad8, 0.9).fillRect(wx + r - 3 * R, wy - r + 2 * R, R, R);
+    }
+    if (t.waterType === 'marine' && reefLight(t).actinic > 0) {
+      // Reef LED fixture: a dark puck array above the water with blue and white diodes.
+      const fy = VIEW.frameTop - 2 * R;
+      for (let x = VIEW.left + 40 * R; x < VIEW.right - 40 * R; x += 70 * R) {
+        g.fillStyle(0x12141a).fillRect(x, fy, 46 * R, 6 * R);
+        for (let k = 0; k < 6; k++) g.fillStyle(k % 2 ? 0x7a8aff : 0xe8f4ff).fillRect(x + 4 * R + k * 7 * R, fy + 4 * R, 3 * R, R);
+      }
     }
     if (t.heaterId) {
       const hx = VIEW.left + 12 * R;
@@ -406,7 +436,7 @@ export class TankRenderer {
   // Decor
 
   private signature(): string {
-    return JSON.stringify(this.tank.decor.map((d) => [d.uid, d.x, d.layer, Math.round(d.health * 10), Math.round((d.size ?? 1) * 20)]));
+    return JSON.stringify(this.tank.decor.map((d) => [d.uid, d.x, d.layer, Math.round(d.health * 10), Math.round((d.size ?? 1) * 20), Math.round((d.bleach ?? 0) * 8)]));
   }
 
   /** Base line for decor at canvas x in a layer, following the substrate contour. */
@@ -418,7 +448,11 @@ export class TankRenderer {
   rebuildDecor(): void {
     const t = this.tank;
     this.decorSignature = this.signature();
-    for (const d of this.decorViews) d.image?.destroy();
+    for (const d of this.decorViews) {
+      d.image?.destroy();
+      d.coral?.sprite.destroy();
+      d.coral?.glow.destroy();
+    }
     this.decorViews = [];
     for (const g of this.plantGfx.flat()) g.destroy();
     this.plantBuckets = this.q.plantEvery;
@@ -426,10 +460,16 @@ export class TankRenderer {
     const scale = decorScale(t);
     const hides: HideSpot[] = [];
     const boxes: LightBox[] = [];
+    const corals: DecorItem[] = [];
     for (const item of [...t.decor].sort((a, b) => a.layer - b.layer)) {
       const def = getDecor(item.defId);
       const x = decorX(item.x);
       const baseY = this.baseYAt(item.layer, x);
+      if (def.kind === 'coral') {
+        // Corals sit on the rockwork, so they are placed after every rock.
+        corals.push(item);
+        continue;
+      }
       if (def.kind === 'plant') {
         const plant = buildPlant(def, scale, hashUid(item.uid), item.health, item.size ?? 1);
         this.decorViews.push({ item, plant, image: null, x, baseY, layer: item.layer });
@@ -449,10 +489,50 @@ export class TankRenderer {
         if (def.cave) boxes.push({ x0: x - tex.w * 0.25, x1: x + tex.w * 0.25, y0: baseY - tex.h * 0.5, y1: baseY, amount: 0.35 });
       }
     }
+    for (const item of corals) this.addCoralView(item, scale);
     this.world.hides = hides;
     this.lightBoxes = boxes;
     this.lightT = 0;
     this.hardscapeTintT = 0;
+  }
+
+  /** Where a coral sits on screen: on top of or halfway up its rock, or on the sand. */
+  private coralSpot(item: Pick<DecorItem, 'x' | 'layer' | 'uid'>): { x: number; y: number; depth: number } {
+    const t = this.tank;
+    const { perch, rock } = perchOf(t, item);
+    const x = decorX(item.x);
+    if (!rock || perch === 'sand') return { x, y: this.baseYAt(2, x) + 2 * RES, depth: 22 };
+    const rv = this.decorViews.find((d) => d.item.uid === rock.uid);
+    const rockH = rv?.image?.displayHeight ?? getDecor(rock.defId).height * decorScale(t);
+    const rockBase = rv ? rv.baseY + 2 * RES : this.baseYAt(rock.layer, decorX(rock.x));
+    const rockDepth = rock.layer === 0 ? 5 : rock.layer === 1 ? 15 : 25;
+    // The rock's outline rises toward its middle; sit a little lower near its edges.
+    const off = Math.abs(x - decorX(rock.x)) / Math.max(1, (rv?.image?.displayWidth ?? rockH) / 2);
+    const k = (perch === 'top' ? 0.86 : 0.5) * (1 - Math.min(0.5, off * off * 0.5));
+    return { x, y: rockBase - rockH * k + 3 * RES, depth: rockDepth + 0.3 };
+  }
+
+  private coralLook(item: DecorItem, scale: number, healthyPreview = false) {
+    const t = this.tank;
+    const def = getDecor(item.defId);
+    let ext = 1;
+    if (!healthyPreview) {
+      const a = assessCoral(t, item);
+      // Polyps open in suitable flow and close up when unhappy or in the dark.
+      ext = Math.max(0.15, Math.min(1, item.health) * (a.notes.some((n) => n.key === 'flow' && !n.good) ? 0.55 : 1) * (t.lightOn ? 1 : 0.7));
+    }
+    return { def, scale, size: item.size, health: healthyPreview ? 1 : item.health, bleach: healthyPreview ? 0 : item.bleach ?? 0, ext, seed: hashUid(item.uid) };
+  }
+
+  private addCoralView(item: DecorItem, scale: number): void {
+    const def = getDecor(item.defId);
+    const look = this.coralLook(item, scale);
+    const tex = ensureCoralTexture(this.scene, look);
+    useTexture(this.scene, 'coral', tex.key, 48, this.decorViews.filter((d) => d.coral).map((d) => d.coral!.sprite.texture.key));
+    const spot = this.coralSpot(item);
+    const sprite = this.scene.add.sprite(Math.round(spot.x), Math.round(spot.y), tex.key, '0').setOrigin(0.5, 1).setDepth(spot.depth).setFlipX(item.flip);
+    const glow = this.scene.add.sprite(Math.round(spot.x), Math.round(spot.y), tex.key, '0').setOrigin(0.5, 1).setDepth(spot.depth + 0.01).setFlipX(item.flip).setBlendMode(Phaser.BlendModes.ADD).setTint(coralGlow(def)).setAlpha(0);
+    this.decorViews.push({ item, plant: null, image: null, x: spot.x, baseY: spot.y, layer: item.layer, coral: { sprite, glow, phase: (hashUid(item.uid) % 100) / 100 * CORAL_FRAMES, w: tex.w, h: tex.h } });
   }
 
   /** Shows a translucent preview of a decor item; null clears it. */
@@ -468,15 +548,25 @@ export class TankRenderer {
     const def = getDecor(spec.defId);
     const scale = decorScale(this.tank);
     if (def.kind === 'plant') this.ghostPlant = buildPlant(def, scale, 4242, 1, spec.size);
-    else {
+    else if (def.kind === 'coral') {
+      const tex = ensureCoralTexture(this.scene, { def, scale, size: spec.size, health: 1, bleach: 0, ext: 1, seed: 4242 });
+      this.ghostImage = this.scene.add.image(0, 0, tex.key, '0').setOrigin(0.5, 1).setDepth(27);
+    } else {
       const tex = ensureHardscapeTexture(this.scene, def, scale);
       this.ghostImage = this.scene.add.image(0, 0, tex.key).setOrigin(0.5, 1).setDepth(27);
     }
   }
 
   /** Canvas-space box of a decor item (for edit highlights). */
-  decorBounds(item: { defId: string; x: number; layer: number; size?: number }): { x: number; y: number; w: number; h: number } {
+  decorBounds(item: { defId: string; x: number; layer: number; size?: number; uid?: string }): { x: number; y: number; w: number; h: number } {
     const def = getDecor(item.defId);
+    if (def.kind === 'coral') {
+      const v = item.uid ? this.decorViews.find((d) => d.item.uid === item.uid)?.coral : undefined;
+      const spot = this.coralSpot({ x: item.x, layer: item.layer as 0 | 1 | 2, uid: item.uid ?? '' });
+      const w = v?.w ?? def.width * decorScale(this.tank);
+      const h = v?.h ?? def.height * decorScale(this.tank);
+      return { x: spot.x - w / 2, y: spot.y - h, w, h };
+    }
     const scale = decorScale(this.tank);
     const g = def.kind === 'plant' ? 0.3 + 0.7 * Math.min(1.8, item.size ?? 1) : 1;
     const w = def.width * scale * (def.kind === 'plant' ? 0.5 + 0.5 * Math.min(g, 1.4) : 1);
@@ -506,14 +596,14 @@ export class TankRenderer {
         existing.fish = f;
         continue;
       }
-      const a = new FishAgent(this.scene, f, this.world);
+      const a = isCritterShape(getSpecies(f.speciesId).body.shape) ? new CritterAgent(this.scene, f, this.world) : new FishAgent(this.scene, f, this.world);
       a.sprite.on('pointerdown', () => {
         this.selectedId = f.id;
         this.opts.onSelect?.(f);
       });
       this.agents.set(f.id, a);
     }
-    this.world.agents = [...this.agents.values()];
+    this.world.agents = [...this.agents.values()].filter((a): a is FishAgent => a instanceof FishAgent);
   }
 
   /** Spawns visual food flakes for `units` of food. */
@@ -530,7 +620,7 @@ export class TankRenderer {
     this.world.pellets.push({ x, y, vy: 0, floatT: settled ? 0 : vr.range(0.8, 3), units, settled, obj });
   }
 
-  private eat(agent: FishAgent, pellet: Pellet): void {
+  private eat(agent: { fish: FishEntity }, pellet: Pellet): void {
     const took = this.opts.onEat ? this.opts.onEat(agent.fish, pellet.units) : pellet.units;
     pellet.units -= took;
     if (pellet.units <= 0.0001) this.removePellet(pellet);
@@ -588,7 +678,7 @@ export class TankRenderer {
     this.applyLook();
     this.rebuildEquipment();
     this.world.lightsOn = t.lightOn;
-    this.world.flow = 0.3 + getFilter(t.filterId).aeration + (t.airStone ? 0.3 : 0);
+    this.world.flow = 0.3 + getFilter(t.filterId).aeration + (t.airStone ? 0.3 : 0) + (t.waterType === 'marine' ? tankFlow(t) * 0.8 : 0);
     this.syncFish();
 
     // Food flakes flutter at the surface then sink with a little spin.
@@ -672,11 +762,28 @@ export class TankRenderer {
       }
     }
 
+    // Corals: polyps sway through their frames (faster in stronger flow), lit by the light map,
+    // and fluoresce under actinic reef light, most visibly when the white channels are off.
+    const actinic = t.waterType === 'marine' ? reefLight(t).actinic : 0;
+    for (const d of this.decorViews) {
+      if (!d.coral) continue;
+      const rate = (1.2 + this.world.flow * 1.6) * (this.calm ? 0.4 : 1);
+      const fr = Math.floor(this.time * rate + d.coral.phase) % CORAL_FRAMES;
+      d.coral.sprite.setFrame(String(fr));
+      d.coral.glow.setFrame(String(fr));
+      const light = this.lightMap.at(d.x, d.baseY - d.coral.h * 0.5);
+      const k = clamp(0.55 + 0.5 * light * lit + (1 - lit) * 0.05, 0.3, 1.05);
+      const c = Math.round(255 * k);
+      d.coral.sprite.setTint((c << 16) | (c << 8) | Math.round(255 * clamp(k + 0.08 * actinic, 0, 1)));
+      d.coral.glow.setAlpha(actinic * (0.16 * lit + 0.42 * (1 - lit)) * (1 - (d.item.bleach ?? 0)) * Math.min(1, d.item.health + 0.2));
+    }
+
     // Aquascape ghost preview.
     this.ghostGfx.clear();
     if (this.ghost) {
       const gx = decorX(this.ghost.x);
-      const gy = this.baseYAt(this.ghost.layer, gx);
+      const coralGhost = getDecor(this.ghost.defId).kind === 'coral';
+      const gy = coralGhost ? this.coralSpot({ x: this.ghost.x, layer: this.ghost.layer, uid: '' }).y : this.baseYAt(this.ghost.layer, gx);
       const pulse = 0.55 + Math.sin(this.time * 5) * 0.15;
       if (this.ghostPlant) drawPlant(this.ghostGfx, this.ghostPlant, gx, gy, { time: this.time, flow: this.world.flow, alpha: pulse, surfaceY: VIEW.surface });
       if (this.ghostImage) this.ghostImage.setPosition(gx, gy + 2 * RES).setAlpha(pulse).setTint(0xfff6c8);
@@ -725,15 +832,16 @@ export class TankRenderer {
     const meanLight = this.lightMap.mean();
     this.rays.forEach((r, i) => {
       const shade = this.floating.shadeAt(r.x + 20 * RES);
-      r.setTint(look.light);
+      r.setTint(actinic > 0 ? 0xbcd4ff : look.light);
       const sway = this.calm ? 0 : Math.sin(this.time * 0.6 + i * 1.7) * 0.35;
       r.setAlpha((0.55 + sway) * (1 - shade * 0.9) * lit);
       if (!this.calm) r.x += Math.sin(this.time * 0.25 + i) * 0.08 * RES;
     });
     const cOn = (0.15 + 0.85 * lit) * (this.q.caustics ? 1 : 0) * Math.min(1, meanLight * 1.2);
     const ct = this.time * (this.calm ? 0.25 : 1);
-    for (const c of this.caustics) c.setTint(look.light);
+    for (const c of this.caustics) c.setTint(actinic > 0 ? 0xc8dcff : look.light);
     this.waterTint.setFillStyle(look.tint, look.tintAlpha);
+    this.reefWash.setFillStyle(0x2a4ab8, actinic * (0.14 * lit + 0.06));
     this.caustics[0].tilePositionX = ct * 7 * RES;
     this.caustics[0].tilePositionY = ct * 3 * RES;
     this.caustics[1].tilePositionX = -ct * 5 * RES;
@@ -764,7 +872,8 @@ export class TankRenderer {
     this.overlays.cloud.setFillStyle(0xdfe8e0, clamp(t.water.cloudiness * 0.55, 0, 0.6));
     this.overlays.algae.setAlpha(clamp(t.algae * 0.95, 0, 0.95));
     this.overlays.dirt.setAlpha(clamp(t.glassDirt * 0.9, 0, 0.9));
-    this.overlays.night.setFillStyle(0x0a1430, 0.45 * (1 - lit));
+    // Reef tanks keep a dim blue moonlight at night, so corals still glow.
+    this.overlays.night.setFillStyle(actinic > 0 ? 0x06124a : 0x0a1430, 0.45 * (1 - lit) * (actinic > 0 ? 0.85 : 1));
 
     // Selection marker.
     this.selectRing.clear();
@@ -922,6 +1031,10 @@ export class TankRenderer {
   }
 
   destroy(): void {
+    for (const d of this.decorViews) {
+      d.coral?.sprite.destroy();
+      d.coral?.glow.destroy();
+    }
     for (const a of this.agents.values()) a.destroy();
     this.agents.clear();
     this.floating.destroy();
