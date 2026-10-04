@@ -87,6 +87,8 @@ export function breedingConditions(state: GameState, tank: TankState, speciesId:
     if (need === 'soft_water' && (w.gh > 6 || w.ph > 7.1)) fail('Needs soft, slightly acidic water to spawn (hardness 6 or less, pH 7 or less).');
     if (need === 'cave' && sc.caveSlots === 0) fail('Needs a cave to spawn in.');
     if (need === 'plants' && sc.plants === 0) weaken('Prefers plants to spawn among.', 0.3);
+    if (need === 'brackish_larvae') fail('The larvae need brackish water to develop, so none survive in a freshwater tank.');
+    if (need === 'marine_larvae') fail('The larvae drift as plankton for weeks; they need specialist rearing systems.');
   }
   if (b.trigger === 'water_change') {
     const last = tank.lastMaintenance.waterChange ?? -Infinity;
@@ -170,7 +172,8 @@ export function tickBreeding(state: GameState, tank: TankState, dtHours: number,
       const born = birthFry(state, rng, f, father, tank, f.pregnancy.fryCount);
       f.pregnancy = null;
       f.breedingReadiness = 0;
-      if (born.length) ctx.log(`${born.length} ${getSpecies(f.speciesId).commonName} fry born in ${tank.name}!`, 'good');
+      const fsp = getSpecies(f.speciesId);
+      if (born.length) ctx.log(`${born.length} ${fsp.commonName} ${fsp.young ?? 'fry'} born in ${tank.name}!`, 'good');
     }
   }
 
@@ -195,7 +198,7 @@ export function tickBreeding(state: GameState, tank: TankState, dtHours: number,
     const born = birthFry(state, rng, mother, father, tank, survivors);
     ctx.log(
       born.length
-        ? `${born.length} ${sp.commonName} fry hatched in ${tank.name} (from about ${br.count} eggs).`
+        ? `${born.length} ${sp.commonName} ${sp.young ?? 'fry'} hatched in ${tank.name} (from about ${br.count} eggs).`
         : `The ${sp.commonName} eggs in ${tank.name} did not survive. More plant cover or a separate tank would help.`,
       born.length ? 'good' : 'warn',
     );

@@ -5,7 +5,7 @@
 
 export const TILE = 16;
 
-export type PropKind = 'tank' | 'counter' | 'shelf' | 'desk' | 'plant' | 'bench' | 'sign' | 'stairs' | 'rack' | 'pallet';
+export type PropKind = 'tank' | 'counter' | 'shelf' | 'desk' | 'plant' | 'bench' | 'sign' | 'stairs' | 'rack' | 'pallet' | 'fragrack';
 
 export interface PropPlacement {
   id: string;
@@ -20,9 +20,11 @@ export interface PropPlacement {
   to?: string;
   /** Stairs: 'up' or 'down' (art only). */
   dir?: 'up' | 'down';
+  /** Tanks: cabinet art (reef systems have a lit reef hood; nano tanks a low stand). */
+  style?: 'reef' | 'nano';
 }
 
-export type FloorTheme = 'shop' | 'cool' | 'marine' | 'basement';
+export type FloorTheme = 'shop' | 'cool' | 'marine' | 'basement' | 'reef';
 
 export interface FloorLayout {
   id: string;

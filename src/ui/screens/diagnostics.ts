@@ -3,6 +3,7 @@
  * of the tank menu, issue detail screens with predicted effects and links to
  * the action that helps, and the full status page.
  */
+import { openReefCare } from './reef';
 import type { GameController } from '../../game/GameController';
 import { getSpecies } from '../../data/species';
 import { FIXES, type FixId } from '../../sim/preview';
@@ -60,6 +61,7 @@ export function navigate(c: GameController, tankId: string, nav: NavId, parent?:
   else if (nav === 'waterTest') openWaterTest(c, tankId);
   else if (nav === 'maintenance') openMaintenanceFor(c, tankId, parent);
   else if (nav === 'order') openSuppliers(c);
+  else if (nav === 'reef') openReefCare(c, tankId, parent);
 }
 
 function actionItem(c: GameController, tankId: string, a: DiagAction, refresh: () => void, parent?: MenuScreen): MenuItem {

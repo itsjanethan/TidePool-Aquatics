@@ -9,6 +9,7 @@ import type { SpeciesDef } from '../data/speciesTypes';
 import type { AquascapeSummary } from './aquascape';
 import { coverPercent, habitatOf, tankNeeds } from './habitat';
 import { getMorph } from './fish';
+import { canEat, CLEANER_RELIEF, hasCleaner, isInvert, predationWarning } from './inverts';
 import type { FishEntity, TankState } from './types';
 
 /** Stocking capacity in "effective cm" of fish. */
@@ -96,6 +97,8 @@ export function stressTarget(
     if (ms.id !== sp.id) bully += ms.aggression * (m.sizeCm / Math.max(1, f.sizeCm)) * 2;
     if (ms.behaviour.finNipper && ms.id !== sp.id && hasLongFins(f, sp)) bully += 4;
     if (ms.tags.includes('eats_tiny_fish') && f.sizeCm < m.sizeCm * 0.3) bully += 4;
+    // Shrimp and snails live in fear of anything that can eat them.
+    if (canEat(ms, m.sizeCm, sp, f.sizeCm)) bully += 8;
   }
   add('Harassed by tank mates', Math.min(35, bully));
   if (sp.territorial && sp.tags.includes('territorial_bottom')) {
@@ -106,7 +109,9 @@ export function stressTarget(
   // Hunger.
   add('Hungry', f.hunger > 60 ? (f.hunger - 60) * 0.5 : 0);
 
-  const total = clamp(reasons.reduce((s, r) => s + r.amount, 0) + 6, 0, 100);
+  // A cleaner shrimp keeps parasites down, so fish (not other inverts) are calmer.
+  const relief = !isInvert(sp) && hasCleaner(mates) ? CLEANER_RELIEF : 0;
+  const total = clamp(reasons.reduce((s, r) => s + r.amount, 0) + 6 - relief, 0, 100);
   reasons.sort((a, b) => b.amount - a.amount);
   return { total, reasons };
 }
@@ -164,6 +169,11 @@ export function assessSpeciesForSetup(
     if ((os.tags.includes('eats_tiny_fish') && sp.adultSizeCm < 3.5) || (sp.tags.includes('eats_tiny_fish') && os.adultSizeCm < 3.5)) {
       issues.push('Big goldfish will eat very small fish.');
       score -= 0.3;
+    }
+    const eats = predationWarning(sp, os);
+    if (eats) {
+      issues.push(eats);
+      score -= 0.5;
     }
   }
   return { score: clamp(score, 0, 1), issues };

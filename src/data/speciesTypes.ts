@@ -21,7 +21,9 @@ export type BreedingMethod =
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'very_rare';
 
 /** Visual body archetype used by the procedural fish renderer. */
-export type BodyShape = 'slender' | 'torpedo' | 'deep' | 'livebearer' | 'catfish' | 'pleco' | 'goldfish';
+export type BodyShape = 'slender' | 'torpedo' | 'deep' | 'livebearer' | 'catfish' | 'pleco' | 'goldfish'
+  /** Invertebrates: drawn and animated by the critter renderer, not the fish painter. */
+  | 'shrimp' | 'snail' | 'crab';
 export type FinStyle = 'short' | 'fan' | 'delta' | 'long' | 'sail' | 'twin';
 export type PatternType =
   | 'none'
@@ -261,4 +263,6 @@ export interface SpeciesDef {
   starter: boolean;
   /** Shop level that unlocks this species (default 1). */
   shopLevel?: number;
+  /** Word for the young (default 'fry'): 'shrimplets', 'baby snails'. */
+  young?: string;
 }

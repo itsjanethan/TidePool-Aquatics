@@ -223,6 +223,45 @@ export function ensureHardscapeTexture(scene: Phaser.Scene, def: DecorDef, scale
       }
       break;
     }
+    case 'reefrock': {
+      // A reef arch: two rubble pillars joined by a bridge of rock, ledges for corals,
+      // a dark cave under the arch, coralline algae in pink and purple over the top.
+      contactShadow(img, w / 2, w);
+      const base = hex('#bfae94');
+      const lumps: Array<[number, number, number, number]> = [
+        // pillars (x, y, rx, ry as fractions)
+        [0.16, 0.78, 0.15, 0.22], [0.22, 0.56, 0.13, 0.2], [0.18, 0.36, 0.12, 0.16],
+        [0.8, 0.8, 0.16, 0.2], [0.76, 0.58, 0.14, 0.19], [0.82, 0.4, 0.11, 0.15],
+        // bridge
+        [0.36, 0.3, 0.14, 0.13], [0.52, 0.24, 0.15, 0.13], [0.66, 0.3, 0.13, 0.13],
+        // top ledges
+        [0.44, 0.13, 0.09, 0.08], [0.6, 0.14, 0.08, 0.07], [0.28, 0.2, 0.08, 0.07],
+      ];
+      for (const [i, [fx, fy, frx, fry]] of lumps.entries()) {
+        rock(img, w * fx, h * fy, w * frx, h * fry, lit(base, 0.9 + (i % 3) * 0.06), seed + i * 7, { grain: 0.24, pits: 0.85 });
+      }
+      // Cave under the arch.
+      const cx = w * 0.5;
+      const cy = h * 0.86;
+      for (let y = -h * 0.42; y <= h * 0.1; y++) for (let x = -w * 0.2; x <= w * 0.2; x++) {
+        const d = Math.hypot(x / (w * 0.2), y / (h * 0.42));
+        if (d <= 1 && cy + y < h - 2) img.set(cx + x, cy + y, mixC([14, 18, 26], [40, 50, 66], Math.max(0, -y / (h * 0.42)) * 0.4), d > 0.92 ? 0.55 : 0.92);
+      }
+      const coral: RGB[] = [hex('#c45a9a'), hex('#9a4ac0'), hex('#e07ab0'), hex('#7a3aa0'), hex('#d0708a')];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (img.data[i + 3] < 220) continue;
+        const n = fbm(x * 0.1, y * 0.1, seed + 31);
+        const upper = 1 - y / h;
+        if (n > 0.62 - upper * 0.12) {
+          const c = coral[Math.floor(h2(x >> 2, y >> 2, seed) * coral.length)];
+          img.set(x, y, lit(c, 0.7 + upper * 0.5), 0.8);
+        } else if (n < 0.22) img.set(x, y, [36, 30, 34], 0.6);
+        // Light from above catches the upper faces.
+        if (y > 0 && img.data[((y - 1) * w + x) * 4 + 3] < 40) img.set(x, y, [255, 246, 230], 0.35);
+      }
+      break;
+    }
     case 'mopani':
     case 'spiderwood': {
       const mop = def.art === 'mopani';

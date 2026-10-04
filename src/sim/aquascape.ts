@@ -84,8 +84,11 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
     kinds.add(def.kind);
     def.provides.forEach((p) => provides.add(p));
     const isPlant = def.kind === 'plant';
-    const size = isPlant ? (d.size ?? 1) : 1;
-    const h = isPlant ? d.health : 1;
+    const isCoral = def.kind === 'coral';
+    const living = isPlant || isCoral;
+    const size = living ? (d.size ?? 1) : 1;
+    // A bleached coral has lost its colour: it counts for less.
+    const h = isPlant ? d.health : isCoral ? d.health * (1 - (d.bleach ?? 0) * 0.6) : 1;
     cover += def.cover * h * sizeScale * Math.min(size, 1.3);
     if (def.cave) {
       caves += 1;
@@ -97,9 +100,10 @@ export function summarizeAquascape(tank: TankState): AquascapeSummary {
       uptake += def.nutrientUptake * d.health * size;
     }
     ph += def.phEffect;
-    footprint += (def.width / 448) * (def.height / 200) * (isPlant ? size * size : 1);
+    footprint += (def.width / 448) * (def.height / 200) * (living ? size * size : 1);
     // Plants look best near mature size; tiny cuttings and overgrown jungles score less.
-    const sizeLook = !isPlant ? 1 : size > 1.25 ? Math.max(0.3, 1 - (size - 1.25) * 1.6) : Math.min(1, 0.45 + size * 0.55);
+    // Corals keep looking better as colonies grow.
+    const sizeLook = isCoral ? Math.min(1, 0.45 + size * 0.45) : !isPlant ? 1 : size > 1.25 ? Math.max(0.3, 1 - (size - 1.25) * 1.6) : Math.min(1, 0.45 + size * 0.55);
     beautySum += def.beauty * h * sizeLook;
   }
 

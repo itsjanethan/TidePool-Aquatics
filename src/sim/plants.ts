@@ -61,10 +61,18 @@ export function tickPlants(state: GameState, tank: TankState, dtHours: number): 
   }
 }
 
-/** Retail value of a potted plant. */
+/** Retail value of a potted plant or a coral frag. */
 export function plantValue(p: { defId: string; size: number; health: number }): number {
   const def = getDecor(p.defId);
+  // Coral value climbs steeply with colony size: a frag is cheap, a large colony is not.
+  if (def.kind === 'coral') return round(Math.max(1, def.cost * (0.15 + Math.min(p.size, 1.6) * 1.1) * (0.4 + 0.6 * p.health)), 2);
   return round(Math.max(0.5, def.cost * (0.35 + Math.min(p.size, 1.2) * 0.85) * (0.4 + 0.6 * p.health)), 2);
+}
+
+/** Plants and corals are living decor: they keep size and health in the stockroom. */
+export function isLiving(defId: string): boolean {
+  const k = getDecor(defId).kind;
+  return k === 'plant' || k === 'coral';
 }
 
 export function takeCutting(state: GameState, tank: TankState, uid: string, cut: CuttingSize): ActionResult {
@@ -98,7 +106,7 @@ export function removeToStorage(state: GameState, tank: TankState, uid: string):
   const d = tank.decor[i];
   tank.decor.splice(i, 1);
   const def = getDecor(d.defId);
-  if (def.kind === 'plant') {
+  if (isLiving(d.defId)) {
     state.storage.plants.push({ uid: newId(state, 'pp'), defId: d.defId, size: d.size, health: d.health, reservedBy: null });
   } else {
     state.storage.decor[d.defId] = (state.storage.decor[d.defId] ?? 0) + 1;
@@ -115,21 +123,38 @@ function placeItem(state: GameState, tank: TankState, item: Omit<DecorItem, 'uid
 
 export const MAX_DECOR = 16;
 
+/**
+ * Why a decor item may not go in this tank (null when it may): marine-only
+ * items, plants and wood in saltwater, corals outside marine tanks, and
+ * catalogue items whose floor is not open yet (`buying`).
+ */
+export function decorRefusal(state: GameState, tank: TankState, defId: string, buying: boolean): string | null {
+  const def = getDecor(defId);
+  if (def.marineOnly && tank.waterType !== 'marine') return `${def.name} is for marine tanks.`;
+  if (tank.waterType === 'marine' && (def.kind === 'plant' || def.kind === 'wood')) return `${def.name} does not belong in a marine tank.`;
+  if (buying && (def.level ?? 1) > state.shopLevel) return `${def.name} is sold once the shop reaches level ${def.level}.`;
+  return null;
+}
+
 export function plantFromStorage(state: GameState, tank: TankState, potUid: string, x: number, layer: 0 | 1 | 2): ActionResult {
   if (state.idle) return idleRefusal();
   if (tank.decor.length >= MAX_DECOR) return fail('This tank is full of decor.');
   const i = state.storage.plants.findIndex((p) => p.uid === potUid && !p.reservedBy);
   if (i < 0) return fail('That plant is no longer in stock.');
   const p = state.storage.plants[i];
+  const why = decorRefusal(state, tank, p.defId, false);
+  if (why) return fail(why);
   state.storage.plants.splice(i, 1);
   placeItem(state, tank, { defId: p.defId, x: clamp(x, 0, 1), layer, flip: x > 0.5, health: p.health, size: p.size });
-  return ok(`Planted the ${getDecor(p.defId).name}.`, 5);
+  return ok(`${getDecor(p.defId).kind === 'coral' ? 'Placed' : 'Planted'} the ${getDecor(p.defId).name}.`, 5);
 }
 
 export function placeDecorFromStorage(state: GameState, tank: TankState, defId: string, x: number, layer: 0 | 1 | 2): ActionResult {
   if (state.idle) return idleRefusal();
   if (tank.decor.length >= MAX_DECOR) return fail('This tank is full of decor.');
   if ((state.storage.decor[defId] ?? 0) < 1) return fail('None left in the stockroom.');
+  const why = decorRefusal(state, tank, defId, false);
+  if (why) return fail(why);
   state.storage.decor[defId] -= 1;
   if (state.storage.decor[defId] <= 0) delete state.storage.decor[defId];
   placeItem(state, tank, { defId, x: clamp(x, 0, 1), layer, flip: x > 0.5, health: 1, size: 1 });
@@ -164,6 +189,7 @@ export function sellStoredDecor(state: GameState, defId: string): ActionResult {
   return ok(`Sold the ${def.name} second-hand for £${refund.toFixed(2)}.`, 1);
 }
 
+/** Potted plants for sale on the shelf (coral frags live on the frag rack instead). */
 export function availablePlants(state: GameState): PottedPlant[] {
-  return state.storage.plants.filter((p) => !p.reservedBy);
+  return state.storage.plants.filter((p) => !p.reservedBy && getDecor(p.defId).kind === 'plant');
 }

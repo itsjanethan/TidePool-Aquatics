@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EXPANSIONS } from '../src/data/expansions';
 import { applyPreset, createSandbox, PRESETS } from '../src/dev/sandbox';
 import { Simulation } from '../src/sim/simulation';
 import { FLOORS } from '../src/data/floors';
@@ -20,7 +21,7 @@ describe('Developer Sandbox fixture', () => {
     const s = createSandbox();
     expect(isSandboxState(s)).toBe(true);
     expect(s.flags.devUsed).toBe(true);
-    expect(s.shopLevel).toBe(4);
+    expect(s.shopLevel).toBe(Math.max(...EXPANSIONS.map((e) => e.level)));
     expect(new Set(s.unlocks.floors)).toEqual(new Set(FLOORS.map((f) => f.id)));
     expect(s.unlocks.marine).toBe(true);
     for (const sp of SPECIES) {

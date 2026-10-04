@@ -3,7 +3,9 @@
  * Pure data. Gameplay effects are interpreted by sim/aquascape.ts, sim/water.ts.
  */
 
-export type DecorKind = 'plant' | 'rock' | 'wood' | 'cave' | 'ornament';
+import type { CoralTraits } from './reef';
+
+export type DecorKind = 'plant' | 'rock' | 'wood' | 'cave' | 'ornament' | 'coral';
 
 export interface DecorDef {
   id: string;
@@ -43,6 +45,10 @@ export interface DecorDef {
    * taking a piece off the parent; the wording and future mechanics differ.
    */
   propagation?: 'cuttings' | 'runners' | 'rhizome' | 'division';
+  /** Corals: light, flow, chemistry and growth (see data/reef.ts). */
+  coral?: CoralTraits;
+  /** Shop level needed before it can be bought (default 1). */
+  level?: number;
 }
 
 /** How a plant species' propagation is described to the player. */
@@ -69,7 +75,17 @@ export const DECOR: DecorDef[] = [
   { id: 'spider_wood', name: 'Spider Wood', kind: 'wood', cost: 16, cover: 0.14, cave: false, width: 70, height: 80, nutrientUptake: 0, phEffect: -0.1, beauty: 0.7, provides: ['wood'], art: 'spiderwood', description: 'Branching roots that reach for the surface.' },
   { id: 'clay_cave', name: 'Clay Cave', kind: 'cave', cost: 7, cover: 0.1, cave: true, width: 30, height: 18, nutrientUptake: 0, phEffect: 0, beauty: 0.2, provides: ['cave', 'breeding_cave'], art: 'claycave', description: 'A pleco breeding tube.' },
   { id: 'live_rock', name: 'Live Rock', kind: 'rock', cost: 28, cover: 0.14, cave: true, caveSlots: 2, width: 66, height: 46, nutrientUptake: 0, phEffect: 0.1, beauty: 0.6, provides: ['rocks', 'cave', 'live_rock'], art: 'liverock', marineOnly: true, description: 'Porous reef rock full of bacteria: extra biological filtration and hiding places in marine tanks.' },
+  { id: 'reef_rock', name: 'Reef Rock Arch', kind: 'rock', cost: 60, cover: 0.2, cave: true, caveSlots: 3, width: 150, height: 96, nutrientUptake: 0, phEffect: 0.12, beauty: 0.75, provides: ['rocks', 'cave', 'live_rock'], art: 'reefrock', marineOnly: true, description: 'A big arch of live reef rock: plenty of filtration, caves underneath, and ledges at every height to set corals on.' },
   { id: 'coconut_cave', name: 'Coconut Hut', kind: 'cave', cost: 5, cover: 0.09, cave: true, width: 34, height: 22, nutrientUptake: 0, phEffect: -0.05, beauty: 0.3, provides: ['cave'], art: 'coconut', description: 'Half a coconut shell. Rustic and cosy.' },
+  // Corals (marine reef tanks, Reef & Invertebrates floor). Decor layer = height on the rockwork.
+  { id: 'zoanthids', name: 'Zoanthid Colony', kind: 'coral', cost: 28, cover: 0.02, cave: false, width: 42, height: 22, nutrientUptake: 0, phEffect: 0, beauty: 0.75, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.035, maxSize: 2, description: 'Button polyps in green and orange. Hardy, forgiving and quick to spread across rock.', coral: { group: 'soft', form: 'zoa', genus: 'zoanthus', par: [50, 260], flow: [0.25, 0.8], nitrate: [1, 25], calcify: 0.02, growth: 0.035, maxSize: 2, sting: 0, reach: 0.05, sensitivity: 0.25, colours: { base: '#2e8a6a', tip: '#f07a2a', glow: '#7affb0' }, frag: 'Cut a few polyps off the edge of the mat with their rock.' } },
+  { id: 'gsp', name: 'Green Star Polyps', kind: 'coral', cost: 18, cover: 0.03, cave: false, width: 46, height: 12, nutrientUptake: 0, phEffect: 0, beauty: 0.6, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.06, maxSize: 2.2, description: 'A purple mat that sprouts waving green stars. Grows fast and will creep over neighbours.', coral: { group: 'soft', form: 'gsp', genus: 'pachyclavularia', par: [70, 320], flow: [0.3, 0.9], nitrate: [1, 30], calcify: 0.012, growth: 0.06, maxSize: 2.2, sting: 0.06, reach: 0.08, sensitivity: 0.15, colours: { base: '#6a2a5a', tip: '#6aff7a', glow: '#8aff9a' }, frag: 'Peel a strip of the mat off the rock.' } },
+  { id: 'mushroom', name: 'Mushroom Coral', kind: 'coral', cost: 20, cover: 0.03, cave: false, width: 38, height: 22, nutrientUptake: 0, phEffect: 0, beauty: 0.55, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.03, maxSize: 1.8, description: 'Flat discs that like dim, gentle spots. Bright light and strong flow make them shrivel.', coral: { group: 'soft', form: 'mushroom', genus: 'discosoma', par: [25, 150], flow: [0.05, 0.45], nitrate: [2, 35], calcify: 0.008, growth: 0.03, maxSize: 1.8, sting: 0.03, reach: 0.07, sensitivity: 0.2, colours: { base: '#b02a4a', tip: '#3aa0e0', glow: '#ff6a8a' }, frag: 'Slice a disc in half; each half regrows.' } },
+  { id: 'toadstool', name: 'Toadstool Leather', kind: 'coral', cost: 35, cover: 0.05, cave: false, width: 44, height: 44, nutrientUptake: 0, phEffect: 0, beauty: 0.65, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.025, maxSize: 2, description: 'A soft, mushroom-shaped leather coral with a fuzz of polyps. Releases chemicals that irritate close neighbours.', coral: { group: 'soft', form: 'leather', genus: 'sarcophyton', par: [80, 260], flow: [0.3, 0.75], nitrate: [1, 30], calcify: 0.016, growth: 0.025, maxSize: 2, sting: 0.04, reach: 0.15, sensitivity: 0.25, colours: { base: '#c8b07a', tip: '#e8e0c0', glow: '#d8f0a0' }, frag: 'Cut a wedge from the cap and let it heal on rubble.' } },
+  { id: 'hammer', name: 'Hammer Coral', kind: 'coral', cost: 55, cover: 0.04, cave: false, width: 46, height: 40, nutrientUptake: 0, phEffect: 0, beauty: 0.8, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.02, maxSize: 1.8, description: 'Large-polyp stony coral with anchor-shaped tips. Long sweeper tentacles sting other corals at night.', coral: { group: 'lps', form: 'hammer', genus: 'euphyllia', par: [75, 200], flow: [0.2, 0.55], nitrate: [1, 15], calcify: 0.25, growth: 0.02, maxSize: 1.8, sting: 0.25, reach: 0.16, sensitivity: 0.45, colours: { base: '#3aa08a', tip: '#d8e86a', glow: '#9affd0' }, frag: 'Snip a single head off the branching skeleton.' } },
+  { id: 'torch', name: 'Torch Coral', kind: 'coral', cost: 65, cover: 0.04, cave: false, width: 44, height: 48, nutrientUptake: 0, phEffect: 0, beauty: 0.85, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.018, maxSize: 1.8, description: 'Flowing tentacles with glowing tips. The most aggressive stinger here; give it room.', coral: { group: 'lps', form: 'torch', genus: 'euphyllia', par: [75, 200], flow: [0.2, 0.5], nitrate: [1, 15], calcify: 0.25, growth: 0.018, maxSize: 1.8, sting: 0.35, reach: 0.18, sensitivity: 0.5, colours: { base: '#7a8a4a', tip: '#ffd84a', glow: '#b8ff6a' }, frag: 'Snip a single head off the branching skeleton.' } },
+  { id: 'montipora', name: 'Montipora Cap', kind: 'coral', cost: 45, cover: 0.04, cave: false, width: 50, height: 26, nutrientUptake: 0, phEffect: 0, beauty: 0.75, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.03, maxSize: 2.2, description: 'Small-polyp stony coral growing in whorled plates. Needs strong light, good flow and stable chemistry.', coral: { group: 'sps', form: 'plate', genus: 'montipora', par: [140, 350], flow: [0.4, 0.9], nitrate: [0.5, 8], calcify: 0.5, growth: 0.03, maxSize: 2.2, sting: 0, reach: 0, sensitivity: 0.6, colours: { base: '#b04a2a', tip: '#f08a3a', glow: '#ff9a5a' }, frag: 'Snap off the edge of a plate and glue it to a plug.' } },
+  { id: 'acropora', name: 'Acropora', kind: 'coral', cost: 85, cover: 0.05, cave: false, width: 48, height: 50, nutrientUptake: 0, phEffect: 0, beauty: 0.95, provides: ['coral'], art: 'coral', marineOnly: true, level: 5, growthRate: 0.025, maxSize: 2, description: 'The classic branching reef builder. The hardest coral here: bright light, strong flow, very low nitrate and rock-steady alkalinity.', coral: { group: 'sps', form: 'acro', genus: 'acropora', par: [230, 480], flow: [0.55, 1], nitrate: [0.3, 5], calcify: 0.8, growth: 0.025, maxSize: 2, sting: 0.02, reach: 0.05, sensitivity: 0.85, colours: { base: '#4a7ad8', tip: '#a8e0ff', glow: '#7ac8ff' }, frag: 'Snip a branch tip and glue it to a plug.' } },
 ];
 
 /**
@@ -172,6 +188,8 @@ export interface SubstrateDef {
   grain?: 'sand' | 'fine' | 'gravel' | 'coarse' | 'soil' | 'bare';
   /** Plant growth multiplier (nutrient-rich soils). */
   plantBonus?: number;
+  /** Active soils hold pH and hardness near these values (water changes pull away for a while). */
+  buffer?: { ph: number; gh: number };
 }
 
 export const SUBSTRATES: SubstrateDef[] = [
@@ -182,6 +200,7 @@ export const SUBSTRATES: SubstrateDef[] = [
   { id: 'aqua_soil', name: 'Planted Soil', cost: 18, colourA: '#2e2218', colourB: '#4a3828', provides: ['soil'], beauty: 0.5, grain: 'soil', plantBonus: 1.35 },
   { id: 'black_gravel', name: 'Black Gravel', cost: 12, colourA: '#2a2a30', colourB: '#4a4a52', provides: [], beauty: 0.45, grain: 'gravel' },
   { id: 'bare', name: 'Bare Bottom', cost: 0, colourA: '#5a6a74', colourB: '#6a7a84', provides: [], beauty: 0, grain: 'bare' },
+  { id: 'shrimp_soil', name: 'Active Shrimp Soil', cost: 22, colourA: '#24201c', colourB: '#3e342a', provides: ['soil'], beauty: 0.5, grain: 'soil', plantBonus: 1.2, buffer: { ph: 6.3, gh: 5 } },
 ];
 
 export interface BackgroundDef {
@@ -206,6 +225,8 @@ export interface DryGoodDef {
   description: string;
   /** Only stocked once marine is unlocked. */
   marine?: boolean;
+  /** Only stocked once this floor is open. */
+  floor?: string;
 }
 
 /** Dry goods sold to customers as add-ons (bought by the shop in packs). */
@@ -216,6 +237,10 @@ export const DRY_GOODS: DryGoodDef[] = [
   { id: 'bacteria', name: 'Bacteria Starter', wholesale: 3, retail: 6.5, description: 'Helps a brand new tank begin to cycle.' },
   { id: 'salt_mix', name: 'Marine Salt Mix', wholesale: 4, retail: 9, description: 'Reef salt for mixing new saltwater. Needed for marine water changes.', marine: true },
   { id: 'ro_water', name: 'RO Water (25L)', wholesale: 1.5, retail: 4, description: 'Pure reverse-osmosis water for topping up evaporation in marine tanks (salt does not evaporate).', marine: true },
+  { id: 'reef_alk', name: 'Alkalinity Buffer', wholesale: 2.5, retail: 7, description: 'Part A of reef two-part. One measure raises 100L by about 1 dKH. Stony corals use it up building skeleton.', floor: 'reef' },
+  { id: 'reef_calcium', name: 'Calcium Supplement', wholesale: 2.5, retail: 7, description: 'Part B of reef two-part. One measure raises 100L by about 20 ppm calcium.', floor: 'reef' },
+  { id: 'reef_magnesium', name: 'Magnesium Supplement', wholesale: 3, retail: 8, description: 'One measure raises 100L by about 50 ppm. Magnesium keeps calcium and alkalinity in solution.', floor: 'reef' },
+  { id: 'frag_plugs', name: 'Frag Plugs & Glue (pack)', wholesale: 1.2, retail: 4, description: 'Ceramic plugs and coral glue. One per coral frag you cut.', floor: 'reef' },
 ];
 
 /** Shop fish food stock: one tub gives this many food units. */

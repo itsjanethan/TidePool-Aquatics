@@ -62,10 +62,10 @@ export interface TankWorld {
   schools: Map<string, SchoolPoint>;
   /** 0..1 light level at a point (canopy and floating-plant shade). */
   lightAt(x: number, y: number): number;
-  onEat(agent: FishAgent, pellet: Pellet): void;
+  onEat(agent: { fish: FishEntity }, pellet: Pellet): void;
 }
 
-const DEFAULT_MOTION: Record<SpeciesDef['body']['shape'], SpeciesMotion> = {
+const DEFAULT_MOTION: Partial<Record<SpeciesDef['body']['shape'], SpeciesMotion>> = {
   slender: { beatHz: 3.2, glide: 0.5, turnRate: 0.7, inertia: 0.3, hover: 0.3 },
   torpedo: { beatHz: 4.4, glide: 0.35, turnRate: 0.95, inertia: 0.12, hover: 0.05 },
   deep: { beatHz: 2.4, glide: 0.4, turnRate: 0.6, inertia: 0.4, hover: 0.45 },
@@ -76,7 +76,7 @@ const DEFAULT_MOTION: Record<SpeciesDef['body']['shape'], SpeciesMotion> = {
 };
 
 export function motionFor(sp: SpeciesDef): SpeciesMotion {
-  return sp.motion ?? DEFAULT_MOTION[sp.body.shape];
+  return sp.motion ?? DEFAULT_MOTION[sp.body.shape] ?? DEFAULT_MOTION.slender!;
 }
 
 export class FishAgent {

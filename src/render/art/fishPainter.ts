@@ -158,7 +158,8 @@ interface Geo {
  * topK/botK: back vs belly depth; mouth: head tip shift (+ down, - up).
  */
 interface ShapeDef { stalk: number; ped: number; peak: number; snout: number; head: number; topK: number; botK: number; mouth: number }
-const SHAPES: Record<Phenotype['shape'], ShapeDef> = {
+/** Fish outlines. Invertebrates and land animals are painted by critterArt.ts instead. */
+const SHAPES: Partial<Record<Phenotype['shape'], ShapeDef>> = {
   slender: { stalk: 0.3, ped: 0.1, peak: 0.52, snout: 0.2, head: 0.95, topK: 1, botK: 1, mouth: 0 },
   torpedo: { stalk: 0.3, ped: 0.08, peak: 0.52, snout: 0.18, head: 1.05, topK: 0.9, botK: 1.02, mouth: -0.18 },
   deep: { stalk: 0.34, ped: 0.08, peak: 0.47, snout: 0.24, head: 0.9, topK: 1.06, botK: 0.98, mouth: -0.05 },
@@ -169,7 +170,7 @@ const SHAPES: Record<Phenotype['shape'], ShapeDef> = {
 };
 
 function profile(shape: Phenotype['shape'], t: number): { v: number; s: ShapeDef } {
-  const s = SHAPES[shape];
+  const s = SHAPES[shape] ?? SHAPES.slender!;
   let v: number;
   if (t < s.peak) {
     // Ease-in-out from the narrow peduncle to the deepest point.

@@ -77,7 +77,9 @@ export function buyExpansion(state: GameState, id: string): ActionResult {
       backgroundId: et.background,
     });
     t.waterType = et.waterType ?? 'freshwater';
-    t.decor = et.decor.map(([defId, x, layer], i): DecorItem => ({ uid: `d_${et.id}_${i}`, defId, x, layer, flip: x > 0.5, health: 1, size: getDecor(defId).kind === 'plant' ? 0.7 : 1 }));
+    t.decor = et.decor.map(([defId, x, layer], i): DecorItem => ({ uid: `d_${et.id}_${i}`, defId, x, layer, flip: x > 0.5, health: 1, size: getDecor(defId).kind === 'plant' || getDecor(defId).kind === 'coral' ? 0.7 : 1 }));
+    if (et.reef) t.reef = { ...et.reef };
+    if (et.airStone) t.airStone = true;
     t.ownedSubstrates = [et.substrate];
     t.ownedBackgrounds = [et.background];
     t.water.temperature = et.heater ? (et.setpoint ?? 25) : 17;
@@ -89,6 +91,12 @@ export function buyExpansion(state: GameState, id: string): ActionResult {
       t.water.ph = 8.2;
       t.water.gh = 14;
       t.skimmer = true;
+    }
+    if (et.water) {
+      // Active-soil tanks start buffered; reef systems start with a little nitrate for the corals.
+      if (et.water.ph !== undefined) t.water.ph = et.water.ph;
+      if (et.water.gh !== undefined) t.water.gh = et.water.gh;
+      if (et.water.nitrate !== undefined) t.water.nitrate = et.water.nitrate;
     }
     state.tanks[t.id] = t;
     state.tankOrder.push(t.id);

@@ -1,11 +1,12 @@
 import type { SpeciesDef } from './speciesTypes';
+import { INVERTS } from './inverts';
 
 /**
  * Starter species set (vertical slice). Values are simplified but based on
  * common aquarium husbandry guidance. Lifespans/maturity are in in-game days
  * (one in-game year = 112 days, see TimeSystem).
  */
-export const SPECIES: SpeciesDef[] = [
+const FISH: SpeciesDef[] = [
   {
     id: 'guppy',
     commonName: 'Guppy',
@@ -498,7 +499,7 @@ export const SPECIES: SpeciesDef[] = [
     wasteFactor: 2.2,
     plantSafe: false,
     breeding: { method: 'egg_scatterer', difficulty: 0.4, notes: 'Spring spawners, triggered by warming water.' , clutch: [80, 300], incubationDays: 3, eggPredation: 0.9, parentalCare: 0, trigger: 'spring' },
-    tags: ['coldwater', 'large', 'messy', 'slow', 'eats_tiny_fish'],
+    tags: ['coldwater', 'large', 'messy', 'slow', 'eats_tiny_fish', 'eats_inverts'],
     sensitivity: 0.25,
     supplierCost: 2.2,
     retailPrice: 6.5,
@@ -711,7 +712,7 @@ export const SPECIES: SpeciesDef[] = [
     wasteFactor: 1.2,
     plantSafe: true,
     breeding: { method: 'bubble_nest', difficulty: 0.35, notes: 'The male blows a bubble nest under floating plants and guards it.', clutch: [80, 300], incubationDays: 2, eggPredation: 0.3, parentalCare: 0.7, needs: ['plants'] },
-    tags: ['temperate', 'long_finned', 'air_breather'],
+    tags: ['temperate', 'long_finned', 'air_breather', 'eats_inverts'],
     sensitivity: 0.15,
     supplierCost: 2.5,
     retailPrice: 7.5,
@@ -766,7 +767,7 @@ export const SPECIES: SpeciesDef[] = [
     wasteFactor: 1,
     plantSafe: true,
     breeding: { method: 'substrate_spawner', difficulty: 0.55, notes: 'Pairs clean a flat stone and guard the eggs, if the water is soft, warm and spotless.', clutch: [80, 200], incubationDays: 3, eggPredation: 0.3, parentalCare: 0.7, needs: ['rocks'] },
-    tags: ['dwarf_cichlid', 'territorial_bottom', 'sensitive', 'soft_water'],
+    tags: ['dwarf_cichlid', 'territorial_bottom', 'sensitive', 'soft_water', 'eats_inverts'],
     sensitivity: 0.75,
     supplierCost: 4.5,
     retailPrice: 13,
@@ -870,7 +871,7 @@ export const SPECIES: SpeciesDef[] = [
     wasteFactor: 0.9,
     plantSafe: true,
     breeding: { method: 'cave_spawner', difficulty: 0.9, notes: 'Males build nests of algae in rock crevices. Very rare in shops.', clutch: [20, 100], incubationDays: 6, eggPredation: 0.9, parentalCare: 0.6, needs: ['cave'] },
-    tags: ['marine', 'needs_cave'],
+    tags: ['marine', 'needs_cave', 'eats_inverts'],
     sensitivity: 0.4,
     supplierCost: 14,
     retailPrice: 36,
@@ -920,7 +921,7 @@ export const SPECIES: SpeciesDef[] = [
     wasteFactor: 0.9,
     plantSafe: true,
     breeding: { method: 'mouthbrooder', difficulty: 0.5, notes: 'The male carries eggs in his mouth, then releases fully formed young.', clutch: [10, 30], incubationDays: 20, eggPredation: 0.25, parentalCare: 1 },
-    tags: ['marine', 'peaceful', 'slow'],
+    tags: ['marine', 'peaceful', 'slow', 'eats_inverts'],
     sensitivity: 0.35,
     supplierCost: 10,
     retailPrice: 26,
@@ -945,6 +946,9 @@ export const SPECIES: SpeciesDef[] = [
     careTip: 'Keep a small group. Tank-bred fish are hardy; avoid fast or boisterous tank mates.',
   },
 ];
+
+/** Every species in the game: fish, then invertebrates (data/inverts.ts). */
+export const SPECIES: SpeciesDef[] = [...FISH, ...INVERTS];
 
 const BY_ID = new Map(SPECIES.map((s) => [s.id, s]));
 

@@ -79,6 +79,19 @@ export const SUPPLIERS: SupplierDef[] = [
     minOrder: 40,
     level: 3,
   },
+  {
+    id: 'reefworks',
+    name: 'Reefworks Invertebrates',
+    blurb: 'Shrimp and snail breeders plus a marine clean-up crew. Packed in breather bags, two-day delivery.',
+    deliveryDays: 2,
+    costMultiplier: 1,
+    quality: [0.5, 0.85],
+    doaRisk: 0.03,
+    species: ['cherry_shrimp', 'crystal_shrimp', 'amano_shrimp', 'nerite_snail', 'mystery_snail', 'cleaner_shrimp', 'hermit_crab', 'turbo_snail'],
+    stockRange: [6, 30],
+    minOrder: 20,
+    level: 5,
+  },
 ];
 
 /** Suppliers that trade with a shop of this level. */

@@ -101,6 +101,10 @@ export interface WaterState {
   cloudiness: number; // 0..1
   /** Marine tanks: salinity in ppt (35 ppt ≈ SG 1.026). Absent for freshwater. */
   salinity?: number;
+  /** Marine tanks: alkalinity (dKH), calcium and magnesium (ppm). Absent = natural seawater (see sim/reef.ts). */
+  alk?: number;
+  calcium?: number;
+  magnesium?: number;
 }
 
 export interface DecorItem {
@@ -112,8 +116,10 @@ export interface DecorItem {
   layer: 0 | 1 | 2;
   flip: boolean;
   health: number; // plants 0..1
-  /** Plants: growth size (1 = mature). Hardscape: always 1. */
+  /** Plants and corals: growth size (1 = mature). Hardscape: always 1. */
   size: number;
+  /** Corals: 0..1 bleaching (loss of colour from heat or too much light). */
+  bleach?: number;
 }
 
 /** A loose plant in the shop (cutting or uprooted plant), for planting or sale. */
@@ -173,6 +179,25 @@ export interface TankState {
   forSale?: boolean;
   /** Marine: protein skimmer installed. */
   skimmer?: boolean;
+  /** Reef equipment and chemistry history (marine tanks; absent = standard light, no wavemaker). */
+  reef?: ReefState;
+}
+
+export interface ReefState {
+  /** Reef light id (data/reef.ts REEF_LIGHTS). */
+  light: string;
+  /** Wavemaker level 0..2. */
+  wavemaker: number;
+  /** Dosing pump: tops alkalinity and calcium up each night from stock. */
+  doser?: boolean;
+  /** Alkalinity at the start of the day, to measure swings. */
+  alkDayStart?: number;
+  /** Largest swing seen today (dKH). */
+  alkSwing?: number;
+  /** Day the swing figures belong to. */
+  day?: number;
+  /** Dosing pump: fractional supplement units used (whole units leave the stockroom). */
+  doserAcc?: { alk: number; calcium: number };
 }
 
 export type CustomerGoal = 'browse' | 'buy_specific' | 'advice_stocking' | 'problem' | 'buy_equipment';

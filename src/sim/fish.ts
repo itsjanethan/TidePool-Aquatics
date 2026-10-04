@@ -202,7 +202,9 @@ export function environmentalDamage(f: FishEntity, env: FishEnv): { damage: numb
   if (env.gh < sp.hardness.min - 1 || env.gh > sp.hardness.max + 2) {
     const dev = env.gh < sp.hardness.min ? sp.hardness.min - env.gh : env.gh - sp.hardness.max;
     dmg += dev * 0.15 * sens;
-    causes.push('hardness');
+    // Soft water dissolves snail shells and makes shrimp moults fail.
+    const soft = env.gh < sp.hardness.min;
+    causes.push(soft && sp.tags.includes('shell_builder') ? 'shell erosion (water too soft)' : soft && sp.tags.includes('moults') ? 'failed moult (water too soft)' : 'hardness');
   }
   const salt = salinityDamage(sp.waterType, env.salinity ?? 0);
   if (salt > 0) {

@@ -11,15 +11,18 @@ import { getSpecies } from '../data/species';
 import { summarizeAquascape } from './aquascape';
 import { stressTarget } from './compat';
 import { spend } from './economy';
-import { MAX_DECOR, removeToStorage, tickPlants } from './plants';
+import { decorRefusal, MAX_DECOR, removeToStorage, tickPlants } from './plants';
+import { chemAfterWaterChange, NEW_CORAL_SIZE, tickReef } from './reef';
+import { grazeWeight, tickCleanupCrew } from './inverts';
 import { appetite, eat, fishInTank, fishValue, killFish, newId, tickFish } from './fish';
-import { AMMONIA_PER_FOOD_EATEN, freshWater, tickWater, waterChange } from './water';
+import { AMMONIA_PER_FOOD_EATEN, freshWater, liveRockWeight, tickWater, waterChange } from './water';
 import type { FishEntity, GameState, TankState } from './types';
 
 export interface TankTickContext {
   ambient: number;
   daylight: boolean;
   onDeath?: (fish: FishEntity, tank: TankState, cause: string) => void;
+  onCoralDeath?: (name: string, tank: TankState, cause: string) => void;
 }
 
 export function createTank(id: string, name: string, sizeId: string, opts: Partial<TankState> = {}): TankState {
@@ -97,7 +100,10 @@ export function tickTank(state: GameState, tank: TankState, dtHours: number, ctx
 
   const fishAmmonia = alive.reduce((s, f) => s + excretion(f), 0);
   const oxygenDemand = alive.reduce((s, f) => s + 0.0016 * f.sizeCm * f.sizeCm, 0) / tank.litres * 10;
-  const grazers = alive.filter((f) => getSpecies(f.speciesId).behaviour.grazer).length;
+  // Algae grazers count by strength: a pleco 1, a cherry shrimp a fraction (see inverts.ts).
+  const grazers = alive.reduce((sum, f) => sum + grazeWeight(f), 0);
+  // Scavengers (shrimp, hermits, mystery snails) clear leftovers and settled waste.
+  tickCleanupCrew(tank, alive, dtHours);
 
   tickWater(
     tank,
@@ -112,7 +118,9 @@ export function tickTank(state: GameState, tank: TankState, dtHours: number, ctx
     dtHours,
   );
 
-  tickMarine(tank, dtHours, tank.decor.filter((d) => d.defId === 'live_rock').length);
+  tickMarine(tank, dtHours, tank.decor.reduce((n, d) => n + liveRockWeight(d.defId), 0));
+  // Corals grow, bleach or recede; stony corals use alkalinity and calcium.
+  tickReef(state, tank, dtHours, { onCoralDeath: ctx.onCoralDeath });
   // Plants grow, get eaten by plant-unsafe fish, and recover.
   tickPlants(state, tank, dtHours);
   tickFloating(tank, dtHours);
@@ -196,11 +204,14 @@ export function doWaterChange(state: GameState, tank: TankState, fraction: numbe
     if (withSalt) state.dryGoods.salt_mix -= packs;
     else saltNote = ' No salt mix left: the tank was topped up with plain water and salinity dropped!';
     const sal = salinityAfterChange(tank.water.salinity ?? TARGET_SALINITY, fraction, withSalt);
+    chemAfterWaterChange(tank.water, fraction, withSalt);
     waterChange(tank, fraction);
     tank.water.salinity = sal;
     tank.water.ph = 8.2 * fraction + tank.water.ph * (1 - fraction);
   } else waterChange(tank, fraction);
   if (fraction > 0.5) for (const f of fishInTank(state, tank.id)) f.shock = Math.min(60, f.shock + 15);
+  // Big changes push shrimp into moulting early; a sudden shift can make moults fail.
+  if (fraction > 0.3) for (const f of fishInTank(state, tank.id)) if (getSpecies(f.speciesId).tags.includes('moults')) f.shock = Math.min(60, f.shock + 20);
   tank.lastMaintenance.waterChange = state.minute;
   const minutes = Math.round(12 + tank.litres * fraction * 0.35);
   return ok(`Changed ${Math.round(fraction * 100)}% of the water.${saltNote}`, minutes);
@@ -334,11 +345,11 @@ export function addDecor(state: GameState, tank: TankState, defId: string, x: nu
   if (state.idle) return idleRefusal();
   const def = getDecor(defId);
   if (tank.decor.length >= MAX_DECOR) return fail('This tank is full of decor.');
-  if (def.marineOnly && tank.waterType !== 'marine') return fail(`${def.name} is for marine tanks.`);
-  if (tank.waterType === 'marine' && (def.kind === 'plant' || def.kind === 'wood')) return fail(`${def.name} does not belong in a marine tank.`);
+  const why = decorRefusal(state, tank, defId, true);
+  if (why) return fail(why);
   if (!spend(state, def.cost, `${def.name} for ${tank.name}`)) return fail('Not enough money.');
-  // New plants arrive as young nursery plants and grow into the tank.
-  tank.decor.push({ uid: newId(state, 'd'), defId, x: clamp01(x), layer, flip: x > 0.5, health: 1, size: def.kind === 'plant' ? 0.6 : 1 });
+  // New plants arrive as young nursery plants and corals as small colonies; both grow into the tank.
+  tank.decor.push({ uid: newId(state, 'd'), defId, x: clamp01(x), layer, flip: x > 0.5, health: 1, size: def.kind === 'plant' ? 0.6 : def.kind === 'coral' ? NEW_CORAL_SIZE : 1 });
   for (const f of fishInTank(state, tank.id)) f.shock = Math.min(60, f.shock + 3);
   return ok(`Placed ${def.name}.`, 5);
 }

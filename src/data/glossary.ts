@@ -6,7 +6,7 @@
 
 export type HelpSectionId =
   | 'controls' | 'status' | 'symbols' | 'water' | 'fish' | 'habitat' | 'breeding' | 'plants'
-  | 'customers' | 'staff' | 'progression' | 'marine' | 'saving' | 'idle' | 'playtest';
+  | 'customers' | 'staff' | 'progression' | 'marine' | 'reef' | 'saving' | 'idle' | 'playtest';
 
 export interface HelpSection {
   id: HelpSectionId;
@@ -40,6 +40,7 @@ export const HELP_SECTIONS: HelpSection[] = [
   { id: 'staff', title: 'Staff', intro: 'Hiring, roles, skills and suggestions.' },
   { id: 'progression', title: 'Shop Progression', intro: 'Shop levels and new floors.' },
   { id: 'marine', title: 'Marine', intro: 'Saltwater basics for the advanced floor.' },
+  { id: 'reef', title: 'Reef & Invertebrates', intro: 'Corals, light, flow, reef chemistry, fragging, shrimp and snails.' },
   { id: 'saving', title: 'Saving', intro: 'How and when the game saves.' },
   { id: 'idle', title: 'Idle Mode', intro: 'Watch your shop without running it.' },
   { id: 'playtest', title: 'Playtest & Feedback', intro: 'Reporting bugs and ideas.' },
@@ -129,13 +130,26 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: 'wages', section: 'staff', title: 'Wages', body: 'Paid every night with the rent. Better staff cost more.' },
 
   // Progression ----------------------------------------------------------------------
-  { id: 'shop_levels', section: 'progression', title: 'Shop levels', body: 'Level 1 Starter Aquatics (ground floor). Level 2 Coldwater & Temperate (first floor). Level 3 Advanced Aquatics & Marine (second floor). Level 4 Basement Warehouse & Equipment. Each needs reputation, customers served and capital. See Shop Progression at the office PC.' },
+  { id: 'shop_levels', section: 'progression', title: 'Shop levels', body: 'Level 1 Starter Aquatics (ground floor). Level 2 Coldwater & Temperate (first floor). Level 3 Advanced Aquatics & Marine (second floor). Level 4 Basement Warehouse & Equipment. Level 5 Reef & Invertebrates (up from the marine floor). Each needs reputation, customers served and capital. See Shop Progression at the office PC.' },
 
   // Marine --------------------------------------------------------------------------
   { id: 'salinity', section: 'marine', title: 'Salinity', body: 'How salty marine water is, in parts per thousand (ppt), also shown as specific gravity (SG). Water evaporates but salt does not, so salinity creeps up: top up with fresh RO water, never salt water.', ranges: 'Fish-only marine: 33 to 35 ppt (SG 1.024 to 1.026).' },
   { id: 'live_rock', section: 'marine', title: 'Live rock', body: 'Porous rock full of bacteria. The main biological filter of a marine tank and hiding places for fish.' },
   { id: 'skimmer', section: 'marine', title: 'Protein skimmer', body: 'Foams waste out of marine water before it rots, keeping nitrate and cloudiness down.' },
   { id: 'ro_water', section: 'marine', title: 'RO top-off water', body: 'Purified fresh water used to replace evaporation in marine tanks. Tap water adds unwanted minerals.' },
+
+  // Reef & invertebrates -------------------------------------------------------------
+  { id: 'par', section: 'reef', title: 'Light (PAR)', body: 'Corals feed from algae living in their tissue, so light is food. PAR measures the light that reaches a coral. It is strongest at the top of the rockwork and weakest on the sand, and depends on the reef light fitted. Too little and a coral starves slowly; too much and it bleaches.', ranges: 'Mushrooms 25-150, zoanthids 50-260, LPS 75-200, Montipora 140-350, Acropora 230-480.', affectedBy: ['Reef light', 'Height on the rockwork', 'Cloudy water'] },
+  { id: 'flow', section: 'reef', title: 'Water movement', body: 'Moving water brings food to corals and carries waste off them. Too little and detritus settles on them; too much and polyps stay shut. Flow comes from the filter, skimmer and wavemaker, and is strongest high on the rockwork.', ranges: '0.3 gentle, 0.6 moderate, 0.9 strong.', affectedBy: ['Wavemaker', 'Filter', 'Height on the rockwork'] },
+  { id: 'alkalinity', section: 'reef', title: 'Alkalinity (dKH)', body: 'Carbonate in the water. Stony corals (LPS and SPS) use it with calcium to build skeleton, so a growing reef uses it up every day. Keep it steady: a big daily jump hurts more than slightly low. Dose alkalinity buffer, do salt-mix water changes, or fit a dosing pump.', ranges: '7.5-10.5 dKH; under 7 tissue recedes; over 11.5 burns SPS tips.' },
+  { id: 'calcium', section: 'reef', title: 'Calcium', body: 'Used with alkalinity to build coral skeleton (about 7 ppm calcium for every 1 dKH used).', ranges: '390-460 ppm; under 360 stony corals stop growing.' },
+  { id: 'magnesium', section: 'reef', title: 'Magnesium', body: 'Keeps calcium and carbonate dissolved. Low magnesium makes alkalinity and calcium fall faster and hard to hold.', ranges: '1250-1420 ppm.' },
+  { id: 'coral_groups', section: 'reef', title: 'Soft, LPS and SPS corals', body: 'Soft corals (zoanthids, star polyps, mushrooms, leathers) have no stony skeleton: hardy and forgiving. LPS (large-polyp stony: hammer, torch) build skeleton slowly and sting. SPS (small-polyp stony: Montipora, Acropora) build fast and need strong light, strong flow, very low nitrate and rock-steady chemistry.' },
+  { id: 'coral_aggression', section: 'reef', title: 'Coral aggression', body: 'Some corals sting neighbours with sweeper tentacles (torch, hammer) or chemicals (leathers), and star polyps creep over them. Corals of the same genus tolerate each other. Keep aggressive corals apart side to side or at a different height.' },
+  { id: 'bleaching', section: 'reef', title: 'Bleaching', body: 'A coral under heat or too much light expels the algae that colour and feed it and turns white. It recovers if conditions improve in time; a coral that stays bleached starves.' },
+  { id: 'fragging', section: 'reef', title: 'Fragging', body: 'Healthy colonies can be cut into frags glued to plugs (uses frag plugs). The colony shrinks a little and regrows; the frag goes on the frag rack where customers buy it, or into another tank to grow on. Bigger colonies are worth much more than frags.' },
+  { id: 'inverts', section: 'reef', title: 'Shrimp, snails and crabs', body: 'Invertebrates are a clean-up crew: shrimp and snails graze algae, scavengers eat leftovers and waste, cleaner shrimp pick parasites off fish (calmer fish). Fish big enough to swallow a shrimp will eat it; hermit crabs sometimes kill snails for their shells.' },
+  { id: 'minerals', section: 'reef', title: 'Minerals for shells and moults', body: 'Snails build shell and shrimp grow by moulting, both from minerals (hardness, GH). In soft water shells erode and moults fail. Crystal shrimp are the exception: they need soft, acidic water from active shrimp soil, which is wrong for snails.', ranges: 'Cherry shrimp GH 5-15, snails GH 6+, crystal shrimp GH 3-6.' },
 
   // Saving --------------------------------------------------------------------------
   { id: 'saving', section: 'saving', title: 'Saving', body: 'Save, load, export and import at the office PC. The game autosaves every morning when the shop opens. Saves live in this browser; export a copy to move to another device.' },

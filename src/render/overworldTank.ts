@@ -63,7 +63,9 @@ export class OverworldTank {
     const known = new Map(this.dots.map((d) => [d.id, d]));
     this.dots = fish.map((f) => {
       const k = known.get(f.id);
-      const bottom = getSpecies(f.speciesId).swimLevel === 'bottom';
+      const sp = getSpecies(f.speciesId);
+      const bottom = sp.swimLevel === 'bottom';
+      const crawler = sp.tags.includes('invertebrate');
       if (k) {
         k.dead = !f.alive;
         return k;
@@ -72,7 +74,7 @@ export class OverworldTank {
         id: f.id,
         x: vr.range(1, this.rect.w - 3),
         y: bottom ? this.rect.h - 3 : vr.range(2, this.rect.h - 5),
-        speed: vr.range(3, 9),
+        speed: crawler ? vr.range(0.4, 1.6) : vr.range(3, 9),
         dir: vr.chance(0.5) ? 1 : -1,
         colour: hexToInt(miniFishColour(f.speciesId, f.morphId)),
         phase: vr.range(0, 6),
@@ -95,7 +97,8 @@ export class OverworldTank {
     const g = this.gfx;
     const { x, y, w, h } = this.rect;
     g.clear();
-    let water = mix('#58b4d8', '#6aa86a', Math.min(1, tank.algae * 0.8));
+    const reefLit = tank.waterType === 'marine' && (tank.reef?.light ?? 'standard') !== 'standard';
+    let water = mix(reefLit ? '#3a7ae0' : '#58b4d8', '#6aa86a', Math.min(1, tank.algae * 0.8));
     water = mix(water, '#d8e0d0', Math.min(0.8, tank.water.cloudiness * 0.9));
     if (!tank.lightOn) water = mix(water, '#0c1830', 0.55);
     g.fillStyle(hexToInt(water), 1).fillRect(x, y, w, h);
@@ -105,8 +108,14 @@ export class OverworldTank {
     // Plants as little strokes.
     for (const d of tank.decor) {
       const def = getDecor(d.defId);
+      if (def.kind === 'coral') continue;
       if (def.kind !== 'plant') {
-        g.fillStyle(0x7a6a5a, 1).fillRect(x + Math.round(d.x * (w - 4)), y + h - 4, 4, 2);
+        // Marine live rock reads as lumpy pale rock; other hardscape as a small block.
+        if (def.id === 'live_rock') {
+          const rx = x + Math.round(d.x * (w - 6));
+          g.fillStyle(0xb8a890, 1).fillRect(rx, y + h - 5, 6, 3);
+          g.fillStyle(0xc45a9a, 1).fillRect(rx + 1, y + h - 6, 3, 1);
+        } else g.fillStyle(0x7a6a5a, 1).fillRect(x + Math.round(d.x * (w - 4)), y + h - 4, 4, 2);
         continue;
       }
       const px = x + 1 + Math.round(d.x * (w - 3));
@@ -114,6 +123,17 @@ export class OverworldTank {
       const sway = Math.round(Math.sin(this.t * 1.5 + d.x * 10) * 0.6);
       g.fillStyle(0x3f9a45, 1).fillRect(px + sway, y + h - 2 - tall, 1, tall);
       g.fillStyle(0x5cbf5a, 1).fillRect(px + 1, y + h - 1 - tall + 2, 1, tall - 2);
+    }
+    // Corals: coloured clumps on the rock (higher placements sit higher), polyps twinkling.
+    for (const d of tank.decor) {
+      const def = getDecor(d.defId);
+      if (def.kind !== 'coral' || !def.coral) continue;
+      const cx = x + Math.round(d.x * (w - 4));
+      const cy = y + h - (d.layer === 0 ? 8 : d.layer === 1 ? 6 : 3);
+      const col = hexToInt(mix(def.coral.colours.tip, '#f4f2ee', (d.bleach ?? 0) * 0.85));
+      const big = d.size > 1.1 ? 1 : 0;
+      g.fillStyle(hexToInt(mix(def.coral.colours.base, '#f4f2ee', (d.bleach ?? 0) * 0.85)), 1).fillRect(cx, cy, 3 + big, 2);
+      g.fillStyle(col, 1).fillRect(cx + (Math.sin(this.t * 2 + d.x * 20) > 0 ? 1 : 0), cy - 1, 2, 1);
     }
     // Fish dots.
     for (const d of this.dots) {

@@ -6,7 +6,7 @@
 import type { FloorLayout, PropPlacement } from './shopLayout';
 import { stairsOf } from './shopLayout';
 
-export type FloorId = 'ground' | 'upstairs' | 'marine' | 'basement';
+export type FloorId = 'ground' | 'upstairs' | 'marine' | 'basement' | 'reef';
 
 export const GROUND_FLOOR_ID: FloorId = 'ground';
 
@@ -31,7 +31,7 @@ function buildTiles(door: boolean): string[] {
 
 const front = (x: number, y: number, w: number, h: number) => Array.from({ length: w }, (_, i) => ({ x: x + i, y: y + h }));
 
-const tank = (id: string, x: number, y: number, w: number, h = 2): PropPlacement => ({ id, kind: 'tank', x, y, w, h, interact: front(x, y, w, h) });
+const tank = (id: string, x: number, y: number, w: number, h = 2, style?: PropPlacement['style']): PropPlacement => ({ id, kind: 'tank', x, y, w, h, interact: front(x, y, w, h), ...(style ? { style } : {}) });
 
 /** Stairs block against the left wall; used from its right-hand side. */
 const stairs = (id: string, y: number, to: FloorId, dir: 'up' | 'down'): PropPlacement => ({
@@ -100,6 +100,7 @@ export const MARINE: FloorLayout = {
     tank('M1', 5, 2, 4), tank('M2', 11, 2, 4), tank('M3', 17, 2, 4),
     tank('M4', 6, 9, 3), tank('M5', 12, 9, 3), tank('M6', 18, 9, 4),
     stairs('stairs_down', 5, 'upstairs', 'down'),
+    stairs('stairs_up', 12, 'reef', 'up'),
     deco('mrack', 'rack', 25, 2, 3, 2),
     deco('mplant1', 'plant', 28, 17), deco('mbench', 'bench', 10, 15, 4),
   ],
@@ -129,6 +130,26 @@ export const BASEMENT: FloorLayout = {
   staffOnly: [{ x: 20, y: 11, w: 9, h: 8 }],
 };
 
+/** Level 5: Reef & Invertebrates. Coral reef systems, a frag rack and nano tanks for shrimp and snails. */
+export const REEF: FloorLayout = {
+  id: 'reef',
+  name: 'Reef & Invertebrates',
+  theme: 'reef',
+  width: W,
+  height: H,
+  tiles: buildTiles(false),
+  props: [
+    tank('R1', 5, 2, 4, 2, 'reef'), tank('R2', 11, 2, 5, 2, 'reef'), tank('R3', 18, 2, 3, 2, 'reef'),
+    tank('F1', 6, 9, 2, 2, 'nano'), tank('F2', 10, 9, 2, 2, 'nano'), tank('F3', 14, 9, 3, 2, 'nano'),
+    { id: 'fragrack', kind: 'fragrack', x: 22, y: 9, w: 4, h: 2, interact: front(22, 9, 4, 2) },
+    stairs('stairs_down', 12, 'marine', 'down'),
+    deco('rplant1', 'plant', 28, 2), deco('rplant2', 'plant', 28, 17), deco('rbench', 'bench', 10, 15, 4),
+  ],
+  playerStart: { x: 4, y: 13 },
+  queue: [],
+  staffOnly: [],
+};
+
 export interface FloorDef {
   id: FloorId;
   layout: FloorLayout;
@@ -143,6 +164,7 @@ export const FLOORS: FloorDef[] = [
   { id: 'upstairs', layout: UPSTAIRS, level: 2, blurb: 'Large unheated tanks for coldwater and temperate species.' },
   { id: 'marine', layout: MARINE, level: 3, blurb: 'Specialist tropical and marine systems with salinity control.' },
   { id: 'basement', layout: BASEMENT, level: 4, blurb: 'Warehouse stock space and an equipment retail floor.' },
+  { id: 'reef', layout: REEF, level: 5, blurb: 'Coral reef systems, a frag rack, and nano tanks for shrimp and snails.' },
 ];
 
 const BY_ID = new Map(FLOORS.map((f) => [f.id as string, f]));

@@ -23,6 +23,7 @@ import type { FishEntity } from '../../sim/types';
 import { h } from '../dom';
 import { incomingCount, incomingSummary } from '../../sim/incoming';
 import { openIncoming } from './incoming';
+import { openReefCare } from './reef';
 import type { MenuItem } from '../menu';
 import type { MenuScreen } from '../ui';
 import { fishCard, fishLabel, tankHeader, waterReportEl } from './common';
@@ -47,7 +48,9 @@ export function openTankMenu(c: GameController, tankId: string): void {
       locked(c, 'maintenance', { label: 'Maintenance', hint: 'Water changes and cleaning, with the expected result of each.', action: () => openMaintenance(c, tankId, screen) }),
       { label: 'Equipment', hint: c.idle ? 'View only in Idle Mode.' : undefined, action: () => openEquipment(c, tankId, screen) },
       locked(c, 'aquascape', { label: 'Aquascape', hint: 'Decorate with a live preview: plants, rocks, wood, substrate and background.', action: () => c.openTankView(tankId, 'aquascape') }),
-      { label: `Plants (${tank.decor.filter((d) => getDecor(d.defId).kind === 'plant').length})`, hint: 'See how your plants are growing and take cuttings.', action: () => openTankPlants(c, tank) },
+      ...(tank.waterType === 'marine'
+        ? [{ label: `Reef care (${tank.decor.filter((d) => getDecor(d.defId).kind === 'coral').length} corals)`, hint: 'Alkalinity, calcium and magnesium, dosing, reef light, wavemaker, and how every coral is doing. Frag corals here.', action: () => openReefCare(c, tankId, screen) }]
+        : [{ label: `Plants (${tank.decor.filter((d) => getDecor(d.defId).kind === 'plant').length})`, hint: 'See how your plants are growing and take cuttings.', action: () => openTankPlants(c, tank) }]),
       { label: 'Breeding', hint: 'Who can breed here, what is stopping them, and any eggs or pregnancies.', action: () => openBreeding(c, tankId) },
       locked(c, 'price', { label: 'Prices', action: () => openPrices(c, tankId) }),
       locked(c, 'livestock', {
@@ -184,6 +187,7 @@ function openEquipment(c: GameController, tankId: string, parent?: MenuScreen): 
     if (tank.waterType === 'marine') {
       list.push({ label: 'Marine', header: true });
       list.push(locked(c, 'buy', { label: tank.skimmer ? 'Protein skimmer: ON' : 'Fit protein skimmer', right: tank.skimmer ? 'remove' : formatMoney(SKIMMER_COST), hint: 'Removes waste before it rots into ammonia. Keeps marine water clear.', action: () => doIt(() => toggleSkimmer(s, tank)) }));
+      list.push({ label: 'Reef light, wavemaker, dosing pump', right: 'Reef care', hint: 'Corals need the right light and water movement; stony corals need alkalinity and calcium topped up.', action: () => openReefCare(c, tankId, scr) });
     }
     list.push({ label: 'Aeration', header: true });
     list.push(locked(c, 'buy', { label: tank.airStone ? 'Air stone: ON' : 'Install air stone', right: tank.airStone ? 'switch off' : '£9.00', hint: 'More oxygen, more bubbles.', action: () => doIt(() => toggleAirStone(s, tank)) }));
