@@ -10,6 +10,7 @@
  */
 import type { Action, InputManager } from '../input/input';
 import { h } from './dom';
+import { guardControls } from './tapGuard';
 import type { Layout } from './viewport';
 
 type Dir = 'up' | 'down' | 'left' | 'right';
@@ -163,6 +164,8 @@ export function installTouchControls(input: InputManager, force = false): TouchC
   input.events.on('cleared', releaseAll);
 
   const root = h('div', { class: 'touch-controls' }, pad, actions);
+  // No double-tap zoom, pinch, callout or ghost clicks from the controls.
+  guardControls(root);
   document.body.append(root);
 
   let last = '';

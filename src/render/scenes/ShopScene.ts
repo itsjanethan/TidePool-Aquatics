@@ -528,11 +528,13 @@ export class ShopScene extends Phaser.Scene {
 
   private onAction(a: Action): void {
     const c = controller;
-    if (this.move) return;
+    // The menu opens even mid-step or mid tap-to-move walk (the walk stops).
     if (a === 'menu') {
+      this.clearPath();
       openPauseMenu(c);
       return;
     }
+    if (this.move) return;
     if (a === 'feed') {
       const p = this.propInFront();
       if (p?.kind === 'tank' && c.state.tanks[p.id]) {

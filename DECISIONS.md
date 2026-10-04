@@ -88,6 +88,14 @@ Append new entries at the bottom. Format: date, decision, reason. Revisit by add
 - **30-day simulation timeout: 30 seconds.** Pages run 37124004146 took 5.154 seconds and exceeded the default five-second limit. Keep all simulated days, seeds and assertions; give only this test finite CI headroom.
 - **Validate pull requests before deployment.** Repository checks runs the full check/build using Node 22 and the Pages base path. Publishing remains restricted to the existing main/manual Pages workflow. Maintainer and release practices are in MAINTAINING.md.
 
+## 2026-10-04: Rapid taps never zoom the page
+
+- **Two layers.** CSS `touch-action` (`none` on the controls, `manipulation` on buttons and rows, `pan-y` on lists; per the spec double-tap zoom needs `auto`) plus touch-event guards, because iOS Safari has honoured `touch-action` inconsistently.
+- **The controls cancel every touch event** (no double-tap zoom, pinch, callout, scrolling or ghost clicks). Pointer events already drive them, so a click could only duplicate an action.
+- **Everywhere else on the page, only a quick second tap is cancelled** (within 500 ms, longer than browsers' double-tap window) and its click is delivered by hand, so rapid taps on menu rows, arrows and HUD buttons each still count once. Single taps, swipes in lists and text fields keep native behaviour. The guard covers the whole page, because near misses beside a button land on the page background.
+- **Pinch zoom is kept** where the browser supports `touch-action: pinch-zoom` (menus, lists, page); the viewport meta still allows zoom. Double-tap zoom is off inside the game page.
+- Rotation now releases held buttons too, and the menu button works during a tap-to-move walk (it used to be ignored until the walk ended).
+
 ## 2026-10-03: Not for sale (individual fish)
 
 - **Enforced in the simulation, not the menus.** `sellable()` excludes protected fish (covers browsing, advice sales and stock lists), `completeSale()` keeps any protected fish that reaches a basket and takes its price off the total (covers the player and sales staff at the till), and `sellFishToTrade()` skips them. There is no other automatic selling.
