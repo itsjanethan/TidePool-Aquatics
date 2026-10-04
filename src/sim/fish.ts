@@ -168,6 +168,8 @@ export interface FishEnv {
   stressTarget: number;
   /** ppt; absent/0 = freshwater. */
   salinity?: number;
+  /** Extra damage per hour from outside the water model (enclosure climate), with causes. */
+  extra?: { damage: number; causes: string[] };
 }
 
 /** Health damage per hour from the environment. Exported for tests/UI. */
@@ -214,6 +216,10 @@ export function environmentalDamage(f: FishEntity, env: FishEnv): { damage: numb
   if (env.oxygen < 4.5) {
     dmg += (4.5 - env.oxygen) * 3;
     causes.push('oxygen');
+  }
+  if (env.extra && env.extra.damage > 0) {
+    dmg += env.extra.damage;
+    causes.push(...env.extra.causes);
   }
   if (f.hunger > 75) {
     dmg += (f.hunger - 75) * 0.12;

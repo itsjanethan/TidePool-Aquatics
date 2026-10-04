@@ -16,7 +16,7 @@ import type { TankScene } from '../../render/scenes/TankScene';
 import { RES } from '../../render/res';
 import { summarizeAquascape } from '../../sim/aquascape';
 import { fishInTank } from '../../sim/fish';
-import { MAX_DECOR, placeDecorFromStorage, plantFromStorage, removeToStorage, sizeLabel } from '../../sim/plants';
+import { decorRefusal, MAX_DECOR, placeDecorFromStorage, plantFromStorage, removeToStorage, sizeLabel } from '../../sim/plants';
 import { addDecor, ownsBackground, ownsSubstrate, setBackground, setSubstrate } from '../../sim/tank';
 import { h } from '../dom';
 import { Menu, type MenuItem } from '../menu';
@@ -62,6 +62,8 @@ export class AquascapeScreen implements Screen {
   private cursor: Phaser.GameObjects.Graphics;
   private time = 0;
   private mainIndex = 0;
+  /** Substrates or backgrounds offered for this tank (enclosures differ from aquariums). */
+  private lookList: Array<{ id: string }> = [];
 
   constructor(private c: GameController, private scene: TankScene) {
     this.menu = new Menu([], { onChange: () => this.onBrowse() });
@@ -116,7 +118,7 @@ export class AquascapeScreen implements Screen {
     ];
     // Stockroom: owned items, shown with quantities instead of prices.
     const potted = groupPotted(s.storage.plants.filter((p) => !p.reservedBy));
-    const stored = Object.entries(s.storage.decor).filter(([, n]) => n > 0);
+    const stored = Object.entries(s.storage.decor).filter(([id, n]) => n > 0 && !decorRefusal(s, t, id, false));
     list.push({ label: 'In your stockroom', header: true });
     if (!potted.length && !stored.length) list.push({ label: 'Nothing stored yet', disabled: true, hint: 'Uprooted plants, cuttings and removed decor are kept here.' });
     for (const g of potted) {
@@ -124,6 +126,7 @@ export class AquascapeScreen implements Screen {
       const coral = getDecor(g.defId).kind === 'coral';
       // Corals only go in marine tanks and plants only in freshwater; skip what cannot be placed here.
       if (coral !== (t.waterType === 'marine')) continue;
+      if (decorRefusal(s, t, g.defId, false)) continue;
       list.push({
         label: `${getDecor(g.defId).name} (${coral ? coralSizeLabel(best.size).toLowerCase() : g.stage}) ×${g.items.length}`,
         right: 'Owned',
@@ -165,6 +168,9 @@ export class AquascapeScreen implements Screen {
     for (const d of DECOR) {
       // Marine tanks take rock, caves and corals, not freshwater plants or wood; live rock and corals are marine only.
       if (marine ? d.kind === 'plant' || d.kind === 'wood' : d.marineOnly) continue;
+      // Enclosure items only in enclosures; aquatic plants not in dry enclosures.
+      if (d.land && !t.habitat) continue;
+      if (!d.land && d.kind === 'plant' && (t.habitat === 'vivarium' || t.habitat === 'terrarium')) continue;
       const size = d.kind === 'plant' ? NEW_PLANT_SIZE : d.kind === 'coral' ? NEW_CORAL_SIZE : 1;
       if ((d.level ?? 1) > s.shopLevel) {
         list.push({ label: d.name, right: `Level ${d.level}`, disabled: true, hint: `${d.description} Sold once the shop reaches level ${d.level} (Shop Progression at the office PC).` });
@@ -209,10 +215,10 @@ export class AquascapeScreen implements Screen {
       if (p) this.showExplanation(p, this.info, true);
       else this.refreshInfo();
     } else if (this.mode === 'substrate') {
-      const id = SUBSTRATES[this.menu.index]?.id;
+      const id = this.lookList[this.menu.index]?.id;
       if (id) this.renderer.setLook({ substrateId: id });
     } else if (this.mode === 'background') {
-      const id = BACKGROUNDS[this.menu.index]?.id;
+      const id = this.lookList[this.menu.index]?.id;
       if (id) this.renderer.setLook({ backgroundId: id });
     }
   }
@@ -224,7 +230,9 @@ export class AquascapeScreen implements Screen {
     this.renderer.setFloatingPreview(null);
     const t = this.tank;
     this.title.textContent = kind === 'substrate' ? 'Substrate' : 'Background';
-    const list = kind === 'substrate' ? SUBSTRATES : BACKGROUNDS;
+    // Enclosures use land substrates and back walls; aquariums the aquatic ones (paludariums both).
+    const fits = (it: { land?: unknown }) => (t.habitat === 'paludarium' ? true : !!t.habitat === !!it.land);
+    const list = (kind === 'substrate' ? SUBSTRATES : BACKGROUNDS).filter(fits);
     const items: MenuItem[] = list.map((it) => {
       const current = kind === 'substrate' ? t.substrateId === it.id : t.backgroundId === it.id;
       const owned = kind === 'substrate' ? ownsSubstrate(t, it.id) : ownsBackground(t, it.id);
@@ -235,6 +243,7 @@ export class AquascapeScreen implements Screen {
         action: () => this.confirmLook(kind, it.id),
       };
     });
+    this.lookList = list;
     const start = list.findIndex((it) => (kind === 'substrate' ? t.substrateId : t.backgroundId) === it.id);
     this.menu.setItems(items, Math.max(0, start));
     this.setHint('▲▼ preview in the tank · Z confirm · X cancel (restores the tank)');

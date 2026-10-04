@@ -10,7 +10,8 @@
  * from `state.orders`.
  */
 import { getSpecies } from '../data/species';
-import { assessSpeciesForSetup, stockingCapacity, stockingRatio } from './compat';
+import { assessSpeciesForSetup, loadRatio, stockingRatio } from './compat';
+import { climateWarnings, habitatRefusal, isEnclosure, isLandAnimal, landVolume, setupHeated } from './terrarium';
 import { fishInTank } from './fish';
 import { cycleStatus } from './water';
 import { dateString, MINUTES_PER_DAY } from './time';
@@ -56,10 +57,9 @@ function stockingOf(state: GameState, tankId: string, lines: PlannedLine[]): num
   let extra = 0;
   for (const l of lines) {
     if (l.tankId !== tankId) continue;
-    const sp = getSpecies(l.speciesId);
-    extra += l.quantity * sp.adultSizeCm * DELIVERED_SIZE * Math.sqrt(sp.wasteFactor);
+    extra += l.quantity * loadRatio(tank, l.speciesId, getSpecies(l.speciesId).adultSizeCm * DELIVERED_SIZE);
   }
-  return extra / stockingCapacity(tank);
+  return extra;
 }
 
 export interface StockingBreakdown {
@@ -93,12 +93,20 @@ export function lineWarnings(state: GameState, line: PlannedLine, all: PlannedLi
   const sp = getSpecies(line.speciesId);
   const w = t.water;
   const tankType = t.waterType ?? 'freshwater';
-  if (sp.waterType !== tankType) out.push({ severity: 'warn', text: `${t.name} is a ${tankType} tank; ${sp.commonName} is a ${sp.waterType} fish.` });
+  const wrongHabitat = habitatRefusal(sp, t);
+  const land = isLandAnimal(sp) && isEnclosure(t);
+  if (wrongHabitat) out.push({ severity: 'warn', text: wrongHabitat });
+  else if (!land && sp.waterType !== tankType) out.push({ severity: 'warn', text: `${t.name} is a ${tankType} tank; ${sp.commonName} is a ${sp.waterType} fish.` });
 
-  const cyc = cycleStatus(w);
-  if (cyc === 'uncycled') out.push({ severity: 'warn', text: `${t.name} is not cycled yet. New fish may be poisoned by ammonia.` });
-  else if (cyc === 'cycling') out.push({ severity: 'warn', text: `${t.name} is still cycling. Add fish slowly.` });
-  if (w.ammonia > 0.25 || w.nitrite > 0.25) out.push({ severity: 'warn', text: `${t.name} has ammonia or nitrite right now.` });
+  if (land) {
+    // Land animals: the enclosure climate, not water chemistry.
+    for (const text of climateWarnings(t, sp)) out.push({ severity: 'warn', text });
+  } else {
+    const cyc = cycleStatus(w);
+    if (cyc === 'uncycled') out.push({ severity: 'warn', text: `${t.name} is not cycled yet. New fish may be poisoned by ammonia.` });
+    else if (cyc === 'cycling') out.push({ severity: 'warn', text: `${t.name} is still cycling. Add fish slowly.` });
+    if (w.ammonia > 0.25 || w.nitrite > 0.25) out.push({ severity: 'warn', text: `${t.name} has ammonia or nitrite right now.` });
+  }
 
   const b = stockingBreakdown(state, t.id, all);
   const pct = (n: number) => Math.round(n * 100);
@@ -120,18 +128,20 @@ export function lineWarnings(state: GameState, line: PlannedLine, all: PlannedLi
     });
   }
 
-  if (w.temperature < sp.temperature.min - 0.5 || w.temperature > sp.temperature.max + 0.5) {
-    out.push({ severity: 'warn', text: `${t.name} is ${w.temperature.toFixed(0)}°C; ${sp.commonName} needs ${sp.temperature.min}-${sp.temperature.max}°C.` });
+  if (!land && !wrongHabitat) {
+    if (w.temperature < sp.temperature.min - 0.5 || w.temperature > sp.temperature.max + 0.5) {
+      out.push({ severity: 'warn', text: `${t.name} is ${w.temperature.toFixed(0)}°C; ${sp.commonName} needs ${sp.temperature.min}-${sp.temperature.max}°C.` });
+    }
+    if (w.ph < sp.ph.min - 0.2 || w.ph > sp.ph.max + 0.2) out.push({ severity: 'warn', text: `pH ${w.ph.toFixed(1)} is outside ${sp.commonName}'s range (${sp.ph.min}-${sp.ph.max}).` });
+    if (w.gh < sp.hardness.min - 1 || w.gh > sp.hardness.max + 1) out.push({ severity: 'info', text: `Hardness ${w.gh.toFixed(0)} dGH is outside ${sp.commonName}'s range (${sp.hardness.min}-${sp.hardness.max}).` });
   }
-  if (w.ph < sp.ph.min - 0.2 || w.ph > sp.ph.max + 0.2) out.push({ severity: 'warn', text: `pH ${w.ph.toFixed(1)} is outside ${sp.commonName}'s range (${sp.ph.min}-${sp.ph.max}).` });
-  if (w.gh < sp.hardness.min - 1 || w.gh > sp.hardness.max + 1) out.push({ severity: 'info', text: `Hardness ${w.gh.toFixed(0)} dGH is outside ${sp.commonName}'s range (${sp.hardness.min}-${sp.hardness.max}).` });
 
   const resident = [...new Set(fishInTank(state, t.id).map((f) => f.speciesId))];
   const incoming = withOutstanding(state, all).filter((l) => l !== line && l.tankId === t.id && !(l.orderId && l.orderId === line.orderId && l.speciesId === line.speciesId)).map((l) => l.speciesId);
-  const res = assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: w.temperature, residentSpecies: [...resident, ...incoming] });
+  const res = assessSpeciesForSetup(sp.id, { litres: land ? landVolume(t) : t.litres, lengthCm: t.lengthCm, heated: setupHeated(t), temperature: w.temperature, residentSpecies: [...resident, ...incoming], waterType: t.waterType, habitat: t.habitat });
   for (const issue of res.issues) {
-    // Temperature is reported above with the actual reading.
-    if (/heater|cooler/.test(issue)) continue;
+    // Temperature and habitat are reported above with the actual readings.
+    if (/heater|cooler/.test(issue) || issue === wrongHabitat || / is a (freshwater|marine|brackish) fish; this is a/.test(issue)) continue;
     out.push({ severity: 'warn', text: issue });
   }
 

@@ -33,6 +33,7 @@ const THEMES: Record<FloorTheme, { floorA: string; floorB: string; grout: string
   marine: { floorA: '#2f4a66', floorB: '#2a4360', grout: '#203650', wall: '#1d4f7a', wallStripe: '#1a4770', skirting: '#18324c', skirtingHi: '#2a5a80' },
   basement: { floorA: '#9a9a94', floorB: '#93938c', grout: '#7c7c76', wall: '#7d8088', wallStripe: '#757880', skirting: '#4c4e54', skirtingHi: '#62656c' },
   reef: { floorA: '#2c5a62', floorB: '#28545c', grout: '#1e444c', wall: '#2a7a86', wallStripe: '#26707c', skirting: '#1a4048', skirtingHi: '#2a6070' },
+  vivarium: { floorA: '#a87a4a', floorB: '#9c7044', grout: '#7a5432', wall: '#6a8a4a', wallStripe: '#628244', skirting: '#4a3a24', skirtingHi: '#6a5434', plank: true },
 };
 
 function drawFloorTile(ctx: Ctx, ox: number, oy: number, variant: number, theme: FloorTheme = 'shop'): void {
@@ -115,6 +116,13 @@ export function makeFloorTexture(scene: Phaser.Scene, layout: FloorLayout, key =
     } else if (layout.theme === 'reef') {
       // A painted reef mural along the back wall: rock, branching and plate corals.
       for (const x of [2, 8, 15, 22, 27]) drawReefMural(ctx, x * TILE - 6, x);
+    } else if (layout.theme === 'vivarium') {
+      // Hanging foliage along the back wall and a warm skylight.
+      drawWindow(ctx, 26 * TILE + 2, 4);
+      for (let x = 16; x < (layout.width - 1) * TILE; x += 10) {
+        const len = 6 + ((x * 7) % 11);
+        for (let y = 0; y < len; y += 2) px(ctx, x + ((y >> 1) % 2), 3 + y, y % 4 ? '#3a7a3a' : '#5aa04a', 3, 2);
+      }
     } else if (layout.theme === 'basement') {
       // Pipes along the wall and a caged lamp.
       px(ctx, 16, 6, '#5a5e66', layout.width * TILE - 32, 3);
@@ -343,6 +351,22 @@ function drawTankProp(ctx: Ctx, w: number, h: number, style?: PropPlacement['sty
     }
     px(ctx, w / 2 - 5, 21, '#d8e4f0', 10, 3);
     px(ctx, 0, h, '#0c0e12', w, 2);
+    return;
+  }
+  if (style === 'terrarium' || style === 'paludarium') {
+    // Front-opening glass enclosure: mesh top, framed glass doors, wooden cabinet.
+    px(ctx, 0, 0, '#5a5e66', w, 4);
+    for (let x = 1; x < w - 1; x += 2) px(ctx, x, 1, '#9aa0a8', 1, 2);
+    px(ctx, 0, 4, '#2a2420', w, 17);
+    px(ctx, 1, 4, '#1d2028', w - 2, 16);
+    px(ctx, Math.round(w / 2) - 1, 4, '#2a2420', 2, 17);
+    px(ctx, 0, 20, '#5a3a22', w, h - 20 + 2);
+    px(ctx, 1, 21, '#8a5a36', w - 2, h - 22);
+    px(ctx, 1, 21, '#a8744a', w - 2, 1);
+    outlineRect(ctx, 3, 23, w - 6, h - 26, '#5a3a22');
+    px(ctx, w / 2 - 5, 21, '#f2eee0', 10, 3);
+    if (style === 'paludarium') px(ctx, w / 2 - 3, 22, '#3a7ac8', 6, 1);
+    px(ctx, 0, h, shade('#5a3a22', -0.3), w, 2);
     return;
   }
   if (style === 'nano') {

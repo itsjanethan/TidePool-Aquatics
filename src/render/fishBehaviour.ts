@@ -30,6 +30,8 @@ export interface Pellet {
   units: number;
   settled: boolean;
   obj: Phaser.GameObjects.Rectangle;
+  /** Enclosures: live feeders that move about (crickets hop, fruit flies hover); fruit diet sits still. */
+  bug?: 'cricket' | 'fly' | 'fruit';
 }
 
 export interface HideSpot {
@@ -193,7 +195,7 @@ export class FishAgent {
     }
     const night = !world.lightsOn;
     const restChance = night ? (b.nocturnal ? 0.05 : 0.65) : b.nocturnal ? 0.55 : 0.04;
-    if (f.hunger > 12 && world.pellets.length) {
+    if (f.hunger > 12 && world.pellets.some((p) => !p.bug)) {
       this.mode = 'feed';
       this.modeT = 4;
       return;
@@ -323,7 +325,7 @@ export class FishAgent {
     }
     if (!this.texKey) return;
     if (!f.alive && this.mode !== 'dead') this.mode = 'dead';
-    if (this.mode !== 'dead' && (this.modeT <= 0 || (this.mode !== 'feed' && f.hunger > 12 && world.pellets.length && rng.chance(dt * 2)))) {
+    if (this.mode !== 'dead' && (this.modeT <= 0 || (this.mode !== 'feed' && f.hunger > 12 && world.pellets.some((p) => !p.bug) && rng.chance(dt * 2)))) {
       this.chooseMode(world);
     }
 
@@ -354,6 +356,7 @@ export class FishAgent {
         let best: Pellet | null = null;
         let bd = Infinity;
         for (const p of world.pellets) {
+          if (p.bug) continue;
           const depthT = (p.y - world.surface) / (world.floor - world.surface);
           const pref = this.bottomDweller ? (depthT > 0.6 ? 0 : 400) : b.depth[0] < 0.2 ? depthT * 80 : 0;
           const d = Math.hypot(p.x - this.x, p.y - this.y) + pref;

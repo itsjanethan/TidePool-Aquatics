@@ -89,7 +89,7 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
     ? ARCHETYPES.find((a) => a.id === profile!.archetype) ?? ARCHETYPES[0]
     : opts.archetype
       ? ARCHETYPES.find((a) => a.id === opts.archetype) ?? ARCHETYPES[0]
-      : rng.weighted(ARCHETYPES, (a) => a.weight * (a.id === 'enthusiast' ? 0.5 + state.reputation.quality / 50 : 1));
+      : rng.weighted(ARCHETYPES, (a) => (a.floor && !state.unlocks.floors.includes(a.floor) ? 0 : a.weight) * (a.id === 'enthusiast' ? 0.5 + state.reputation.quality / 50 : 1));
 
   if (!profile) {
     profile = {
@@ -145,6 +145,7 @@ export function spawnCustomer(state: GameState, ctx: CustomerContext, opts: Spaw
   } else if (goal === 'advice_stocking') {
     goalData.tankLitres = rng.pick(arch.tankSizes);
     goalData.heated = rng.chance(arch.heatedChance);
+    if (arch.habitats?.length) goalData.habitat = rng.pick(arch.habitats);
   } else if (goal === 'problem') {
     goalData.problemId = problemId ?? rng.pick(PROBLEMS).id;
   }
@@ -1009,13 +1010,14 @@ function reserveForAdvice(state: GameState, c: CustomerState, speciesId: string)
 
 export function adviceSetupText(c: CustomerState): string {
   const L = c.goalData.tankLitres ?? 60;
+  if (c.goalData.habitat) return `I have a ${L}-litre ${c.goalData.habitat}${c.goalData.heated ? ' with a basking lamp' : ''}. What could live in it?`;
   return `I have a ${L}-litre tank ${c.goalData.heated ? 'with a heater' : 'with no heater'}. What fish could I keep in it?`;
 }
 
 /** Player recommends a species (or null = "nothing suitable in stock"). */
 export function resolveAdvice(state: GameState, ctx: CustomerContext, c: CustomerState, speciesId: string | null): AdviceResult {
   if (state.idle) return { reply: IDLE_MESSAGE, success: false };
-  const setup = { litres: c.goalData.tankLitres ?? 60, heated: !!c.goalData.heated };
+  const setup = { litres: c.goalData.tankLitres ?? 60, heated: !!c.goalData.heated, habitat: c.goalData.habitat };
   state.stats.adviceGiven += 1;
   c.thought = null;
   const stock = inStockSpecies(state);

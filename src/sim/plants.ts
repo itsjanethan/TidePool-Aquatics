@@ -133,6 +133,8 @@ export function decorRefusal(state: GameState, tank: TankState, defId: string, b
   if (def.marineOnly && tank.waterType !== 'marine') return `${def.name} is for marine tanks.`;
   if (tank.waterType === 'marine' && (def.kind === 'plant' || def.kind === 'wood')) return `${def.name} does not belong in a marine tank.`;
   if (buying && (def.level ?? 1) > state.shopLevel) return `${def.name} is sold once the shop reaches level ${def.level}.`;
+  if (def.land && !tank.habitat) return `${def.name} is for vivariums, terrariums and paludariums.`;
+  if (!def.land && def.kind === 'plant' && (tank.habitat === 'vivarium' || tank.habitat === 'terrarium')) return `${def.name} is an aquatic plant: it would dry out in a ${tank.habitat}.`;
   return null;
 }
 

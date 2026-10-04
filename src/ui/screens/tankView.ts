@@ -4,6 +4,7 @@ import type { GameController } from '../../game/GameController';
 import type { Action } from '../../input/input';
 import type { TankScene } from '../../render/scenes/TankScene';
 import { clockString } from '../../sim/time';
+import { hotspot, terraOf } from '../../sim/terrarium';
 import { queueCustomers } from '../../sim/customers';
 import { h } from '../dom';
 import type { Screen } from '../ui';
@@ -61,8 +62,11 @@ export class TankViewScreen implements Screen {
     const help = s.customers.filter((q) => q.phase === 'waiting_help' || q.phase === 'seeking_help').length;
     this.top.innerHTML = '';
     const parts: Array<HTMLElement | null> = [
-      h('span', { class: 'tv-name' }, `${t.name} · ${t.litres}L`),
-      h('span', null, `${t.water.temperature.toFixed(1)}°C`),
+      h('span', { class: 'tv-name' }, t.habitat ? `${t.name} · ${t.habitat}` : `${t.name} · ${t.litres}L`),
+      // Enclosures show the air: temperature and humidity (and the basking spot when the lamp is on).
+      t.habitat
+        ? h('span', null, `${terraOf(t).airTemp.toFixed(1)}°C · ${Math.round(terraOf(t).humidity)}% RH${terraOf(t).heatLamp !== null && t.lightOn ? ` · bask ${hotspot(t).toFixed(0)}°C` : ''}`)
+        : h('span', null, `${t.water.temperature.toFixed(1)}°C`),
       h('span', { class: 'tv-species' }, speciesSummary(s, t.id)),
       h('span', { class: 'tv-status' }, tankStatusLine(s, t)),
       waiting ? h('span', { class: 'tv-waiting' }, `${waiting} at till`) : null,
@@ -97,10 +101,10 @@ export class TankViewScreen implements Screen {
       const t = this.tank;
       this.card.append(
         h('div', { class: 'tv-overview' },
-          h('div', { class: 'fish-name' }, `${t.name} · ${t.litres}L`),
-          h('div', null, speciesSummary(s, t.id) || 'No fish'),
+          h('div', { class: 'fish-name' }, t.habitat ? `${t.name} · ${t.habitat}` : `${t.name} · ${t.litres}L`),
+          h('div', null, speciesSummary(s, t.id) || (t.habitat ? 'No animals' : 'No fish')),
           h('div', { class: 'warn' }, tankStatusLine(s, t)),
-          h('div', { class: 'small' }, 'Tap a fish to see it up close. Next fish steps through them.')),
+          h('div', { class: 'small' }, t.habitat ? 'Tap an animal to see it up close. Next steps through them.' : 'Tap a fish to see it up close. Next fish steps through them.')),
       );
       this.card.classList.add('tv-card-empty');
     }

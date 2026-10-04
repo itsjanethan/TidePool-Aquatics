@@ -52,7 +52,8 @@ describe('Developer Sandbox fixture', () => {
     for (let h = 0; h < 72; h++) sim.advance(60);
     // Sales remove fish; deaths are what would show an unhealthy fixture.
     expect(s.stats.fishDied).toBeLessThan(alive * 0.05);
-  });
+    // Three simulated days of every floor (now six) take a few seconds on a slow runner.
+  }, 30000);
 
   it('presets use the real rules (marine needs a marine tank)', () => {
     const s = createSandbox();

@@ -29,6 +29,7 @@ import { fishInTank, newId } from './fish';
 import { idleRefusal } from './idle';
 import { lineWarnings, outstandingLines, projectedStocking } from './orderCheck';
 import { FIXES, type FixId } from './preview';
+import { habitatRefusal, isLandAnimal, landVolume, setupHeated } from './terrarium';
 import { getSupplier, placeOrder, suppliersFor } from './supplier';
 
 const SUPPLIERS_BY_ID = (id: string) => {
@@ -50,7 +51,7 @@ export const STAFF_END = 18 * 60 + 30;
 export const MAX_STAFF = 6;
 export const APPLICANT_DAYS = 3;
 /** Base minutes for each job before speed and personality. */
-export const JOB_MINUTES: Record<FixId, number> = { feed: 3, water25: 20, water50: 30, glass: 8, algae: 10, vacuum: 15, filter: 12, removeDead: 4, topoff: 6, doseAlk: 4, doseCa: 4, doseMg: 4 };
+export const JOB_MINUTES: Record<FixId, number> = { feed: 3, water25: 20, water50: 30, glass: 8, algae: 10, vacuum: 15, filter: 12, removeDead: 4, topoff: 6, doseAlk: 4, doseCa: 4, doseMg: 4, mist: 2, spotClean: 8, dish: 2 };
 
 export interface StaffContext {
   grids: GridLookup;
@@ -236,9 +237,9 @@ function releaseTask(state: GameState, m: StaffEntity): void {
 const SEV_WEIGHT = { critical: 100, warning: 50, advice: 10 };
 /** Jobs a role may take, in no particular order. */
 const ROLE_FIXES: Record<StaffRole, FixId[]> = {
-  maintenance: ['removeDead', 'water50', 'water25', 'topoff', 'doseAlk', 'doseCa', 'doseMg', 'feed', 'filter', 'vacuum', 'algae', 'glass'],
-  floater: ['removeDead', 'water50', 'water25', 'topoff', 'doseAlk', 'doseCa', 'doseMg', 'feed', 'filter', 'vacuum', 'algae', 'glass'],
-  stock: ['removeDead', 'feed'],
+  maintenance: ['removeDead', 'water50', 'water25', 'topoff', 'doseAlk', 'doseCa', 'doseMg', 'mist', 'dish', 'spotClean', 'feed', 'filter', 'vacuum', 'algae', 'glass'],
+  floater: ['removeDead', 'water50', 'water25', 'topoff', 'doseAlk', 'doseCa', 'doseMg', 'mist', 'dish', 'spotClean', 'feed', 'filter', 'vacuum', 'algae', 'glass'],
+  stock: ['removeDead', 'feed', 'dish'],
   sales: ['removeDead'],
 };
 
@@ -258,7 +259,7 @@ export function maintenanceJobs(state: GameState, role: StaffRole, exclude: Set<
     const r = diagnoseTank(state, state.tanks[id]);
     for (const issue of r.issues) {
       // Advice-level cleaning only when the tank is visibly grubby.
-      if (issue.severity === 'advice' && !['glass', 'algae', 'waste'].includes(issue.id)) continue;
+      if (issue.severity === 'advice' && !['glass', 'algae', 'waste', 'terra_waste', 'terra_dish'].includes(issue.id)) continue;
       const act = issue.actions.find((a) => a.fix && allowed.has(a.fix as FixId));
       if (!act) continue;
       jobs.push({ tankId: id, fix: act.fix as FixId, issueId: issue.id, score: SEV_WEIGHT[issue.severity] + (issue.id === 'dead' ? 60 : issue.id === 'hungry' ? 15 : 0) });
@@ -459,11 +460,11 @@ export function makeStockProposal(state: GameState, rng: Rng, m: StaffEntity): S
   const opt = rng.pick(pickFrom);
   const sp = getSpecies(opt.sid);
   const tanks = state.tankOrder
-    .filter((id) => state.tanks[id].forSale !== false && (state.tanks[id].waterType ?? 'freshwater') === sp.waterType)
+    .filter((id) => state.tanks[id].forSale !== false && !habitatRefusal(sp, state.tanks[id]) && (isLandAnimal(sp) || (state.tanks[id].waterType ?? 'freshwater') === sp.waterType))
     .map((id) => {
       const t = state.tanks[id];
       const resident = [...new Set([...fishInTank(state, id).map((f) => f.speciesId), ...outstandingLines(state, id).map((l) => l.speciesId)])];
-      const res = assessSpeciesForSetup(sp.id, { litres: t.litres, lengthCm: t.lengthCm, heated: !!t.heaterId, temperature: t.water.temperature, residentSpecies: resident, waterType: t.waterType ?? 'freshwater' });
+      const res = assessSpeciesForSetup(sp.id, { litres: isLandAnimal(sp) ? landVolume(t) : t.litres, lengthCm: t.lengthCm, heated: setupHeated(t), temperature: t.water.temperature, residentSpecies: resident, waterType: t.waterType ?? 'freshwater', habitat: t.habitat });
       // Count livestock already on order too, so staff do not pile a second order onto the same tank.
       return { id, score: res.score - projectedStocking(state, id, []) * 0.4 };
     })

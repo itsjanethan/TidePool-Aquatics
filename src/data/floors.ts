@@ -6,7 +6,7 @@
 import type { FloorLayout, PropPlacement } from './shopLayout';
 import { stairsOf } from './shopLayout';
 
-export type FloorId = 'ground' | 'upstairs' | 'marine' | 'basement' | 'reef';
+export type FloorId = 'ground' | 'upstairs' | 'marine' | 'basement' | 'reef' | 'vivarium';
 
 export const GROUND_FLOOR_ID: FloorId = 'ground';
 
@@ -143,9 +143,29 @@ export const REEF: FloorLayout = {
     tank('F1', 6, 9, 2, 2, 'nano'), tank('F2', 10, 9, 2, 2, 'nano'), tank('F3', 14, 9, 3, 2, 'nano'),
     { id: 'fragrack', kind: 'fragrack', x: 22, y: 9, w: 4, h: 2, interact: front(22, 9, 4, 2) },
     stairs('stairs_down', 12, 'marine', 'down'),
+    stairs('stairs_up', 5, 'vivarium', 'up'),
     deco('rplant1', 'plant', 28, 2), deco('rplant2', 'plant', 28, 17), deco('rbench', 'bench', 10, 15, 4),
   ],
   playerStart: { x: 4, y: 13 },
+  queue: [],
+  staffOnly: [],
+};
+
+/** Level 6: Vivariums, terrariums and paludariums. */
+export const VIVARIUM: FloorLayout = {
+  id: 'vivarium',
+  name: 'Vivariums & Terrariums',
+  theme: 'vivarium',
+  width: W,
+  height: H,
+  tiles: buildTiles(false),
+  props: [
+    tank('V1', 5, 2, 3, 2, 'terrarium'), tank('V2', 10, 2, 3, 2, 'terrarium'), tank('V3', 15, 2, 3, 2, 'terrarium'), tank('T1', 20, 2, 4, 2, 'terrarium'),
+    tank('T2', 6, 9, 2, 2, 'terrarium'), tank('P1', 11, 9, 5, 2, 'paludarium'), tank('P2', 19, 9, 4, 2, 'paludarium'),
+    stairs('stairs_down', 5, 'reef', 'down'),
+    deco('vplant1', 'plant', 28, 2), deco('vplant2', 'plant', 28, 17), deco('vplant3', 'plant', 25, 10), deco('vplant4', 'plant', 1, 17), deco('vplant5', 'plant', 9, 6), deco('vbench', 'bench', 11, 15, 4),
+  ],
+  playerStart: { x: 4, y: 6 },
   queue: [],
   staffOnly: [],
 };
@@ -165,6 +185,7 @@ export const FLOORS: FloorDef[] = [
   { id: 'marine', layout: MARINE, level: 3, blurb: 'Specialist tropical and marine systems with salinity control.' },
   { id: 'basement', layout: BASEMENT, level: 4, blurb: 'Warehouse stock space and an equipment retail floor.' },
   { id: 'reef', layout: REEF, level: 5, blurb: 'Coral reef systems, a frag rack, and nano tanks for shrimp and snails.' },
+  { id: 'vivarium', layout: VIVARIUM, level: 6, blurb: 'Vivariums, terrariums and paludariums for frogs, geckos and tarantulas.' },
 ];
 
 const BY_ID = new Map(FLOORS.map((f) => [f.id as string, f]));

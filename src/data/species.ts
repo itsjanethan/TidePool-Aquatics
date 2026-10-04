@@ -1,5 +1,6 @@
 import type { SpeciesDef } from './speciesTypes';
 import { INVERTS } from './inverts';
+import { TERRA_SPECIES } from './terra';
 
 /**
  * Starter species set (vertical slice). Values are simplified but based on
@@ -947,8 +948,8 @@ const FISH: SpeciesDef[] = [
   },
 ];
 
-/** Every species in the game: fish, then invertebrates (data/inverts.ts). */
-export const SPECIES: SpeciesDef[] = [...FISH, ...INVERTS];
+/** Every species in the game: fish, invertebrates (data/inverts.ts), then land animals (data/terra.ts). */
+export const SPECIES: SpeciesDef[] = [...FISH, ...INVERTS, ...TERRA_SPECIES];
 
 const BY_ID = new Map(SPECIES.map((s) => [s.id, s]));
 

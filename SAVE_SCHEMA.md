@@ -90,6 +90,8 @@ Customers are not saved (they leave on load), but carry `floor`, `pending` (stai
 
 Reef additions (2026-10-04, optional, no version bump): `water.alk?` (dKH), `water.calcium?`, `water.magnesium?` (ppm; absent means natural seawater 8 / 420 / 1300), and `reef?: {light, wavemaker, doser?, alkDayStart?, alkSwing?, day?, doserAcc?}` on marine tanks (absent means the standard light and no wavemaker). Coral frags are `storage.plants` entries whose `defId` is a coral. Old saves load unchanged.
 
+Vivarium additions (2026-10-04, optional, no version bump): `tank.habitat?` ('vivarium' | 'terrarium' | 'paludarium'; absent means an aquarium) and `tank.terra?: {humidity, airTemp, moisture, mould, waste, vent, mister, heatLamp (°C or null), uvb, bioactive, calcium, dish, lastMist?}` (absent on an enclosure is filled from the habitat's defaults when first read). In a paludarium `litres` is the pool only. `customer.goalData.habitat?` names the enclosure a herp keeper is setting up. Old saves load unchanged.
+
 ## Rules for changing the schema
 
 1. Prefer additive, optional-safe changes.

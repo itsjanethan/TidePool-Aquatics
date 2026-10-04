@@ -18,6 +18,9 @@ export interface ExpansionTank {
   /** Reef equipment fitted at build time. */
   reef?: { light: string; wavemaker: number };
   airStone?: boolean;
+  /** Enclosure kind (vivarium floor) and its starting climate and equipment. */
+  habitat?: 'vivarium' | 'terrarium' | 'paludarium';
+  terra?: Partial<import('../sim/types').TerraState>;
   /** Starting chemistry for active-soil tanks (pH and hardness already buffered). */
   water?: { ph?: number; gh?: number; nitrate?: number };
 }
@@ -98,6 +101,28 @@ export const EXPANSIONS: ExpansionDef[] = [
       { id: 'F1', sizeId: 't60', heater: 'heater_50', setpoint: 23, filter: 'sponge', substrate: 'aqua_soil', background: 'black', decor: [['java_moss', 0.3, 2], ['java_fern', 0.65, 1], ['river_stone', 0.5, 2]] },
       { id: 'F2', sizeId: 't60', heater: 'heater_50', setpoint: 24, filter: 'sponge', substrate: 'fine_gravel', background: 'none', decor: [['anubias', 0.4, 1], ['limestone', 0.75, 1]] },
       { id: 'F3', sizeId: 't120', heater: 'heater_150', setpoint: 22, filter: 'sponge', substrate: 'shrimp_soil', background: 'black', water: { ph: 6.3, gh: 5 }, decor: [['java_moss', 0.25, 2], ['java_moss', 0.6, 2], ['cryptocoryne', 0.85, 1], ['mopani', 0.45, 0]] },
+    ],
+  },
+  {
+    id: 'vivarium', level: 6, floor: 'vivarium', name: 'Vivariums & Terrariums',
+    blurb: 'A warm top floor of glass enclosures: planted vivariums for frogs, dry terrariums for geckos and tarantulas, and paludariums with land and a pool.',
+    cost: 7500, rent: 28,
+    requires: { reputation: 68, customersServed: 480, capital: 8000, objectives: [], fishBred: 40, knowledge: 62 },
+    unlocks: [
+      'Vivarium floor: three planted vivariums, two terrariums and two paludariums',
+      'Dart frogs, White\'s tree frogs, fire-bellied toads, Chilean rose tarantulas, leopard and crested geckos',
+      'Humidity, temperature, basking, ventilation, hides, feeder insects and calcium',
+      'Paludariums: land animals and a freshwater pool on the same water simulation',
+      'Feeder insects, gecko diet and calcium dust; misters, basking lamps, UVB and bioactive clean-up crews',
+    ],
+    tanks: [
+      { id: 'V1', sizeId: 't120', habitat: 'vivarium', heater: null, filter: 'sponge', substrate: 'forest_floor', background: 'jungle_wall', terra: { vent: 0.25, mister: true, bioactive: true }, decor: [['cork_hide', 0.55, 1], ['bromeliad', 0.22, 1], ['boston_fern', 0.78, 0], ['leaf_litter', 0.42, 2], ['bromeliad', 0.9, 2]] },
+      { id: 'V2', sizeId: 't200', habitat: 'vivarium', heater: null, filter: 'sponge', substrate: 'coco_fibre', background: 'cork_wall', terra: { vent: 0.5, mister: false, uvb: true, bioactive: true }, decor: [['climb_branch', 0.5, 0], ['pothos', 0.18, 0], ['cork_hide', 0.82, 2]] },
+      { id: 'V3', sizeId: 't120', habitat: 'vivarium', heater: null, filter: 'sponge', substrate: 'coco_fibre', background: 'cork_wall', terra: { vent: 0.5, mister: true, bioactive: true }, decor: [['climb_branch', 0.4, 0], ['pothos', 0.8, 0], ['boston_fern', 0.18, 1]] },
+      { id: 'T1', sizeId: 't200', habitat: 'terrarium', heater: null, filter: 'sponge', substrate: 'desert_clay', background: 'desert_wall', terra: { vent: 0.8, mister: false, heatLamp: 32, uvb: true, bioactive: false, moisture: 0.15, humidity: 40 }, decor: [['slate_hide', 0.25, 1], ['cork_hide', 0.8, 1], ['river_stone', 0.52, 2]] },
+      { id: 'T2', sizeId: 't60', habitat: 'terrarium', heater: null, filter: 'sponge', substrate: 'coco_fibre', background: 'cork_wall', terra: { vent: 0.8, mister: false, bioactive: false, moisture: 0.3, humidity: 50 }, decor: [['cork_hide', 0.5, 1]] },
+      { id: 'P1', sizeId: 't300', habitat: 'paludarium', heater: null, filter: 'hang_on', substrate: 'coco_fibre', background: 'jungle_wall', terra: { vent: 0.4, mister: true, bioactive: true }, decor: [['cork_hide', 0.25, 1], ['bromeliad', 0.1, 1], ['boston_fern', 0.4, 0], ['java_fern', 0.72, 1], ['hornwort', 0.9, 0]] },
+      { id: 'P2', sizeId: 't200', habitat: 'paludarium', heater: null, filter: 'hang_on', substrate: 'coco_fibre', background: 'cork_wall', terra: { vent: 0.5, mister: true, bioactive: true }, decor: [['pothos', 0.15, 0], ['cork_hide', 0.35, 2], ['anubias', 0.75, 1]] },
     ],
   },
 ];

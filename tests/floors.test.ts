@@ -12,7 +12,7 @@ import { suppliersFor } from '../src/sim/supplier';
 
 describe('floor registry', () => {
   it('has every floor with unique tank ids and reciprocal stairs', () => {
-    expect(FLOORS.map((f) => f.id)).toEqual(['ground', 'upstairs', 'marine', 'basement', 'reef']);
+    expect(FLOORS.map((f) => f.id)).toEqual(['ground', 'upstairs', 'marine', 'basement', 'reef', 'vivarium']);
     const ids = FLOORS.flatMap((f) => tankIdsOnFloor(f.id));
     expect(new Set(ids).size).toBe(ids.length);
     for (const f of FLOORS) {
@@ -27,6 +27,7 @@ describe('floor registry', () => {
     expect(floorOfTank('Q1')).toBe('basement');
     expect(floorOfTank('R1')).toBe('reef');
     expect(floorOfTank('F3')).toBe('reef');
+    expect(floorOfTank('P1')).toBe('vivarium');
   });
 
   it('every tank, rack and stairs can be reached on foot from the stairs or the door', () => {

@@ -36,6 +36,9 @@ import { getSpecies } from '../data/species';
 import { assessCoral, perchOf, reefLight, reefState, tankFlow } from '../sim/reef';
 import { beginFishFrame } from './art/fishArt';
 import { CANVAS_H, CANVAS_W, RES } from './res';
+import { enclosureFeeder, isEnclosure, isLandOnly, isPaludarium, terraOf } from '../sim/terrarium';
+import { PALUDARIUM_WATER } from '../data/terra';
+import { ensureBank, ensureCondensation, ensureLampCone, ensureMould, landWallPixel } from './art/enclosureArt';
 
 /** Tank view layout in canvas pixels. */
 export const VIEW = {
@@ -81,6 +84,22 @@ interface Pearl {
 interface Speck {
   obj: Phaser.GameObjects.Rectangle;
   depth: number;
+}
+
+/** Enclosure geometry: land-only (vivarium, terrarium) or a paludarium with a soil bank and a pool. */
+interface EnclosureGeom {
+  land: boolean;
+  /** Paludarium pool: x range and water surface. */
+  pool: { left: number; right: number; y: number } | null;
+  /** Height of the soil bank above the floor (canvas px). */
+  bank: number;
+}
+
+interface Mist {
+  obj: Phaser.GameObjects.Rectangle;
+  vx: number;
+  vy: number;
+  life: number;
 }
 
 export interface TankRendererOptions {
@@ -155,17 +174,44 @@ export class TankRenderer {
   private mulmImage: Phaser.GameObjects.Image | null = null;
   private reflections: Phaser.GameObjects.Sprite[] = [];
   private hardscapeTintT = 0;
+  /** Vivarium, terrarium or paludarium layout; null for an aquarium. */
+  private encl: EnclosureGeom | null = null;
+  private bankImage: Phaser.GameObjects.Image | null = null;
+  private poolWater: Phaser.GameObjects.Rectangle | null = null;
+  private condense: Phaser.GameObjects.Image | null = null;
+  private mould: Phaser.GameObjects.Image | null = null;
+  private kit: Phaser.GameObjects.Graphics | null = null;
+  private lampCone: Phaser.GameObjects.Image | null = null;
+  private baskGlow: Phaser.GameObjects.Ellipse | null = null;
+  private uvbGlow: Phaser.GameObjects.Rectangle | null = null;
+  private dishGfx: Phaser.GameObjects.Graphics | null = null;
+  private dishKey = '';
+  private mist: Mist[] = [];
+  private mistT = 2;
+  private feeder: string | null = null;
 
   constructor(public scene: Phaser.Scene, private getState: () => GameState, public tankId: string, private opts: TankRendererOptions = {}) {
     const tank = this.tank;
+    if (isEnclosure(tank)) {
+      this.encl = {
+        land: isLandOnly(tank),
+        pool: isPaludarium(tank) ? { left: VIEW.left + W * (1 - PALUDARIUM_WATER), right: VIEW.right, y: VIEW.floor - 92 * RES } : null,
+        bank: 104 * RES,
+      };
+    }
+    const encl = this.encl;
     this.lightLevel = tank.lightOn ? 1 : 0;
     this.calm = reducedMotion();
     this.contour = substrateContour(tankId, W, RES);
     this.lightMap = new LightMap(VIEW.left, VIEW.right, VIEW.surface, VIEW.floor, this.q.lightCells);
     this.world = {
-      left: VIEW.left,
+      // In a paludarium fish keep to the pool; land animals use `full`.
+      left: encl?.pool ? encl.pool.left + 8 * RES : VIEW.left,
       right: VIEW.right,
-      surface: VIEW.surface,
+      surface: encl?.pool ? encl.pool.y + 3 * RES : encl ? VIEW.frameTop + 10 * RES : VIEW.surface,
+      full: encl ? { left: VIEW.left, right: VIEW.right, top: VIEW.frameTop + 16 * RES } : undefined,
+      pool: encl?.pool ?? undefined,
+      land: encl?.land,
       floor: VIEW.floor,
       pxPerCm: W / tank.lengthCm,
       lightsOn: tank.lightOn,
@@ -182,10 +228,14 @@ export class TankRenderer {
     ensureSharedTextures(scene);
     scene.add.rectangle(0, 0, CANVAS_W, CANVAS_H, 0x221d30).setOrigin(0, 0).setDepth(-10);
     this.buildRays();
+    // Water: the whole tank, or only a paludarium's pool.
+    const wl = encl?.pool ? encl.pool.left : VIEW.left;
+    const ww = encl?.pool ? encl.pool.right - encl.pool.left : W;
+    const ws = encl?.pool ? encl.pool.y : VIEW.surface;
     this.caustics = [
-      scene.add.tileSprite(VIEW.left, VIEW.floor - 14 * RES, W, VIEW.subBottom - VIEW.floor + 14 * RES, 'caustics').setOrigin(0, 0).setDepth(4.2).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.32),
-      scene.add.tileSprite(VIEW.left, VIEW.floor - 14 * RES, W, VIEW.subBottom - VIEW.floor + 14 * RES, 'caustics').setOrigin(0, 0).setDepth(4.2).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.22).setFlipX(true),
-      scene.add.tileSprite(VIEW.left, VIEW.surface, W, VIEW.floor - VIEW.surface, 'caustics').setOrigin(0, 0).setDepth(0.6).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.07),
+      scene.add.tileSprite(wl, VIEW.floor - 14 * RES, ww, VIEW.subBottom - VIEW.floor + 14 * RES, 'caustics').setOrigin(0, 0).setDepth(4.2).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.32),
+      scene.add.tileSprite(wl, VIEW.floor - 14 * RES, ww, VIEW.subBottom - VIEW.floor + 14 * RES, 'caustics').setOrigin(0, 0).setDepth(4.2).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.22).setFlipX(true),
+      scene.add.tileSprite(wl, ws, ww, VIEW.floor - ws, 'caustics').setOrigin(0, 0).setDepth(0.6).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.07),
     ];
     this.shadowGfx = scene.add.graphics().setDepth(4.5);
     this.surfaceGfx = scene.add.graphics().setDepth(28);
@@ -197,8 +247,24 @@ export class TankRenderer {
     this.rebuildEquipment();
     this.rebuildDecor();
     this.floating = new FloatingLayer(scene, VIEW.left, VIEW.right, VIEW.surface, RES, hashUid(tankId));
-    this.waterTint = scene.add.rectangle(VIEW.left, VIEW.surface - 3 * RES, W, VIEW.subBottom - VIEW.surface, 0x8a5418, 0).setOrigin(0, 0).setDepth(29.5);
-    this.reefWash = scene.add.rectangle(VIEW.left, VIEW.surface - 3 * RES, W, VIEW.subBottom - VIEW.surface, 0x2a4ab8, 0).setOrigin(0, 0).setDepth(29.6).setBlendMode(Phaser.BlendModes.ADD);
+    this.waterTint = scene.add.rectangle(wl, ws - 3 * RES, ww, VIEW.subBottom - ws, 0x8a5418, 0).setOrigin(0, 0).setDepth(29.5);
+    this.reefWash = scene.add.rectangle(wl, ws - 3 * RES, ww, VIEW.subBottom - ws, 0x2a4ab8, 0).setOrigin(0, 0).setDepth(29.6).setBlendMode(Phaser.BlendModes.ADD);
+    if (encl) {
+      const top = VIEW.frameTop;
+      const h = VIEW.subBottom - top;
+      this.condense = scene.add.image(VIEW.left, top, ensureCondensation(scene, W, h, RES)).setOrigin(0, 0).setDepth(31.5).setAlpha(0);
+      this.mould = scene.add.image(VIEW.left, top, ensureMould(scene, W, h, VIEW.floor - top - 4 * RES, RES)).setOrigin(0, 0).setDepth(31.4).setAlpha(0);
+      this.overlays.night.setPosition(VIEW.left, top).setSize(W, h + 4 * RES);
+      this.overlays.dirt.setPosition(VIEW.left, top);
+      if (encl.pool) {
+        // The pool's water body, seen against the back wall, and its cloudiness.
+        this.poolWater = scene.add.rectangle(wl, ws - RES, ww, VIEW.subBottom - ws + RES, 0x2e6e78, 0.3).setOrigin(0, 0).setDepth(0.5);
+        this.overlays.cloud.setPosition(wl, ws).setSize(ww, VIEW.subBottom - ws);
+        this.overlays.algae.setCrop(wl - VIEW.left, ws - (VIEW.surface - 3 * RES), ww, VIEW.subBottom - ws);
+      }
+      if (encl.land) this.dishGfx = scene.add.graphics().setDepth(21);
+      this.feeder = enclosureFeeder(this.getState(), tank);
+    }
     this.syncFish();
     for (let i = 0; i < this.q.specks; i++) {
       const depth = vr.next();
@@ -249,10 +315,26 @@ export class TankRenderer {
     const key = `${bgId}|${subId}`;
     if (key === this.lookKey) return;
     this.lookKey = key;
-    const bgKey = ensureBackground(this.scene, bgId);
+    // Enclosures have no water line: the back wall runs up to the lid.
+    const bgTop = this.encl ? VIEW.frameTop : VIEW.surface - 4 * RES;
+    const bgKey = ensureBackground(this.scene, bgId, VIEW.subBottom + 2 * RES - bgTop);
     const subKey = ensureSubstrate(this.scene, subId, this.tankId, W, VIEW.subBottom - VIEW.floor + 12 * RES, RES);
-    if (!this.bgImage) this.bgImage = this.scene.add.image(VIEW.left, VIEW.surface - 4 * RES, bgKey).setOrigin(0, 0).setDepth(0);
+    if (!this.bgImage) this.bgImage = this.scene.add.image(VIEW.left, bgTop, bgKey).setOrigin(0, 0).setDepth(0);
     else this.bgImage.setTexture(bgKey);
+    if (this.encl?.pool) {
+      const pool = this.encl.pool;
+      const y0 = Math.round(VIEW.floor - this.encl.bank - 24 * RES);
+      const bw = Math.round(pool.left - VIEW.left + 24 * RES);
+      const bankKey = ensureBank(this.scene, `bank:${this.tankId}:${subId}`, subId, bw, VIEW.subBottom - y0, RES, (xx) => {
+        const x = VIEW.left + xx;
+        // The bank stops where it has run down into the pool bed.
+        if (this.bankLift(x) < 4 * RES) return Infinity;
+        return this.baseYAt(0, x) - 2 * RES - y0;
+      }, pool.y - y0);
+      useTexture(this.scene, 'bank', bankKey, 4);
+      if (!this.bankImage) this.bankImage = this.scene.add.image(VIEW.left, y0, bankKey).setOrigin(0, 0).setDepth(4.3);
+      else this.bankImage.setTexture(bankKey);
+    }
     if (!this.subImage) this.subImage = this.scene.add.image(VIEW.left, VIEW.floor - 6 * RES - substratePad(RES), subKey).setOrigin(0, 0).setDepth(4);
     else this.subImage.setTexture(subKey);
     useTexture(this.scene, 'substrate', subKey, 6);
@@ -269,7 +351,8 @@ export class TankRenderer {
 
   private rebuildEquipment(): void {
     const t = this.tank;
-    const key = `${t.filterId}|${t.heaterId}|${t.airStone}|${t.reef?.wavemaker ?? 0}|${t.reef?.light ?? ''}`;
+    const tr = this.encl ? terraOf(t) : null;
+    const key = `${t.filterId}|${t.heaterId}|${t.airStone}|${t.reef?.wavemaker ?? 0}|${t.reef?.light ?? ''}|${tr ? `${tr.mister}|${tr.heatLamp !== null}|${tr.uvb}|${tr.vent}` : ''}`;
     if (key === this.equipKey) return;
     this.equipKey = key;
     this.equipment?.destroy();
@@ -278,6 +361,11 @@ export class TankRenderer {
     const R = RES;
     const g = this.scene.add.graphics().setDepth(3);
     const filter = getFilter(t.filterId);
+    if (this.encl) {
+      this.equipment = g;
+      this.buildEnclosureKit(g);
+      return;
+    }
     if (filter.id === 'sponge') {
       const fx = VIEW.right - 34 * R;
       g.fillStyle(0x2a2a30).fillRect(fx - 2 * R, VIEW.floor - 42 * R, 24 * R, 4 * R);
@@ -332,13 +420,103 @@ export class TankRenderer {
     this.equipment = g;
   }
 
+  /**
+   * Enclosure equipment: a small internal filter and heater in a paludarium's pool,
+   * and on the mesh lid the basking lamp dome, the UVB tube and the mister nozzle,
+   * with the lamp's warm cone and basking spot below.
+   */
+  private buildEnclosureKit(g: Phaser.GameObjects.Graphics): void {
+    const t = this.tank;
+    const tr = terraOf(t);
+    const R = RES;
+    const s = this.scene;
+    const pool = this.encl!.pool;
+    if (pool) {
+      // Internal filter in the back corner of the pool, its outflow rippling the surface.
+      const fx = VIEW.right - 24 * R;
+      g.fillStyle(0x23262e).fillRect(fx, pool.y + 6 * R, 14 * R, 40 * R);
+      g.fillStyle(0x343844).fillRect(fx, pool.y + 6 * R, 3 * R, 40 * R);
+      for (let k = 0; k < 6; k++) g.fillStyle(0x15171c).fillRect(fx + 4 * R, pool.y + (24 + k * 3) * R, 8 * R, R);
+      if (t.heaterId) {
+        const hx = pool.left + 26 * R;
+        g.fillStyle(0xcfe4ec, 0.35).fillRect(hx, pool.y + 8 * R, 6 * R, 60 * R);
+        for (let y = 0; y < 48 * R; y += 3 * R) g.fillStyle(0x8a5a3a, 0.5).fillRect(hx + 2 * R, pool.y + 16 * R + y, 2 * R, R);
+        g.fillStyle(0x2a2a30).fillRect(hx - R, pool.y + 4 * R, 8 * R, 6 * R);
+      }
+    }
+    this.kit?.destroy();
+    this.lampCone?.destroy();
+    this.baskGlow?.destroy();
+    this.uvbGlow?.destroy();
+    this.lampCone = null;
+    this.baskGlow = null;
+    this.uvbGlow = null;
+    const k = s.add.graphics().setDepth(41);
+    this.kit = k;
+    const lidY = VIEW.frameTop - 10 * R;
+    if (tr.heatLamp !== null) {
+      // Basking lamp: a ceramic dome resting on the mesh, with the bulb glowing through.
+      const lx = VIEW.left + W * 0.24;
+      k.fillStyle(0x16181e).fillEllipse(lx, lidY + R, 34 * R, 8 * R);
+      k.fillStyle(0x2a2e38).fillRect(lx - 14 * R, lidY - 14 * R, 28 * R, 14 * R);
+      k.fillStyle(0x3a404c).fillRect(lx - 14 * R, lidY - 14 * R, 28 * R, 3 * R);
+      k.fillStyle(0x4a5262).fillRect(lx - 10 * R, lidY - 18 * R, 20 * R, 4 * R);
+      k.fillStyle(0x1a1c22).fillRect(lx - 2 * R, lidY - 26 * R, 4 * R, 8 * R);
+      const cone = ensureLampCone(s, 150 * R, VIEW.floor - VIEW.frameTop);
+      this.lampCone = s.add.image(lx, VIEW.frameTop, cone).setOrigin(0.5, 0).setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
+      this.baskGlow = s.add.ellipse(lx, this.baseYAt(1, lx) - 2 * R, 90 * R, 14 * R, 0xffb060, 0).setDepth(4.4).setBlendMode(Phaser.BlendModes.ADD);
+    }
+    if (tr.uvb) {
+      // A long UVB tube in a reflector on the lid.
+      const ux0 = VIEW.left + W * 0.42;
+      const ux1 = VIEW.left + W * 0.86;
+      k.fillStyle(0x2a2e38).fillRect(ux0, lidY - 6 * R, ux1 - ux0, 6 * R);
+      k.fillStyle(0x50586a).fillRect(ux0, lidY - 6 * R, ux1 - ux0, R);
+      this.uvbGlow = s.add.rectangle(ux0, VIEW.frameTop + 2 * R, ux1 - ux0, 3 * R, 0xd8d0ff, 0).setOrigin(0, 0).setDepth(41.1).setBlendMode(Phaser.BlendModes.ADD);
+    }
+    if (tr.mister) {
+      // Mister nozzle through the mesh, with its tubing running off to the pump.
+      const mx = VIEW.right - W * 0.18;
+      k.fillStyle(0x101216).fillRect(mx - R, lidY - 6 * R, 2 * R, 18 * R);
+      k.fillStyle(0x1c1e24).fillRect(mx - 3 * R, VIEW.frameTop + R, 6 * R, 4 * R);
+      k.fillStyle(0xd0d4dc).fillRect(mx - 2 * R, VIEW.frameTop + 5 * R, 4 * R, R);
+      k.fillStyle(0x101216).fillRect(mx, lidY - 6 * R, VIEW.right - mx + 6 * R, R);
+    }
+  }
+
+  /** Mesh lid, front-opening doors and a low front vent for enclosures. */
+  private buildEnclosureFrame(frame: Phaser.GameObjects.Graphics): void {
+    const R = RES;
+    const top = VIEW.frameTop - 10 * R;
+    // Mesh lid: a dark aluminium frame over fine grey mesh.
+    frame.fillStyle(0x20232c).fillRect(VIEW.left - 6 * R, top, W + 12 * R, 12 * R);
+    for (let x = VIEW.left; x < VIEW.right; x += 2 * R) frame.fillStyle(0x4a505c, 0.8).fillRect(x, top + 2 * R, R, 8 * R);
+    for (let y = top + 2 * R; y < top + 10 * R; y += 2 * R) frame.fillStyle(0x3a3f4a, 0.8).fillRect(VIEW.left, y, W, R);
+    frame.fillStyle(0x5a6070).fillRect(VIEW.left - 6 * R, top, W + 12 * R, R);
+    if (this.encl!.land) {
+      // Two front-opening doors meeting in the middle, with handles; they close onto the substrate tray.
+      const mid = VIEW.left + W / 2;
+      const bottom = VIEW.floor + 4 * R;
+      frame.fillStyle(0x1c1e26).fillRect(mid - R, VIEW.frameTop, 2 * R, bottom - VIEW.frameTop);
+      frame.fillStyle(0x3a3f4c).fillRect(mid - R, VIEW.frameTop, R, bottom - VIEW.frameTop);
+      for (const hx of [mid - 7 * R, mid + 4 * R]) {
+        frame.fillStyle(0x15171c).fillRect(hx, VIEW.frameTop + 90 * R, 3 * R, 16 * R);
+        frame.fillStyle(0x6a7080).fillRect(hx, VIEW.frameTop + 90 * R, R, 16 * R);
+      }
+      frame.fillStyle(0x1c1e26, 0.8).fillRect(VIEW.left, bottom, W, R);
+    }
+  }
+
   private buildFrame(): void {
     const s = this.scene;
     const R = RES;
     const frame = s.add.graphics().setDepth(40);
-    // Hood with a lit strip.
-    for (let y = 0; y < 12 * R; y++) frame.fillStyle(Phaser.Display.Color.GetColor(30 + y, 32 + y, 42 + y)).fillRect(VIEW.left - 6 * R, VIEW.frameTop - 10 * R + y, W + 12 * R, 1);
-    frame.fillStyle(0xfff4d0, 0.8).fillRect(VIEW.left + 20 * R, VIEW.frameTop + R, W - 40 * R, R);
+    if (this.encl) this.buildEnclosureFrame(frame);
+    else {
+      // Hood with a lit strip.
+      for (let y = 0; y < 12 * R; y++) frame.fillStyle(Phaser.Display.Color.GetColor(30 + y, 32 + y, 42 + y)).fillRect(VIEW.left - 6 * R, VIEW.frameTop - 10 * R + y, W + 12 * R, 1);
+      frame.fillStyle(0xfff4d0, 0.8).fillRect(VIEW.left + 20 * R, VIEW.frameTop + R, W - 40 * R, R);
+    }
     frame.fillStyle(0x1c1e26).fillRect(VIEW.left - 6 * R, VIEW.frameTop, 6 * R, VIEW.subBottom - VIEW.frameTop + 6 * R);
     frame.fillStyle(0x1c1e26).fillRect(VIEW.right, VIEW.frameTop, 6 * R, VIEW.subBottom - VIEW.frameTop + 6 * R);
     frame.fillStyle(0x3a3f4c).fillRect(VIEW.left - R, VIEW.frameTop, R, VIEW.subBottom - VIEW.frameTop);
@@ -441,7 +619,23 @@ export class TankRenderer {
 
   /** Base line for decor at canvas x in a layer, following the substrate contour. */
   private baseYAt(layer: number, x: number): number {
-    return decorBaseY(layer) - this.contour(x - VIEW.left);
+    return decorBaseY(layer) - this.contour(x - VIEW.left) - this.bankLift(x);
+  }
+
+  /** Paludarium: how far the soil bank lifts the ground at canvas x (0 in the pool). */
+  private bankLift(x: number): number {
+    const pool = this.encl?.pool;
+    if (!pool) return 0;
+    const t = clamp((pool.left + 14 * RES - x) / (54 * RES), 0, 1);
+    const s = t * t * (3 - 2 * t);
+    return s * (this.encl!.bank + Math.sin(x * 0.013) * 6 * RES + Math.sin(x * 0.041) * 2 * RES);
+  }
+
+  /** Where plants stop growing upward: the pool surface for pool plants, the lid on land. */
+  private plantSurface(x: number): number {
+    if (!this.encl) return VIEW.surface;
+    if (this.encl.pool && x > this.encl.pool.left + 10 * RES) return this.encl.pool.y;
+    return VIEW.frameTop + 10 * RES;
   }
 
   /** Recreates decor views from the tank's decor list. */
@@ -606,18 +800,79 @@ export class TankRenderer {
     this.world.agents = [...this.agents.values()].filter((a): a is FishAgent => a instanceof FishAgent);
   }
 
-  /** Spawns visual food flakes for `units` of food. */
+  /** Spawns visual food for `units` of food: flakes on the water, or live feeders on land. */
   dropFood(units: number, x?: number): void {
+    if (this.encl?.land) {
+      this.dropFeeders(clamp(Math.round(units * 6), 3, 30), units);
+      return;
+    }
     const n = clamp(Math.round(units * 7), 4, 70);
-    const cx = x ?? (VIEW.left + VIEW.right) / 2 + vr.range(-80, 80) * RES;
-    for (let i = 0; i < n; i++) this.addPellet(cx + vr.range(-40, 40) * RES, VIEW.surface - RES, units / n, false);
+    const pool = this.encl?.pool;
+    const cx = x ?? (pool ? (pool.left + pool.right) / 2 + vr.range(-30, 30) * RES : (VIEW.left + VIEW.right) / 2 + vr.range(-80, 80) * RES);
+    const spread = pool ? 26 : 40;
+    for (let i = 0; i < n; i++) this.addPellet(clamp(cx + vr.range(-spread, spread) * RES, this.world.left + 4 * RES, VIEW.right - 4 * RES), (pool ? pool.y : VIEW.surface) - RES, units / n, false);
   }
 
-  private addPellet(x: number, y: number, units: number, settled: boolean): void {
-    const col = vr.pick([0xc8783a, 0xe0a050, 0xa85a2a, 0xd8c070, 0xb84a30]);
-    const obj = this.scene.add.rectangle(Math.round(x), Math.round(y), vr.pick([2, 3, 4]), vr.pick([2, 3]), col).setDepth(18);
-    obj.rotation = vr.range(0, Math.PI);
-    this.world.pellets.push({ x, y, vy: 0, floatT: settled ? 0 : vr.range(0.8, 3), units, settled, obj });
+  /**
+   * Live feeders let loose on the land: crickets, fruit flies, or a dab of
+   * gecko diet on a ledge. `units` is the food they carry (0 for a cosmetic
+   * handful when the sim has already fed the animals).
+   */
+  dropFeeders(n: number, units = 0): void {
+    if (!this.encl) return;
+    this.feeder = enclosureFeeder(this.getState(), this.tank);
+    const bug = this.feeder === 'crickets' ? 'cricket' : this.feeder === 'fruit_diet' ? 'fruit' : 'fly';
+    const [l, r] = this.landRange();
+    const cx = vr.range(l + 30 * RES, r - 30 * RES);
+    for (let i = 0; i < n; i++) {
+      const x = bug === 'fruit' ? cx + vr.range(-5, 5) * RES : vr.range(l, r);
+      this.addPellet(x, this.baseYAt(1, x) - RES, units / n, true, bug);
+    }
+  }
+
+  /** Canvas x range of dry land. */
+  private landRange(): [number, number] {
+    const pool = this.encl?.pool;
+    return [VIEW.left + 14 * RES, pool ? pool.left - 12 * RES : VIEW.right - 14 * RES];
+  }
+
+  private addPellet(x: number, y: number, units: number, settled: boolean, bug?: Pellet['bug']): void {
+    let obj: Phaser.GameObjects.Rectangle;
+    if (bug === 'cricket') obj = this.scene.add.rectangle(Math.round(x), Math.round(y), 5, 2, vr.pick([0x6a4a24, 0x5a3c1c, 0x7a5a30])).setDepth(18);
+    else if (bug === 'fly') obj = this.scene.add.rectangle(Math.round(x), Math.round(y), 2, 2, vr.pick([0x2a2418, 0x3a3020, 0x8a3a20])).setDepth(18);
+    else if (bug === 'fruit') obj = this.scene.add.rectangle(Math.round(x), Math.round(y), 4, 3, vr.pick([0xe88a3a, 0xf0a048, 0xd8783a])).setDepth(18);
+    else {
+      const col = vr.pick([0xc8783a, 0xe0a050, 0xa85a2a, 0xd8c070, 0xb84a30]);
+      obj = this.scene.add.rectangle(Math.round(x), Math.round(y), vr.pick([2, 3, 4]), vr.pick([2, 3]), col).setDepth(18);
+      obj.rotation = vr.range(0, Math.PI);
+    }
+    this.world.pellets.push({ x, y, vy: 0, floatT: bug ? vr.range(0.3, 2.5) : settled ? 0 : vr.range(0.8, 3), units, settled, obj, bug });
+  }
+
+  /** Feeders on the move: crickets crawl and hop, fruit flies hover low, gecko diet stays put. */
+  private moveFeeder(p: Pellet, dt: number): void {
+    const [l, r] = this.landRange();
+    if (p.bug === 'cricket') {
+      p.floatT -= dt;
+      p.x += Math.sin(this.time * 2 + p.units * 97 + p.vy) * 3 * RES * dt;
+      if (p.floatT <= 0) {
+        p.floatT = vr.range(0.6, 3);
+        p.vy = vr.range(-16, 16) * RES;
+      }
+      if (Math.abs(p.vy) > 0.5) {
+        const step = p.vy * dt * 3;
+        p.x += step;
+        p.vy *= 1 - dt * 3;
+      }
+      p.x = clamp(p.x, l, r);
+      p.y = this.baseYAt(1, p.x) - RES - (Math.abs(p.vy) > 4 * RES ? 2 * RES : 0);
+      p.obj.setScale(p.vy < 0 ? -1 : 1, 1);
+    } else if (p.bug === 'fly') {
+      const seed = p.floatT * 13;
+      p.x = clamp(p.x + Math.sin(this.time * 4.3 + seed) * 22 * RES * dt, l, r);
+      p.y = this.baseYAt(1, p.x) - (3 + Math.abs(Math.sin(this.time * 2.7 + seed)) * 14) * RES;
+    }
+    p.obj.setPosition(Math.round(p.x), Math.round(p.y));
   }
 
   private eat(agent: { fish: FishEntity }, pellet: Pellet): void {
@@ -640,7 +895,8 @@ export class TankRenderer {
       const p = this.world.pellets.find((q) => q.settled) ?? this.world.pellets[0];
       this.removePellet(p);
     } else if (t.food > total + 0.4 && this.world.pellets.length < 70) {
-      this.addPellet(vr.range(VIEW.left + 20 * RES, VIEW.right - 20 * RES), VIEW.floor - 3 * RES + vr.range(0, 2 * RES), Math.min(0.3, t.food - total), true);
+      if (this.encl?.land) this.dropFeeders(1, Math.min(0.3, t.food - total));
+      else this.addPellet(vr.range(this.world.left + 6 * RES, VIEW.right - 20 * RES), VIEW.floor - 3 * RES + vr.range(0, 2 * RES), Math.min(0.3, t.food - total), true);
     }
   }
 
@@ -678,11 +934,17 @@ export class TankRenderer {
     this.applyLook();
     this.rebuildEquipment();
     this.world.lightsOn = t.lightOn;
-    this.world.flow = 0.3 + getFilter(t.filterId).aeration + (t.airStone ? 0.3 : 0) + (t.waterType === 'marine' ? tankFlow(t) * 0.8 : 0);
+    this.world.flow = this.encl?.land
+      ? 0.12 + terraOf(t).vent * 0.25
+      : 0.3 + getFilter(t.filterId).aeration + (t.airStone ? 0.3 : 0) + (t.waterType === 'marine' ? tankFlow(t) * 0.8 : 0);
     this.syncFish();
 
     // Food flakes flutter at the surface then sink with a little spin.
     for (const p of this.world.pellets) {
+      if (p.bug) {
+        this.moveFeeder(p, dt);
+        continue;
+      }
       if (p.settled) continue;
       if (p.floatT > 0) {
         p.floatT -= dt;
@@ -728,7 +990,7 @@ export class TankRenderer {
       const waterH = VIEW.floor - VIEW.surface;
       for (const a of this.agents.values()) {
         if (!a.fish.alive) continue;
-        const above = clamp((VIEW.floor - a.y) / waterH, 0, 1);
+        const above = clamp(((this.encl ? this.baseYAt(1, a.x) : VIEW.floor) - a.y) / waterH, 0, 1);
         const alpha = (0.22 * (1 - above) * (1 - above) + 0.03) * this.lightMap.at(a.x, VIEW.floor - 10 * RES) * lit;
         const w = a.len * (0.75 - above * 0.3);
         const sx = a.x + above * 12 * RES;
@@ -758,7 +1020,7 @@ export class TankRenderer {
       let i = 0;
       for (const d of this.decorViews) {
         if (!d.plant) continue;
-        if (i++ % this.plantBuckets === b) drawPlant(this.plantGfx[d.layer][b], d.plant, d.x, d.baseY, { ...opts, layer: d.layer });
+        if (i++ % this.plantBuckets === b) drawPlant(this.plantGfx[d.layer][b], d.plant, d.x, d.baseY, { ...opts, surfaceY: this.plantSurface(d.x), layer: d.layer });
       }
     }
 
@@ -793,7 +1055,15 @@ export class TankRenderer {
     // Bubbles: grow and wobble as they rise.
     this.bubbleTimer -= dt;
     const filter = getFilter(t.filterId);
-    if (this.bubbleTimer <= 0) {
+    const pool = this.encl?.pool;
+    if (this.encl) {
+      // A paludarium's internal filter stirs the pool; land-only enclosures have no water.
+      if (pool && this.bubbleTimer <= 0) {
+        this.bubbleTimer = t.airStone ? 0.08 : 0.5;
+        this.spawnBubble(VIEW.right - 17 * RES + vr.range(-2, 2) * RES, pool.y + 30 * RES);
+        if (t.airStone) this.spawnBubble((pool.left + pool.right) / 2 + vr.range(-5, 5) * RES, VIEW.floor - 2 * RES);
+      }
+    } else if (this.bubbleTimer <= 0) {
       this.bubbleTimer = t.airStone ? 0.06 : filter.id === 'sponge' ? 0.16 : 0.45;
       if (filter.id === 'sponge') this.spawnBubble(VIEW.right - 24 * RES + vr.range(-1, 1) * RES, VIEW.floor - 40 * RES);
       if (t.airStone) this.spawnBubble((VIEW.left + VIEW.right) / 2 + vr.range(-6, 6) * RES, VIEW.floor - 2 * RES);
@@ -804,7 +1074,7 @@ export class TankRenderer {
       b.obj.y += b.vy * dt;
       b.obj.x += Math.sin(this.time * 7 + b.wob) * 9 * RES * dt;
       b.obj.setScale(Math.min(1.1, b.obj.scaleX + b.grow * dt));
-      if (b.obj.y < VIEW.surface + RES) {
+      if (b.obj.y < (pool ? pool.y : VIEW.surface) + RES) {
         b.obj.destroy();
         this.bubbles.splice(i, 1);
       }
@@ -814,7 +1084,8 @@ export class TankRenderer {
 
     // Suspended particles with parallax drift. How many show depends on the
     // water: a clean, young tank is nearly clear; detritus and cloudiness add more.
-    const murk = clamp(0.25 + t.water.detritus / 6 + t.water.cloudiness * 1.5, 0, 1);
+    // In enclosures they are fine mist and dust motes in the air, more in humid air.
+    const murk = this.encl ? clamp((terraOf(t).humidity - 45) / 80, 0.08, 0.5) : clamp(0.25 + t.water.detritus / 6 + t.water.cloudiness * 1.5, 0, 1);
     const visibleSpecks = Math.round(Math.min(this.specks.length, this.q.specks) * murk);
     for (const [i, p] of this.specks.entries()) {
       const o = p.obj;
@@ -832,15 +1103,15 @@ export class TankRenderer {
     const meanLight = this.lightMap.mean();
     this.rays.forEach((r, i) => {
       const shade = this.floating.shadeAt(r.x + 20 * RES);
-      r.setTint(actinic > 0 ? 0xbcd4ff : look.light);
+      r.setTint(this.encl ? 0xfff0d0 : actinic > 0 ? 0xbcd4ff : look.light);
       const sway = this.calm ? 0 : Math.sin(this.time * 0.6 + i * 1.7) * 0.35;
-      r.setAlpha((0.55 + sway) * (1 - shade * 0.9) * lit);
+      r.setAlpha((0.55 + sway) * (1 - shade * 0.9) * lit * (this.encl ? 0.45 : 1));
       if (!this.calm) r.x += Math.sin(this.time * 0.25 + i) * 0.08 * RES;
     });
-    const cOn = (0.15 + 0.85 * lit) * (this.q.caustics ? 1 : 0) * Math.min(1, meanLight * 1.2);
+    const cOn = (0.15 + 0.85 * lit) * (this.q.caustics && !this.encl?.land ? 1 : 0) * Math.min(1, meanLight * 1.2);
     const ct = this.time * (this.calm ? 0.25 : 1);
     for (const c of this.caustics) c.setTint(actinic > 0 ? 0xc8dcff : look.light);
-    this.waterTint.setFillStyle(look.tint, look.tintAlpha);
+    this.waterTint.setFillStyle(look.tint, this.encl?.land ? 0 : look.tintAlpha);
     this.reefWash.setFillStyle(0x2a4ab8, actinic * (0.14 * lit + 0.06));
     this.caustics[0].tilePositionX = ct * 7 * RES;
     this.caustics[0].tilePositionY = ct * 3 * RES;
@@ -851,8 +1122,14 @@ export class TankRenderer {
     this.caustics[1].setAlpha(0.22 * cOn * (1 - t.water.cloudiness * 0.7));
     this.caustics[2].setAlpha(0.025 * cOn);
 
-    this.drawSurface(t, lit);
-    this.updateReflections(lit);
+    if (this.encl) {
+      this.surfaceGfx.clear();
+      if (this.encl.pool) this.drawSurface(t, lit, this.encl.pool);
+      this.updateEnclosure(dt, t, lit);
+    } else {
+      this.drawSurface(t, lit);
+      this.updateReflections(lit);
+    }
 
     // Mulm settles on the bed with detritus; a gravel vac clears it.
     this.mulmImage?.setAlpha(mulmAlpha(t.water.detritus));
@@ -869,8 +1146,8 @@ export class TankRenderer {
     }
 
     // Cleanliness overlays.
-    this.overlays.cloud.setFillStyle(0xdfe8e0, clamp(t.water.cloudiness * 0.55, 0, 0.6));
-    this.overlays.algae.setAlpha(clamp(t.algae * 0.95, 0, 0.95));
+    this.overlays.cloud.setFillStyle(0xdfe8e0, this.encl?.land ? 0 : clamp(t.water.cloudiness * 0.55, 0, 0.6));
+    this.overlays.algae.setAlpha(this.encl?.land ? 0 : clamp(t.algae * 0.95, 0, 0.95));
     this.overlays.dirt.setAlpha(clamp(t.glassDirt * 0.9, 0, 0.9));
     // Reef tanks keep a dim blue moonlight at night, so corals still glow.
     this.overlays.night.setFillStyle(actinic > 0 ? 0x06124a : 0x0a1430, 0.45 * (1 - lit) * (actinic > 0 ? 0.85 : 1));
@@ -889,20 +1166,88 @@ export class TankRenderer {
     }
   }
 
-  private drawSurface(t: TankState, lit: number): void {
-    const g = this.surfaceGfx;
+  /**
+   * Enclosure state made visible: condensation on humid glass, mould fuzz, the
+   * basking lamp's glow and warm spot, the UVB tube, the water dish, and mist
+   * from the mister (or a recent hand misting) drifting down.
+   */
+  private updateEnclosure(dt: number, t: TankState, lit: number): void {
+    const tr = terraOf(t);
+    this.condense?.setAlpha(clamp((tr.humidity - 70) / 26, 0, 0.85));
+    this.mould?.setAlpha(clamp(tr.mould * 1.1, 0, 0.95));
+    this.poolWater?.setFillStyle(0x2e6e78, 0.2 + 0.1 * lit + t.water.cloudiness * 0.3);
+    const flicker = this.calm ? 1 : 0.94 + Math.sin(this.time * 7) * 0.03 + Math.sin(this.time * 2.3) * 0.03;
+    this.lampCone?.setAlpha(lit * flicker);
+    this.baskGlow?.setFillStyle(0xffb060, 0.2 * lit * flicker);
+    this.uvbGlow?.setFillStyle(0xd8d0ff, 0.55 * lit);
+    if (this.dishGfx) {
+      const x = VIEW.left + W * 0.8;
+      const key = `${Math.round(tr.dish * 5)}|${Math.round(this.baseYAt(2, x))}`;
+      if (key !== this.dishKey) {
+        this.dishKey = key;
+        this.drawDish(this.dishGfx, x, this.baseYAt(2, x) + RES, tr.dish);
+      }
+    }
+    // Mist: the automatic mister sprays every so often while the lights are on;
+    // a hand misting shows for a few game minutes.
+    const recent = tr.lastMist !== undefined && this.getState().minute - tr.lastMist < 6;
+    this.mistT -= dt;
+    if (this.mistT <= 0 && (recent || (tr.mister && lit > 0.5))) {
+      this.mistT = recent ? 0.05 : vr.range(9, 16);
+      const bursts = recent ? 3 : 40;
+      const x0 = recent ? vr.range(VIEW.left + 30 * RES, VIEW.right - 30 * RES) : VIEW.right - W * 0.18;
+      for (let i = 0; i < bursts && this.mist.length < 160; i++) {
+        const obj = this.scene.add.rectangle(x0 + vr.range(-4, 4) * RES, VIEW.frameTop + 6 * RES, vr.pick([1, 2]), vr.pick([1, 2]), 0xeef6ff, 0.7).setDepth(26);
+        this.mist.push({ obj, vx: vr.range(-40, 40) * RES, vy: vr.range(10, 50) * RES, life: vr.range(1.5, 3.2) });
+      }
+    }
+    for (let i = this.mist.length - 1; i >= 0; i--) {
+      const m = this.mist[i];
+      m.life -= dt;
+      m.vx *= 1 - dt * 1.2;
+      m.vy = Math.min(m.vy + 6 * RES * dt, 26 * RES);
+      m.obj.x += m.vx * dt;
+      m.obj.y += m.vy * dt;
+      m.obj.setAlpha(Math.min(0.7, m.life * 0.4));
+      if (m.life <= 0 || m.obj.y > VIEW.floor) {
+        m.obj.destroy();
+        this.mist.splice(i, 1);
+      }
+    }
+  }
+
+  /** A shallow stone water dish: clear when fresh, browner and lower as it fouls. */
+  private drawDish(g: Phaser.GameObjects.Graphics, x: number, y: number, fresh: number): void {
+    const R = RES;
     g.clear();
-    const y0 = VIEW.surface - 3 * RES;
+    g.fillStyle(0x0a0c10, 0.3).fillEllipse(x + 2 * R, y + R, 46 * R, 8 * R);
+    g.fillStyle(0x5a5650).fillRect(x - 21 * R, y - 8 * R, 42 * R, 8 * R);
+    g.fillStyle(0x6e6a62).fillEllipse(x, y - 8 * R, 44 * R, 8 * R);
+    g.fillStyle(0x47443e).fillRect(x - 21 * R, y - 2 * R, 42 * R, 2 * R);
+    g.fillStyle(0x7e7a70).fillRect(x - 21 * R, y - 8 * R, 42 * R, R);
+    const water = fresh > 0.4 ? 0x6aa8c0 : fresh > 0.2 ? 0x7a8a6a : 0x6a5a3a;
+    const level = 0.6 + Math.min(1, fresh) * 0.4;
+    g.fillStyle(water, 0.85).fillEllipse(x, y - 8 * R, 38 * R * level, 5 * R * level);
+    g.fillStyle(0xffffff, fresh > 0.4 ? 0.5 : 0.15).fillRect(x - 10 * R, y - 9 * R, 6 * R, R);
+  }
+
+  /** The water surface; `pool` limits it to a paludarium's pool (no air gap shading above). */
+  private drawSurface(t: TankState, lit: number, pool?: { left: number; right: number; y: number }): void {
+    const g = this.surfaceGfx;
+    if (!pool) g.clear();
+    const y0 = (pool ? pool.y : VIEW.surface) - 3 * RES;
+    const x0 = pool ? pool.left : VIEW.left;
+    const x1 = pool ? pool.right : VIEW.right;
     const mix = (on: number, off: number) => off + (on - off) * lit;
     // Air gap above the water.
-    g.fillStyle(0x0e1420, 0.55).fillRect(VIEW.left, VIEW.frameTop, W, y0 - VIEW.frameTop);
+    if (!pool) g.fillStyle(0x0e1420, 0.55).fillRect(VIEW.left, VIEW.frameTop, W, y0 - VIEW.frameTop);
     const step = 4 * RES;
     // Calmer water with reduced motion; choppier with more surface agitation.
     const amp = (this.calm ? 0.3 : 1) * (0.7 + Math.min(0.6, this.world.flow * 0.4));
     const tt = this.time * (this.calm ? 0.5 : 1);
     // Surface film: protein/oil scum builds up with detritus when little stirs the surface.
     const film = surfaceFilm(t.water.detritus, this.world.flow);
-    for (let x = VIEW.left; x < VIEW.right; x += step) {
+    for (let x = x0; x < x1; x += step) {
       const wave = (Math.sin(x * 0.012 + tt * 1.6) * 1.2 * RES + Math.sin(x * 0.005 - tt * 0.9) * RES) * amp;
       const yy = Math.round(y0 + wave);
       g.fillStyle(0xd8f4ff, mix(0.55, 0.2)).fillRect(x, yy, step, RES);
@@ -933,7 +1278,7 @@ export class TankRenderer {
     if (max > 0 && lit > 0.8 && this.pearls.length < max) {
       for (const d of this.decorViews) {
         if (!d.plant || this.pearls.length >= max) continue;
-        if (d.item.health <= 0.6) continue;
+        if (d.item.health <= 0.6 || this.encl?.land || getDecor(d.item.defId).land) continue;
         const px = d.x + vr.range(-0.35, 0.35) * d.plant.width;
         const py = d.baseY - d.plant.height * vr.range(0.3, 0.95);
         const light = this.lightMap.at(px, py);
@@ -948,7 +1293,7 @@ export class TankRenderer {
       const p = this.pearls[i];
       p.obj.y += p.vy * dt;
       p.obj.x += Math.sin(this.time * 5 + p.wob) * 3 * RES * dt;
-      if (p.obj.y < VIEW.surface + RES || (lit < 0.3 && vr.chance(dt * 2))) {
+      if (p.obj.y < (this.encl?.pool?.y ?? VIEW.surface) + RES || (lit < 0.3 && vr.chance(dt * 2))) {
         p.obj.destroy();
         this.pearls.splice(i, 1);
       }
@@ -1031,6 +1376,8 @@ export class TankRenderer {
   }
 
   destroy(): void {
+    for (const m of this.mist) m.obj.destroy();
+    this.mist = [];
     for (const d of this.decorViews) {
       d.coral?.sprite.destroy();
       d.coral?.glow.destroy();
@@ -1100,16 +1447,19 @@ function ensureSharedTextures(s: Phaser.Scene): void {
   }
 }
 
-function ensureBackground(s: Phaser.Scene, id: string): string {
-  const key = `tankbg3:${id}`;
+function ensureBackground(s: Phaser.Scene, id: string, height = VIEW.subBottom - VIEW.surface + 6 * RES): string {
+  const key = `tankbg3:${id}:${height}`;
   if (s.textures.exists(key)) return key;
-  const waterH = VIEW.subBottom - VIEW.surface + 6 * RES;
+  const waterH = height;
   const tex = s.textures.createCanvas(key, W, waterH)!;
   const ctx = tex.getContext();
   const img = ctx.createImageData(W, waterH);
   const d = img.data;
   const pal: Record<string, [string, string]> = {
     none: ['#5a8a94', '#1e3a44'],
+    cork_wall: ['#5a4636', '#241a12'],
+    desert_wall: ['#c8955a', '#5a3a22'],
+    jungle_wall: ['#3a5a2a', '#101a0c'],
     black: ['#1a2a32', '#04070a'],
     blue: ['#3f8ccc', '#0f2e5e'],
     rocky: ['#3e5a60', '#141f24'],
@@ -1142,6 +1492,16 @@ function ensureBackground(s: Phaser.Scene, id: string): string {
       const g = tc[1] + (bc[1] - tc[1]) * t;
       const b = tc[2] + (bc[2] - tc[2]) * t;
       let k = 1 + pool - Math.abs(cx) * 0.08;
+      const wall = landWallPixel(id, x, y, t, W, RES);
+      if (wall) {
+        if ((x + y) % 2 === 0) k += 0.012;
+        const i = (y * W + x) * 4;
+        d[i] = Math.min(255, wall[0] * k);
+        d[i + 1] = Math.min(255, wall[1] * k);
+        d[i + 2] = Math.min(255, wall[2] * k);
+        d[i + 3] = 255;
+        continue;
+      }
       if (id === 'rocky') {
         // Out-of-focus rock wall: jittered cells, each a rounded stone lit from above.
         const cw = 70 * RES;

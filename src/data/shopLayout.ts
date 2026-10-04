@@ -21,10 +21,10 @@ export interface PropPlacement {
   /** Stairs: 'up' or 'down' (art only). */
   dir?: 'up' | 'down';
   /** Tanks: cabinet art (reef systems have a lit reef hood; nano tanks a low stand). */
-  style?: 'reef' | 'nano';
+  style?: 'reef' | 'nano' | 'terrarium' | 'paludarium';
 }
 
-export type FloorTheme = 'shop' | 'cool' | 'marine' | 'basement' | 'reef';
+export type FloorTheme = 'shop' | 'cool' | 'marine' | 'basement' | 'reef' | 'vivarium';
 
 export interface FloorLayout {
   id: string;
