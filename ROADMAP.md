@@ -79,7 +79,23 @@ The aquarium view became a core product feature. See ART_DIRECTION.md.
 - DONE Aquarium visuals tied to tank state (pearling, mulm, surface film, hardscape shade and algae, light ramp, reflections), Auto quality, reduced motion, bounded texture caches, profiling tools
 - DONE Individual fish "Not for sale"
 
-## Milestone 2: Content depth and shop life (NEXT)
+## Comparison follow-ups (NEXT, ranked; see COMPARISON.md)
+
+From the sourced comparison with Megaquarium, Two Point Hospital, Planet Zoo, Stardew Valley, Supermarket Simulator and others. DONE in this pass: All tanks overview, forgiving animal taps on touch screens.
+
+1. Standing orders for food, salt, supplements and feeders (reorder point per good)
+2. Real-device pass on iOS Safari and Android Chrome
+3. Floor overlays from diagnostics (water or climate, hunger, cleanliness)
+4. Staff suggestions as a badge and inbox, not prompts
+5. Automatic feeder for aquariums; a staffing hint when care falls behind
+6. Naming, family tree and a collection log of species and morphs
+7. Tank menu leads with status and top three issues; score bars under Details
+8. Economy model per level; long-run bot learns corals and enclosures; tune levels 5 and 6
+9. Commission customers (design a tank or enclosure to a brief)
+10. Day report "tomorrow" list and a weekly goal
+11. Per-staff job priorities
+
+## Milestone 2: Content depth and shop life
 
 Reassessed after Milestone 1.5. Staff, Floor 2 and marine stay later; the core loop now benefits most from variety and texture.
 
