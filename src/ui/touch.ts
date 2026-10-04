@@ -200,9 +200,10 @@ export function installTouchControls(input: InputManager, force = false): TouchC
     const box = (el: HTMLElement, x: number, y: number, w: number, hgt: number) =>
       Object.assign(el.style, { left: `${Math.round(x)}px`, top: `${Math.round(y)}px`, width: `${Math.round(w)}px`, height: `${Math.round(hgt)}px` });
     if (l.controls === 'minimal' || !l.pad || !l.buttons) {
-      // Immersive view: only B, at the right edge, for leaving menus opened over the view.
+      // Immersive view: only B, for leaving menus opened over the view.
       const b = btnEls.get('back')!;
-      box(actions, l.vw - 84, Math.round(l.vh * 0.5 - 32), 76, 76);
+      // Left edge, halfway down: clear of menus and sheets, which sit right or below.
+      box(actions, 4, Math.round(l.vh * 0.42 - 32), 76, 76);
       box(b, 6, 6, SIZE.B, SIZE.B);
       return;
     }

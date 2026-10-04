@@ -22,6 +22,7 @@ import { h } from '../dom';
 import { Menu, type MenuItem } from '../menu';
 import type { Screen } from '../ui';
 import { groupPotted, openPlantActions } from './plants';
+import { explainPlacement, type ScapeExplanation } from '../../sim/scapePreview';
 
 type Mode = 'main' | 'substrate' | 'background' | 'place' | 'edit';
 
@@ -46,7 +47,12 @@ export class AquascapeScreen implements Screen {
   private title: HTMLElement;
   private info: HTMLElement;
   private hint: HTMLElement;
+  private hintText: HTMLElement;
+  private placeInfo: HTMLElement;
+  private placeButtons: HTMLElement;
   private panel: HTMLElement;
+  /** Key of the explanation last rendered (avoids rebuilding the DOM every frame). */
+  private explainKey = '';
   private placing: Placing | null = null;
   private editIndex = 0;
   private cursor: Phaser.GameObjects.Graphics;
@@ -57,7 +63,13 @@ export class AquascapeScreen implements Screen {
     this.menu = new Menu([], { onChange: () => this.onBrowse() });
     this.title = h('div', { class: 'panel-title' }, 'Aquascape');
     this.info = h('div', { class: 'aq-info' });
-    this.hint = h('div', { class: 'aq-hint' });
+    this.hintText = h('div', { class: 'aq-hint-text' });
+    this.placeInfo = h('div', { class: 'aq-place-info' });
+    const pb = (label: string, a: Action, cls = '') => h('button', { class: `tv-btn aq-pb ${cls}`, type: 'button', onclick: (e: Event) => { e.stopPropagation(); this.handle(a); } }, label);
+    // On-screen placement controls (touch screens have no d-pad in the tank view).
+    this.placeButtons = h('div', { class: 'aq-place-buttons' },
+      pb('◀', 'left'), pb('▶', 'right'), pb('▲ Back', 'up'), pb('▼ Front', 'down'), pb('Place', 'confirm', 'aq-pb-ok'), pb('Cancel', 'back'));
+    this.hint = h('div', { class: 'aq-hint' }, this.placeInfo, this.hintText, this.placeButtons);
     this.panel = h('div', { class: 'panel aq-panel' }, this.title, this.info, this.menu.el);
     this.el = h('div', { class: 'aquascape-ui' }, this.panel, this.hint);
     this.cursor = scene.add.graphics().setDepth(45);
@@ -180,6 +192,8 @@ export class AquascapeScreen implements Screen {
       const fp = this.floatPreviews[this.menu.index] ?? null;
       this.renderer.setFloatingPreview(fp);
       this.setHint(p ? 'Preview shown in the tank. Confirm to position it.' : fp ? 'Preview shown on the surface.' : undefined);
+      if (p) this.showExplanation(p, this.info, true);
+      else this.refreshInfo();
     } else if (this.mode === 'substrate') {
       const id = SUBSTRATES[this.menu.index]?.id;
       if (id) this.renderer.setLook({ substrateId: id });
@@ -242,6 +256,7 @@ export class AquascapeScreen implements Screen {
     if (this.mode === 'main') this.mainIndex = this.menu.index;
     this.mode = 'place';
     this.placing = p;
+    this.explainKey = '';
     this.panel.style.display = 'none';
     this.setHint();
   }
@@ -317,20 +332,37 @@ export class AquascapeScreen implements Screen {
   // -------------------------------------------------------------------------
 
   private setHint(override?: string): void {
+    const placing = this.mode === 'place' && !!this.placing;
+    this.placeButtons.style.display = placing ? '' : 'none';
+    this.el?.classList.toggle('placing', placing);
+    if (!placing) this.placeInfo.replaceChildren();
     if (override) {
-      this.hint.textContent = override;
+      this.hintText.textContent = override;
       return;
     }
     if (this.mode === 'place' && this.placing) {
       const def = getDecor(this.placing.defId);
       const cost = this.placing.source === 'buy' ? ` for ${formatMoney(def.cost)}` : this.placing.source === 'move' ? '' : ' (from stockroom)';
-      this.hint.textContent = `${this.placing.source === 'move' ? 'Moving' : 'Placing'} ${def.name}${cost} · ◀▶ position · ▲▼ depth (${['back', 'middle', 'front'][this.placing.layer]}) · Z confirm · X cancel`;
+      this.hintText.textContent = `${this.placing.source === 'move' ? 'Moving' : 'Placing'} ${def.name}${cost} · ◀▶ position · ▲▼ depth (${['back', 'middle', 'front'][this.placing.layer]}) · Z confirm · X cancel`;
     } else if (this.mode === 'edit') {
       const d = this.tank.decor[this.editIndex];
-      this.hint.textContent = d ? `${getDecor(d.defId).name}${getDecor(d.defId).kind === 'plant' ? ` (${sizeLabel(d.size)})` : ''} · ◀▶ select · Z options · R to stockroom · X back` : '';
+      this.hintText.textContent = d ? `${getDecor(d.defId).name}${getDecor(d.defId).kind === 'plant' ? ` (${sizeLabel(d.size)})` : ''} · ◀▶ select · Z options · R to stockroom · X back` : '';
     } else {
-      this.hint.textContent = 'Plants give cover and absorb nitrate. Caves give territories. Wood suits plecos. Variety and balance raise your score.';
+      this.hintText.textContent = 'Highlight an item to see what it adds and its effect on the score before you buy or place it.';
     }
+  }
+
+  /**
+   * Explains the highlighted or placed item from the real scoring (see
+   * sim/scapePreview.ts): what it provides, the score now and after, which
+   * parts of the score move, caps, the fish's needs and trade-offs.
+   */
+  private showExplanation(p: Placing, into: HTMLElement, compact: boolean): void {
+    const key = `${compact}|${p.defId}|${p.x.toFixed(3)}|${p.layer}|${p.size}|${p.source}|${p.moveUid ?? ''}|${this.tank.decor.length}|${this.c.state.money >= getDecor(p.defId).cost}`;
+    if (into === this.placeInfo ? key === this.explainKey : false) return;
+    if (into === this.placeInfo) this.explainKey = key;
+    const ex = explainPlacement(this.c.state, this.tank.id, { defId: p.defId, x: p.x, layer: p.layer, size: p.size, source: p.source, potUid: p.potUid, moveUid: p.moveUid });
+    into.replaceChildren(explanationEl(ex, compact));
   }
 
   private refreshInfo(): void {
@@ -361,6 +393,9 @@ export class AquascapeScreen implements Screen {
     if (this.mode === 'place' && this.placing) {
       const p = this.placing;
       this.renderer.setGhost({ defId: p.defId, x: p.x, layer: p.layer, size: p.size });
+      // Short phone screens in landscape get the short version so the buttons stay visible.
+      const short = document.body.classList.contains('compact') && document.body.classList.contains('landscape');
+      this.showExplanation(p, this.placeInfo, short);
       if (p.moveUid) {
         // Show where the item currently is while moving.
         const item = this.tank.decor.find((d) => d.uid === p.moveUid);
@@ -434,4 +469,37 @@ export class AquascapeScreen implements Screen {
     this.renderer.setFloatingPreview(null);
     if (this.cursor.active) this.cursor.destroy();
   }
+}
+
+/** Compact, mobile-friendly explanation block. Score lines and fish care are kept visibly separate. */
+export function explanationEl(ex: ScapeExplanation, compact: boolean): HTMLElement {
+  const d = ex.layoutAfter - ex.layoutBefore;
+  const sign = (n: number) => `${n >= 0 ? '+' : ''}${Math.round(n * 10) / 10}`;
+  const rows: HTMLElement[] = [];
+  rows.push(
+    h('div', { class: 'aq-ex-score' },
+      h('span', null, 'Layout score '),
+      h('b', null, `${Math.round(ex.layoutBefore)} → ${Math.round(ex.layoutAfter)}`),
+      h('span', { class: d > 0.05 ? 'good' : d < -0.05 ? 'bad' : 'dim' }, ` (${sign(d)})`),
+      ex.layoutGrown !== undefined ? h('span', { class: 'dim' }, ` · grown ${Math.round(ex.layoutGrown)}`) : null),
+  );
+  if (!ex.allowed) rows.push(h('div', { class: 'bad' }, ex.refusal ?? 'Cannot be placed here.'));
+  else if (ex.cost > 0) rows.push(h('div', { class: ex.affordable ? 'small' : 'small bad' }, ex.affordable ? `Costs ${formatMoney(ex.cost)}` : `Costs ${formatMoney(ex.cost)}: not enough money`));
+  if (ex.provides.length) rows.push(h('div', { class: 'aq-ex-line' }, h('span', { class: 'aq-ex-k' }, 'Gives '), ex.provides.slice(0, compact ? 2 : 6).join(' · ')));
+  if (ex.changes.length) {
+    rows.push(
+      h('div', { class: 'aq-ex-line' }, h('span', { class: 'aq-ex-k' }, 'Score '),
+        ex.changes.slice(0, compact ? 3 : 8).map((c) => `${c.label} ${sign(c.after - c.before)} (${Math.round(c.after * 10) / 10}/${c.max})`).join(' · ')),
+    );
+  } else if (ex.allowed) rows.push(h('div', { class: 'aq-ex-line dim' }, 'Score: no change'));
+  if (!compact && ex.limits.length) rows.push(h('div', { class: 'aq-ex-line dim' }, h('span', { class: 'aq-ex-k' }, 'Limits '), ex.limits.join(' · ')));
+  if (ex.care.length) {
+    rows.push(
+      h('div', { class: 'aq-ex-care' },
+        h('span', { class: 'aq-ex-k' }, 'Fish care '),
+        ...ex.care.slice(0, compact ? 1 : 4).map((c) => h('span', { class: c.good ? 'good' : 'warn' }, `${c.good ? '✔' : '✘'} ${c.text} `))),
+    );
+  }
+  if (ex.tradeoffs.length) rows.push(h('div', { class: 'aq-ex-line warn' }, h('span', { class: 'aq-ex-k' }, 'Trade-off '), ex.tradeoffs.slice(0, compact ? 1 : 3).join(' · ')));
+  return h('div', { class: `aq-ex ${compact ? 'compact' : ''}` }, ...rows);
 }
