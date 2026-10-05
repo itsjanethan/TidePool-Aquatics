@@ -65,6 +65,19 @@ export interface QualitySettings {
   pearls: number;
   /** Most fish mirrored on the underside of the surface (0 = off). */
   reflections: number;
+  /**
+   * Water optics pass (caustics on surfaces, light shafts, depth absorption,
+   * surface mirror, glass, humid haze). WebGL only; off at Low.
+   */
+  optics: boolean;
+  /** Edge smoothing inside the optics pass. */
+  smoothEdges: boolean;
+  /**
+   * Most texture pixels per tank-canvas pixel for painted art (fish, rock,
+   * substrate, walls). The actual detail also follows the camera zoom, so a
+   * phone that shows the tank smaller never pays for detail it cannot show.
+   */
+  maxDetail: number;
 }
 
 export function qualitySettings(q: Quality = effectiveQuality()): QualitySettings {
@@ -78,7 +91,20 @@ export function qualitySettings(q: Quality = effectiveQuality()): QualitySetting
     lightCells: q === 'high' ? 64 : 48,
     pearls: q === 'low' ? 0 : q === 'standard' ? 18 : 40,
     reflections: q === 'high' ? 10 : 0,
+    optics: q !== 'low',
+    smoothEdges: q !== 'low',
+    maxDetail: q === 'high' ? 2 : q === 'standard' ? 1.5 : 1,
   };
+}
+
+/**
+ * Texture detail for the tank view: as many texture pixels per tank-canvas
+ * pixel as the camera shows (rounded up to a half step), capped by quality.
+ * At zoom 1 or below (960x640 windows, phones) this is 1.
+ */
+export function detailScale(zoom: number, maxDetail: number): number {
+  const want = Math.ceil(Math.max(1, zoom) * 2 - 0.15) / 2;
+  return Math.max(1, Math.min(maxDetail, want));
 }
 
 /**

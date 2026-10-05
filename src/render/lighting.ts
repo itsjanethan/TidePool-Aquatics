@@ -80,6 +80,17 @@ export class LightMap {
     return a + (b - a) * ty;
   }
 
+  /** Writes the map into RGBA bytes (cols x rows, light in R, G and B) for the optics pass. */
+  writeRGBA(out: Uint8ClampedArray): void {
+    for (let i = 0; i < this.data.length; i++) {
+      const v = Math.round(Math.max(0, Math.min(1, this.data[i])) * 255);
+      out[i * 4] = v;
+      out[i * 4 + 1] = v;
+      out[i * 4 + 2] = v;
+      out[i * 4 + 3] = 255;
+    }
+  }
+
   /** Mean light (for caustics/ray strength). */
   mean(): number {
     let s = 0;
