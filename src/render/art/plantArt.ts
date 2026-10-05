@@ -258,6 +258,31 @@ export interface PlantDrawOptions {
   light?: (x: number, y: number) => number;
   /** Depth layer 0 back .. 2 front (back plants are slightly hazier). */
   layer?: number;
+  /**
+   * Smooth shading (WebGL): leaves are drawn as triangle strips with colours per
+   * vertex, so each blade has a lit and a shaded half, a paler midrib, darker
+   * margins, a translucent glow where strong light passes through, and a darker
+   * base. False draws the flat polygons the Canvas renderer can show.
+   */
+  smooth?: boolean;
+}
+
+let scratchBuf = new Int32Array(64);
+/** Reused colour buffer for leaf strips (no per-frame allocation). */
+function scratch(points: number): Int32Array {
+  if (scratchBuf.length < points * 4) scratchBuf = new Int32Array(points * 8);
+  return scratchBuf;
+}
+
+const packRGB = (r: number, g: number, b: number): number => {
+  const c = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : v | 0);
+  return (c(r) << 16) | (c(g) << 8) | c(b);
+};
+
+/** Vertex-coloured triangle (WebGL gradient fill). */
+function tri(g: Phaser.GameObjects.Graphics, a: number, x0: number, y0: number, c0: number, x1: number, y1: number, c1: number, x2: number, y2: number, c2: number): void {
+  g.fillGradientStyle(c0, c1, c2, c2, a);
+  g.fillTriangle(x0, y0, x1, y1, x2, y2);
 }
 
 /** Draws a plant model at (x, baseY). */
@@ -279,7 +304,13 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
       const sy = Math.min(baseY, baseY + m.y + Math.sin(ang) * rr * 0.7);
       const tone = 0.7 + 0.5 * (1 - (sy - (baseY + m.y - m.r)) / (m.r * 2)) + rng.range(-0.12, 0.12);
       const wob = Math.sin(o.time * 1.1 + i) * 0.6 * px * o.flow;
-      g.fillStyle(toInt(plant.mossCol, tone * k), a).fillRect(Math.round(sx + wob), Math.round(sy), px * rng.int(1, 3), px);
+      if (o.smooth) {
+        // Fine branching strands at varied angles, tips catching light.
+        const len = px * rng.range(1.2, 3.2);
+        const sa = rng.range(-2.6, -0.5);
+        g.lineStyle(px * 0.55, toInt(plant.mossCol, tone * k), a * 0.95).lineBetween(sx + wob, sy, sx + wob + Math.cos(sa) * len, sy + Math.sin(sa) * len);
+        if (i % 3 === 0) g.lineStyle(px * 0.45, toInt(plant.mossCol, tone * k * 1.25), a * 0.8).lineBetween(sx + wob, sy, sx + wob - Math.cos(sa) * len * 0.7, sy + Math.sin(sa) * len * 0.8);
+      } else g.fillStyle(toInt(plant.mossCol, tone * k), a).fillRect(Math.round(sx + wob), Math.round(sy), px * rng.int(1, 3), px);
     }
   }
 
@@ -297,6 +328,8 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
     let sx = x + st.x;
     let sy = baseY;
     let trailing = false;
+    let prevX: number | undefined;
+    let prevY: number | undefined;
     for (let i = 0; i < nodes; i++) {
       const t = i / nodes;
       const sway = Math.sin(o.time * 1.1 + st.phase + t * 2.4) * st.sway * t * t * (0.6 + o.flow);
@@ -305,25 +338,49 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
         sy -= st.nodeGap;
         if (sy <= surfaceY + 3 * px) trailing = true;
       } else sx += st.nodeGap * Math.sign(st.lean || 1);
-      const nx = Math.round(sx + (trailing ? 0 : sway));
-      const ny = Math.round(trailing ? surfaceY + 3 * px + Math.sin(o.time + i) * px * 0.5 : sy);
+      const nx = o.smooth ? sx + (trailing ? 0 : sway) : Math.round(sx + (trailing ? 0 : sway));
+      const ny = o.smooth ? (trailing ? surfaceY + 3 * px + Math.sin(o.time + i) * px * 0.5 : sy) : Math.round(trailing ? surfaceY + 3 * px + Math.sin(o.time + i) * px * 0.5 : sy);
       const k = light(nx, ny) * haze;
       const c = mixC(st.bottom, st.top, Math.pow(t, 1.6));
-      g.fillStyle(toInt(c, 0.7 * k), a).fillRect(nx, ny, px, st.nodeGap + px);
+      if (o.smooth) {
+        g.lineStyle(px * 0.8, toInt(c, 0.68 * k), a).lineBetween(prevX ?? nx, prevY ?? ny + st.nodeGap, nx, ny);
+        prevX = nx;
+        prevY = ny;
+      } else g.fillStyle(toInt(c, 0.7 * k), a).fillRect(nx, ny, px, st.nodeGap + px);
       if (st.leaf === 'whorl') {
         for (let n = 0; n < 6; n++) {
           const ang = (n / 6) * Math.PI * 2 + i * 0.6;
           const lx = Math.cos(ang) * st.leafLen;
           const ly = Math.sin(ang) * st.leafLen * 0.35 - st.leafLen * 0.25;
           const shade = Math.sin(ang) > 0 ? 0.75 : 1.05;
-          g.lineStyle(px, toInt(c, shade * k), a).lineBetween(nx, ny, nx + lx, ny + ly);
+          if (o.smooth) {
+            // Fine forked needles, brighter at the tips.
+            const mx = nx + lx * 0.55;
+            const my = ny + ly * 0.55;
+            g.lineStyle(px * 0.5, toInt(c, shade * k * 0.9), a).lineBetween(nx, ny, mx, my);
+            g.lineStyle(px * 0.4, toInt(c, shade * k * 1.15), a * 0.9).lineBetween(mx, my, nx + lx, ny + ly - px * 0.4);
+            g.lineStyle(px * 0.35, toInt(c, shade * k * 1.1), a * 0.8).lineBetween(mx, my, nx + lx * 1.05, ny + ly * 0.6 + px * 0.5);
+          } else g.lineStyle(px, toInt(c, shade * k), a).lineBetween(nx, ny, nx + lx, ny + ly);
         }
       } else {
         const lw = st.leafLen;
         for (const sgn of [-1, 1]) {
-          const lx = nx + sgn * (lw * 0.6 + px);
-          g.fillStyle(toInt(c, 0.95 * k), a).fillEllipse(lx, ny, lw * 1.3, lw * 0.6);
-          g.fillStyle(toInt(c, 1.2 * k), a).fillRect(Math.round(lx - lw * 0.3), ny - px, Math.round(lw * 0.5), px);
+          if (o.smooth) {
+            // A small lanceolate leaf angled up from the node: dark at the base, lit and
+            // slightly translucent toward the tip, upper half lighter than the lower.
+            const tipX = nx + sgn * lw * 1.35;
+            const tipY = ny - lw * 0.45 + Math.sin(o.time * 1.3 + i + sgn) * px * 0.3;
+            const midX = (nx + tipX) / 2;
+            const midY = (ny + tipY) / 2;
+            const wv = lw * 0.32;
+            const base = toInt(c, 0.62 * k);
+            tri(g, a, nx, ny, base, midX, midY - wv, toInt(c, 1.12 * k), tipX, tipY, toInt(c, 1.25 * k));
+            tri(g, a, nx, ny, base, midX, midY + wv, toInt(c, 0.8 * k), tipX, tipY, toInt(c, 1.05 * k));
+          } else {
+            const lx = nx + sgn * (lw * 0.6 + px);
+            g.fillStyle(toInt(c, 0.95 * k), a).fillEllipse(lx, ny, lw * 1.3, lw * 0.6);
+            g.fillStyle(toInt(c, 1.2 * k), a).fillRect(Math.round(lx - lw * 0.3), ny - px, Math.round(lw * 0.5), px);
+          }
         }
       }
     }
@@ -331,7 +388,8 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
 
   // Leaves: filled polygons with a lit side, midrib and veins.
   for (const l of plant.leaves) {
-    const n = l.shape === 'ribbon' ? 16 : 11;
+    // Segments follow the leaf's length (short leaves need few), capped as before.
+    const n = o.smooth ? Math.max(4, Math.min(l.shape === 'ribbon' ? 14 : 10, Math.round(l.length / (6 * px)))) : l.shape === 'ribbon' ? 16 : 11;
     const left: number[] = [];
     const right: number[] = [];
     const mid: number[] = [];
@@ -370,6 +428,10 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
     const tipY = mid[mid.length - 1];
     const k = (0.72 + 0.38 * light(mid[mid.length - 2], tipY)) * haze;
     const base = mixC(l.col, [180, 220, 120], (1 - l.age) * 0.18);
+    if (o.smooth) {
+      drawLeafSmooth(g, l, left, right, mid, base, k, a, light(mid[mid.length - 2], tipY), o.time, px);
+      continue;
+    }
     const poly: Phaser.Types.Math.Vector2Like[] = [];
     for (let i = 0; i < left.length / 2; i++) poly.push({ x: left[i * 2], y: left[i * 2 + 1] });
     for (let i = right.length / 2 - 1; i >= 0; i--) poly.push({ x: right[i * 2], y: right[i * 2 + 1] });
@@ -409,5 +471,94 @@ export function drawPlant(g: Phaser.GameObjects.Graphics, plant: PlantModel, x: 
     }
     // Leaf edge highlight at the tip.
     g.fillStyle(toInt(base, 1.25 * k), a * 0.7).fillRect(Math.round(mid[mid.length - 2]), Math.round(tipY), px, px);
+  }
+}
+
+/**
+ * A leaf as two vertex-coloured triangle strips (lit half and shaded half)
+ * meeting at a paler midrib: darker margins and base, younger tip paler, a
+ * yellow-green glow where strong light passes through the thin blade, a
+ * gloss band along the lit half, fine lateral veins, ribbons that twist
+ * (light and dark bands moving along them) and dry brown tips on old leaves.
+ */
+function drawLeafSmooth(g: Phaser.GameObjects.Graphics, l: LeafSpec, left: number[], right: number[], mid: number[], base: RGB, k: number, a: number, ll: number, time: number, px: number): void {
+  const n = mid.length / 2 - 1;
+  const litLeft = l.angle >= 0;
+  const ribbon = l.shape === 'ribbon';
+  // One light sample per leaf (sampling per vertex cost more than it showed), and
+  // colours for each spine point computed once, without allocating, then shared by
+  // both triangles that meet there. Per point: lit mid, lit edge, shade mid, shade edge.
+  const glowK = Math.max(0, ll - 0.62) * (1 - l.age * 0.5);
+  const cols = scratch(n + 1);
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    let base0 = k * (0.7 + 0.42 * t);
+    if (t < 0.15) base0 *= 0.7 + 2 * t; // base in the shadow of the rosette
+    const dry = l.age > 0.85 && t > 0.88 ? Math.min(1, (t - 0.88) * 6 * (l.age - 0.85) * 4) : 0;
+    for (let q = 0; q < 4; q++) {
+      const litSide = q < 2;
+      const across = q % 2;
+      let kk = base0;
+      if (ribbon) kk *= 0.86 + 0.26 * Math.sin(t * 9 + l.phase + time * 0.4) * (litSide ? 1 : 0.6);
+      else {
+        kk *= litSide ? 1.04 + 0.12 * (1 - across) : 0.74 + 0.1 * (1 - across);
+        if (litSide && across === 0) kk *= 1.04; // gloss toward the midrib
+      }
+      kk *= 1 - across * 0.18;
+      // Translucency: thin tissue near the tip and margins glows under strong light.
+      const glow = Math.min(0.45, glowK * (0.35 + 0.65 * across) * (0.4 + 0.6 * t) * 0.9);
+      let r = base[0] + (196 - base[0]) * glow;
+      let gg = base[1] + (232 - base[1]) * glow;
+      let bb = base[2] + (96 - base[2]) * glow;
+      if (dry > 0) {
+        r += (120 - r) * dry;
+        gg += (96 - gg) * dry;
+        bb += (52 - bb) * dry;
+      }
+      cols[i * 4 + q] = packRGB(r * kk, gg * kk, bb * kk);
+    }
+  }
+  const col = (i: number, across: number, litSide: boolean): number => cols[i * 4 + (litSide ? 0 : 2) + across];
+  for (let i = 0; i < n; i++) {
+    const mx0 = mid[i * 2];
+    const my0 = mid[i * 2 + 1];
+    const mx1 = mid[i * 2 + 2];
+    const my1 = mid[i * 2 + 3];
+    for (const side of [0, 1]) {
+      const e = side === 0 ? left : right;
+      const litSide = (side === 0) === litLeft;
+      const ex0 = e[i * 2];
+      const ey0 = e[i * 2 + 1];
+      const ex1 = e[i * 2 + 2];
+      const ey1 = e[i * 2 + 3];
+      const cm0 = col(i, 0, litSide);
+      const cm1 = col(i + 1, 0, litSide);
+      const ce0 = col(i, 1, litSide);
+      const ce1 = col(i + 1, 1, litSide);
+      tri(g, a, mx0, my0, cm0, ex0, ey0, ce0, ex1, ey1, ce1);
+      tri(g, a, mx0, my0, cm0, ex1, ey1, ce1, mx1, my1, cm1);
+    }
+  }
+  // Midrib: a fine paler line; lateral veins on broad leaves.
+  if (l.width > 3 * px && !ribbon) {
+    g.lineStyle(px * 0.9, toInt(mixC(base, [220, 240, 170], 0.25), k * 1.05), a * 0.75);
+    g.beginPath();
+    g.moveTo(mid[0], mid[1]);
+    for (let i = 1; i <= n; i++) g.lineTo(mid[i * 2], mid[i * 2 + 1]);
+    g.strokePath();
+    if (l.shape === 'sword' || l.shape === 'oval' || l.shape === 'crypt') {
+      const start = Math.ceil(l.petiole * n) + 1;
+      g.lineStyle(px * 0.6, toInt(base, k * 0.72), a * 0.4);
+      for (let i = start; i < n - 1; i++) {
+        const mx = mid[i * 2];
+        const my = mid[i * 2 + 1];
+        const j = Math.min(n, i + 2);
+        for (const e of [left, right]) g.lineBetween(mx, my, mx * 0.4 + e[j * 2] * 0.6, my * 0.4 + e[j * 2 + 1] * 0.6);
+      }
+    }
+    // Java fern sori: brown dots along older leaves.
+    if (l.shape === 'fern' && l.age > 0.6) {
+      for (let i = Math.ceil(n * 0.4); i < n; i += 2) g.fillStyle(0x3a2a1a, a * 0.8).fillCircle(left[i * 2] * 0.6 + mid[i * 2] * 0.4, left[i * 2 + 1] * 0.6 + mid[i * 2 + 1] * 0.4, px * 0.55);
+    }
   }
 }

@@ -43,7 +43,7 @@ guardFastTaps(document.body);
 layout.setGame(game);
 
 // PWA: offline support on the normal static build (not in the single-file build).
-if (import.meta.env.PROD && import.meta.env.MODE !== 'single' && 'serviceWorker' in navigator) {
+if (import.meta.env.PROD && import.meta.env.MODE !== 'single' && import.meta.env.MODE !== 'sandbox-single' && 'serviceWorker' in navigator) {
   const link = document.createElement('link');
   link.rel = 'manifest';
   link.href = 'manifest.webmanifest';

@@ -73,7 +73,13 @@ Dependency direction: `data <- sim <- (render, ui) <- game`. `sim` must never im
 | `render/art/substrateArt.ts` | Per-tank contoured substrate textures by grain type, and the contour function decor sits on |
 | `render/floatingLayer.ts` | Floating plant mats, roots and shade drawn from coverage |
 | `render/lighting.ts` | LightMap (depth falloff, floating shade, canopy/wood/cave boxes) and `waterLook` (tannin / green tint, light colour) |
-| `render/quality.ts` | Per-browser visual quality (particles, caustics, shadows, plant animation rate) |
+| `render/quality.ts` | Per-browser visual quality (particles, caustics, shadows, plant animation rate, optics pass, detail cap) and `detailScale` |
+| `render/fx/waterOptics.ts` | The water optics PostFX pipeline (shader) on the tank camera; `registerWaterOptics` |
+| `render/fx/opticsParams.ts` | Pure: optics inputs from tank state mapped through the camera to shader uniforms |
+| `render/fx/opticsHost.ts` | Attaches/detaches the pass per tank view, owns the caustic and light map textures |
+| `render/fx/causticTexture.ts` | Pure: tileable caustic network traced through a ripple height field |
+| `render/art/relief.ts` | Pure: micro-relief relighting and silhouette anti-aliasing for painted textures |
+| `render/art/fishBudget.ts` | Pure: fish sheet texel counting and the texel cap |
 | `render/scenes/BootScene.ts` | Generates procedural textures |
 | `render/scenes/TitleScene.ts` | Demo aquarium behind the title menu |
 | `render/scenes/ShopScene.ts` | Overworld: tiles, props, player grid movement, customers, interaction routing |

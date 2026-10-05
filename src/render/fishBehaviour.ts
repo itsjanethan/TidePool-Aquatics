@@ -60,6 +60,8 @@ export interface TankWorld {
   flow: number;
   /** Pixels per logical game pixel (the tank view renders at 2x). */
   scale: number;
+  /** Texture texels per tank canvas pixel for painted sheets (1 = native). */
+  detail?: number;
   /** Shared wandering target per schooling species. */
   schools: Map<string, SchoolPoint>;
   /** 0..1 light level at a point (canopy and floating-plant shade). */
@@ -103,6 +105,8 @@ export class FishAgent {
   private phase = rng.range(0, 10);
   private zTarget = 0.5;
   private texKey = '';
+  /** Texels per canvas pixel of the current sheet. */
+  private det = 1;
   private appearanceT = 0;
   // Stable per-individual variation.
   private readonly ind: { speed: number; beat: number; glide: number; ox: number; oy: number };
@@ -142,7 +146,7 @@ export class FishAgent {
   refreshTexture(world: TankWorld, force = false): void {
     const p = phenotypeOf(this.fish);
     // Fish are drawn a little larger than true scale so they read well on screen.
-    const tex = fishTexture(this.scene, p, this.fish.sizeCm * world.pxPerCm * 1.7, force);
+    const tex = fishTexture(this.scene, p, this.fish.sizeCm * world.pxPerCm * 1.7, force, world.detail ?? 1);
     if (!tex) {
       if (!this.texKey) this.appearanceT = 0; // keep asking every frame until painted
       return;
@@ -154,6 +158,7 @@ export class FishAgent {
       this.sprite.setTexture(tex.key, frame === '__BASE' ? '0' : frame);
       this.len = tex.width;
       this.height = tex.height;
+      this.det = tex.detail;
     }
   }
 
@@ -582,8 +587,8 @@ export class FishAgent {
     if (this.onGlass) this.zTarget = 0;
     this.z = lerp(this.z, this.zTarget, Math.min(1, dt * 0.3));
     const depthScale = 0.8 + 0.2 * this.z;
-    this.sprite.scaleX = this.heading * depthScale;
-    this.sprite.scaleY = depthScale;
+    this.sprite.scaleX = (this.heading * depthScale) / this.det;
+    this.sprite.scaleY = depthScale / this.det;
 
     // Pitch: follow the swim direction; nose-down sifting; plecos stand up on the glass.
     let rot: number;

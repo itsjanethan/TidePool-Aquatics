@@ -57,6 +57,7 @@ class Buf {
     const tex = scene.textures.createCanvas(key, this.w, this.h)!;
     tex.getContext().putImageData(new ImageData(this.data, this.w, this.h), 0, 0);
     tex.refresh();
+    tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
   }
 }
 
@@ -150,12 +151,14 @@ export function ensureCondensation(scene: Phaser.Scene, w: number, h: number, re
   if (scene.textures.exists(key)) return key;
   const img = new Buf(w, h);
   const rng = new Rng(404);
-  for (let y = 0; y < h; y += res) {
-    for (let x = 0; x < w; x += res) {
+  // A soft fog, per texel, thicker low and at the edges, broken by a fine mottle of droplets.
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
       const edge = Math.max(0, 1 - Math.min(x, w - x) / (w * 0.18));
       const n = fbm(x / (40 * res), y / (40 * res), 9);
-      const a = (0.06 + (y / h) * 0.08 + edge * 0.12) * (0.6 + n * 0.8);
-      for (let k = 0; k < res; k++) for (let j = 0; j < res; j++) img.set(x + k, y + j, [230, 240, 244], a);
+      const fine = noise(x / (1.6 * res), y / (1.6 * res), 19);
+      const a = (0.06 + (y / h) * 0.08 + edge * 0.12) * (0.6 + n * 0.8) * (0.7 + fine * 0.6);
+      img.set(x, y, [230, 240, 244], a);
     }
   }
   // Beads of water, some running down in streaks.
@@ -163,10 +166,14 @@ export function ensureCondensation(scene: Phaser.Scene, w: number, h: number, re
     const x = rng.range(0, w);
     const y = rng.range(0, h);
     const r = rng.range(0.6, 2.2) * res;
-    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    // A bead: clear centre, a darker refracting rim below and a bright glint above.
+    for (let dy = -r - 1; dy <= r + 1; dy++) for (let dx = -r - 1; dx <= r + 1; dx++) {
       const d = Math.hypot(dx, dy) / r;
-      if (d > 1) continue;
-      img.set(x + dx, y + dy, d > 0.7 ? [200, 216, 224] : [244, 250, 255], d > 0.7 ? 0.5 : 0.28);
+      const cover = Math.min(1, Math.max(0, (1 - d) * r + 0.5));
+      if (cover <= 0) continue;
+      const rim = Math.max(0, d - 0.6) / 0.4;
+      const lower = dy > 0 ? 1 : 0.4;
+      img.set(x + dx, y + dy, rim > 0 ? [190, 206, 214] : [244, 250, 255], (0.2 + rim * 0.35 * lower) * cover);
     }
     img.set(x - r * 0.3, y - r * 0.4, [255, 255, 255], 0.9);
     if (rng.chance(0.08)) for (let k = 0; k < rng.range(10, 40) * res; k++) img.set(x + Math.sin(k * 0.1) * 0.6, y + r + k, [236, 246, 250], 0.32);
@@ -271,4 +278,154 @@ export function landWallPixel(id: string, x: number, y: number, t: number, W: nu
     return c;
   }
   return null;
+}
+
+/**
+ * Land back walls painted as lit relief (v0.7). Each wall is built as a height
+ * field plus a colour field and relit from the lamp above, so bark fissures,
+ * moss cushions and sandstone ledges cast their own small shadows:
+ *
+ *   jungle_wall: dark cork bark with deep vertical fissures, soft cushions of
+ *     moss (fine strands, yellow-green tips, darker hollows) and creeping fig
+ *     trailing from the lid
+ *   cork_wall: panels of cork bark, each with its own tone and fissure pattern
+ *   desert_wall: stacked sandstone beds with lit ledges, undercut shadows,
+ *     fine grain and weathered pockets
+ *
+ * Returns RGBA for a W x H wall, or null for ids that are not land walls.
+ * `res` is texture pixels per logical pixel.
+ */
+export function paintLandWall(id: string, W: number, H: number, res: number): Uint8ClampedArray<ArrayBuffer> | null {
+  if (id !== 'jungle_wall' && id !== 'cork_wall' && id !== 'desert_wall') return null;
+  const hgt = new Float32Array(W * H);
+  const alb = new Float32Array(W * H * 3);
+  const r = res;
+  for (let y = 0; y < H; y++) {
+    const t = y / H;
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      let c: RGB;
+      let h: number;
+      if (id === 'desert_wall') {
+        // Sandstone: beds of uneven thickness (a warped vertical coordinate), each
+        // with a rounded weathered face, crisp undercut, vertical joints, soft
+        // honeycomb pockets and iron staining.
+        const wob = noise(x / (70 * r), 0, 21) * 10 * r + noise(x / (20 * r), 1, 22) * 3 * r;
+        const yy = y + wob + noise(y / (38 * r), 2, 28) * 14 * r;
+        const bed = 26 * r;
+        const layer = Math.floor(yy / bed);
+        const f = (yy - layer * bed) / bed;
+        const sm = (e0: number, e1: number, v: number) => {
+          const q = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+          return q * q * (3 - 2 * q);
+        };
+        h = 0.5 + 0.28 * sm(0, 0.3, f) - 0.32 * sm(0.82, 1, f) + (h2(layer, 9, 29) - 0.5) * 0.12;
+        const joint = 1 - Math.abs(noise(x / (55 * r), layer * 3.1, 30) * 2 - 1);
+        h -= Math.pow(joint, 40) * 0.16;
+        h -= 0.12 * sm(0.66, 0.82, fbm(x / (6 * r), y / (5 * r), 27));
+        h += (fbm(x / (3 * r), y / (3 * r), 25) - 0.5) * 0.06;
+        c = mixC([220, 172, 116], [150, 98, 58], t * 0.45 + h2(layer, 5, 24) * 0.3);
+        c = mixC(c, [168, 92, 52], Math.max(0, fbm(x / (40 * r), y / (30 * r), 32) - 0.55) * 1.2);
+        c = lit(c, 0.86 + h2(layer, 3, 23) * 0.22);
+      } else if (id === 'cork_wall') {
+        const pw = 46 * r;
+        const sx = x + noise(y / (30 * r), 0, 3) * 10 * r;
+        const panel = Math.floor(sx / pw);
+        const seam = (sx % pw) / pw;
+        const fis = 1 - Math.abs(noise(x / (3.2 * r), y / (15 * r), 11 + panel) * 2 - 1);
+        h = 0.6 + 0.25 * Math.sin(seam * Math.PI) - Math.pow(fis, 6) * 0.45 + (fbm(x / (2 * r), y / (2 * r), 5) - 0.5) * 0.1;
+        if (seam < 0.03 || seam > 0.975) h -= 0.4;
+        c = mixC([104, 84, 64], [56, 42, 30], t * 0.6 + fbm(x / (9 * r), y / (22 * r), 7 + panel) * 0.3);
+        c = lit(c, 0.8 + h2(panel, 1, 5) * 0.35);
+        if (fbm(x / (4 * r), y / (4 * r), 31) > 0.72) c = mixC(c, [148, 156, 118], 0.35); // lichen
+      } else {
+        // Jungle: bark under moss.
+        const fis = 1 - Math.abs(noise(x / (2.6 * r), y / (16 * r), 37) * 2 - 1);
+        const bark = 0.35 - Math.pow(fis, 5) * 0.3 + (noise(x / (1.4 * r), y / (5 * r), 38) - 0.5) * 0.08;
+        const barkC = lit(mixC([72, 54, 40], [34, 25, 18], t * 0.8), 0.8 + noise(x / (5 * r), y / (12 * r), 39) * 0.35);
+        const m = fbm(x / (24 * r), y / (19 * r), 31) + (1 - t) * 0.05;
+        const edge = Math.min(1, Math.max(0, (m - 0.47) / 0.06));
+        if (edge > 0) {
+          // Moss: a cushion rising from its edge, covered in fine strands.
+          const fuzz = noise(x / (0.9 * r), y / (0.9 * r), 33) * 0.6 + noise(x / (2.2 * r), y / (2.2 * r), 34) * 0.4;
+          const cushion = Math.min(1, (m - 0.47) * 4.5);
+          const mh = 0.5 + cushion * 0.45 + (fuzz - 0.5) * 0.22;
+          const tone = fbm(x / (7 * r), y / (7 * r), 35);
+          let mc = mixC([46, 78, 30], [124, 156, 62], tone * 0.8 + fuzz * 0.35);
+          // Paler, drier tips; darker deep in the cushion.
+          mc = mixC(mc, [168, 182, 92], Math.max(0, fuzz - 0.72) * 1.4);
+          h = bark * (1 - edge) + mh * edge;
+          c = mixC(barkC, mc, edge);
+        } else {
+          h = bark;
+          c = barkC;
+        }
+      }
+      hgt[i] = h;
+      alb[i * 3] = c[0];
+      alb[i * 3 + 1] = c[1];
+      alb[i * 3 + 2] = c[2];
+    }
+  }
+  // Light from the lamp above and slightly left; shading from the height slope,
+  // occlusion from how deep a point sits, and the wall darkening toward the floor.
+  const out = new Uint8ClampedArray(new ArrayBuffer(W * H * 4));
+  const relief = id === 'desert_wall' ? 5 * r : 9 * r;
+  for (let y = 0; y < H; y++) {
+    const t = y / H;
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const hx = hgt[Math.min(W - 1, x + 1) + y * W] - hgt[Math.max(0, x - 1) + y * W];
+      const hy = hgt[x + Math.min(H - 1, y + 1) * W] - hgt[x + Math.max(0, y - 1) * W];
+      let nx = -hx * relief;
+      let ny = -hy * relief;
+      const n = Math.hypot(nx, ny, 1);
+      nx /= n;
+      ny /= n;
+      const nz = 1 / n;
+      const d = nx * -0.3 + ny * -0.78 + nz * 0.55;
+      const k = (0.28 + 0.9 * Math.max(0, d)) * (0.62 + 0.45 * hgt[i]) * (1.06 - t * 0.38);
+      out[i * 4] = alb[i * 3] * k;
+      out[i * 4 + 1] = alb[i * 3 + 1] * k;
+      out[i * 4 + 2] = alb[i * 3 + 2] * k;
+      out[i * 4 + 3] = 255;
+    }
+  }
+  if (id === 'jungle_wall') paintFig(out, W, H, r);
+  return out;
+}
+
+/** Creeping fig trailing down from the lid: thin stems with small rounded, shaded leaves. */
+function paintFig(out: Uint8ClampedArray, W: number, H: number, r: number): void {
+  const b = new Buf(W, H);
+  b.data = out as Uint8ClampedArray<ArrayBuffer>;
+  const rng = new Rng(4711);
+  for (let v = 0; v < 8; v++) {
+    let x = (v + 0.3 + rng.next() * 0.5) * (W / 8);
+    const reach = H * rng.range(0.3, 0.75);
+    let side = 1;
+    for (let y = 0; y < reach; y += 0.5) {
+      x += Math.sin(y / (24 * r) + v * 1.7) * 0.18 * r;
+      const fade = 1 - (y / reach) * 0.3;
+      b.set(x, y, lit([46, 64, 30], 0.85 * fade), 0.9);
+      b.set(x + 0.5, y, lit([70, 96, 44], 0.85 * fade), 0.5);
+      if (y % (5 * r) < 0.5 && rng.chance(0.8)) {
+        side = -side;
+        const lx = x + side * rng.range(2, 3.5) * r;
+        const ly = y + rng.range(-1, 1.5) * r;
+        const lr = rng.range(2, 3.2) * r;
+        const ang = side * rng.range(0.3, 0.8);
+        for (let yy = -lr; yy <= lr; yy++) for (let xx = -lr; xx <= lr; xx++) {
+          const u = (xx * Math.cos(ang) + yy * Math.sin(ang)) / lr;
+          const w = (-xx * Math.sin(ang) + yy * Math.cos(ang)) / (lr * 0.72);
+          const dd = Math.hypot(u, w);
+          if (dd > 1) continue;
+          let c: RGB = mixC([62, 112, 40], [116, 160, 66], Math.max(0, -w * 0.5 + 0.5) * 0.8);
+          if (Math.abs(w) < 0.08) c = lit(c, 1.15); // midrib
+          c = lit(c, (0.75 + (1 - dd) * 0.35) * fade);
+          b.set(lx + xx, ly + yy, c, Math.min(1, (1 - dd) * lr * 0.9));
+        }
+      }
+    }
+  }
 }

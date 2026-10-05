@@ -41,14 +41,16 @@ function serviceWorkerVersion(): Plugin {
 const base = process.env.BASE_PATH || './';
 
 // `--mode single` produces one self-contained HTML file (used for hosted artifact builds).
+// `--mode sandbox-single` produces the Developer Sandbox as one local HTML file
+// (developer tools included; git-ignored and never deployed).
 export default defineConfig(({ mode }) => ({
-  base: mode === 'single' || mode === 'sandbox' ? './' : base,
+  base: mode === 'single' || mode === 'sandbox' || mode === 'sandbox-single' ? './' : base,
   // Developer tools exist only in development and sandbox modes; the public
   // production and single-file builds compile them out entirely.
-  define: { __APP_VERSION__: JSON.stringify(pkg.version), __DEV_TOOLS__: JSON.stringify(mode === 'development' || mode === 'sandbox') },
-  plugins: mode === 'single' ? [viteSingleFile()] : [serviceWorkerVersion()],
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __DEV_TOOLS__: JSON.stringify(mode === 'development' || mode === 'sandbox' || mode === 'sandbox-single') },
+  plugins: mode === 'single' || mode === 'sandbox-single' ? [viteSingleFile()] : [serviceWorkerVersion()],
   build: {
-    outDir: mode === 'single' ? 'dist-single' : mode === 'sandbox' ? 'dist-sandbox' : 'dist',
+    outDir: mode === 'single' ? 'dist-single' : mode === 'sandbox' ? 'dist-sandbox' : mode === 'sandbox-single' ? 'dist-sandbox-single' : 'dist',
     chunkSizeWarningLimit: 2000,
     target: 'es2022',
   },

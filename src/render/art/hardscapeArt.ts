@@ -7,6 +7,7 @@
 import Phaser from 'phaser';
 import { Rng } from '../../core/rng';
 import type { DecorDef } from '../../data/catalog';
+import { relief } from './relief';
 
 type RGB = [number, number, number];
 
@@ -123,8 +124,11 @@ function branch(img: Img, x0: number, y0: number, ang: number, len: number, th: 
 }
 
 export function hardscapeKey(def: DecorDef, scale: number): string {
-  return `hard2:${def.art}:${scale.toFixed(2)}`;
+  return `hard3:${def.art}:${scale.toFixed(2)}`;
 }
+
+const RELIEF: Record<string, number> = { stones: 0.55, slate: 0.5, limestone: 0.6, liverock: 0.55, reefrock: 0.55, mopani: 0.45, spiderwood: 0.4, claycave: 0.22, coconut: 0.4, cork: 0.65, litter: 0.3 };
+
 
 /** Hardscape texture; origin should be bottom-centre. */
 export function ensureHardscapeTexture(scene: Phaser.Scene, def: DecorDef, scale: number): { key: string; w: number; h: number } {
@@ -393,8 +397,10 @@ export function ensureHardscapeTexture(scene: Phaser.Scene, def: DecorDef, scale
     default:
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) img.set(x, y, [136, 136, 136]);
   }
+  relief(img, RELIEF[def.art] ?? 0.4, seed, scale);
   const tex = scene.textures.createCanvas(key, w, h)!;
   tex.getContext().putImageData(new ImageData(img.data, w, h), 0, 0);
   tex.refresh();
+  tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
   return { key, w, h };
 }

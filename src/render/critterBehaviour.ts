@@ -34,22 +34,25 @@ type CritterMode = 'walk' | 'graze' | 'feed' | 'hide' | 'swim' | 'climb' | 'rest
 const LAND_KINDS = new Set<CritterKind>(['frog', 'gecko', 'spider']);
 
 /** Paints (or reuses) a critter sheet texture. */
-function critterTexture(scene: Phaser.Scene, f: FishEntity, kind: CritterKind, length: number): { key: string; w: number; h: number } {
+function critterTexture(scene: Phaser.Scene, f: FishEntity, kind: CritterKind, length: number, detail = 1): { key: string; w: number; h: number; detail: number } {
   const sp = getSpecies(f.speciesId);
   const L = Math.max(10, Math.round(length / 2) * 2);
-  const key = `critter:${sp.id}:${f.morphId}:${L}:${f.alive ? 1 : 0}`;
+  const key = `critter2:${sp.id}:${f.morphId}:${L}${detail === 1 ? '' : `@${detail}`}:${f.alive ? 1 : 0}`;
   if (!scene.textures.exists(key)) {
     const feat = sp.body.features ?? [];
-    const sheet = paintCritterSheet(kind, critterColours(getMorph(sp, f.morphId)), L, !f.alive, { crest: feat.includes('crest'), fatTail: feat.includes('fat_tail'), toePads: feat.includes('toe_pads') });
-    const tex = scene.textures.createCanvas(key, sheet.width * CRITTER_FRAMES, sheet.height)!;
+    // Painted at `detail` texels per canvas pixel and drawn with linear filtering.
+    const sheet = paintCritterSheet(kind, critterColours(getMorph(sp, f.morphId)), Math.round(L * detail), !f.alive, { crest: feat.includes('crest'), fatTail: feat.includes('fat_tail'), toePads: feat.includes('toe_pads') });
+    const fw = sheet.width + 1;
+    const tex = scene.textures.createCanvas(key, fw * CRITTER_FRAMES, sheet.height)!;
     const ctx = tex.getContext();
-    sheet.frames.forEach((d, i) => ctx.putImageData(new ImageData(d, sheet.width, sheet.height), i * sheet.width, 0));
+    sheet.frames.forEach((d, i) => ctx.putImageData(new ImageData(d, sheet.width, sheet.height), i * fw, 0));
     tex.refresh();
-    for (let i = 0; i < CRITTER_FRAMES; i++) tex.add(String(i), 0, i * sheet.width, 0, sheet.width, sheet.height);
+    tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    for (let i = 0; i < CRITTER_FRAMES; i++) tex.add(String(i), 0, i * fw, 0, sheet.width, sheet.height);
   }
   useTexture(scene, 'critter', key, 60);
   const t = scene.textures.get(key).get('0');
-  return { key, w: t.width, h: t.height };
+  return { key, w: t.width / detail, h: t.height / detail, detail };
 }
 
 export class CritterAgent {
@@ -68,6 +71,8 @@ export class CritterAgent {
   private ty = 0;
   private onGlass = false;
   private texKey = '';
+  /** Texels per canvas pixel of the current sheet. */
+  private det = 1;
   private frameT = rng.range(0, 4);
   private texT = 0;
   /** Swim hop: vertical offset above the surface it left. */
@@ -106,12 +111,13 @@ export class CritterAgent {
   private refreshTexture(world: CritterWorld): void {
     // Drawn a little larger than true scale (like fish) so they read on screen.
     const k = { snail: 1.15, crab: 1.45, shrimp: 1.35, frog: 1.15, gecko: 0.85, spider: 1.0 }[this.kind];
-    const tex = critterTexture(this.scene, this.fish, this.kind, this.fish.sizeCm * world.pxPerCm * k);
+    const tex = critterTexture(this.scene, this.fish, this.kind, this.fish.sizeCm * world.pxPerCm * k, world.detail ?? 1);
     if (tex.key !== this.texKey) {
       this.texKey = tex.key;
       this.sprite.setTexture(tex.key, '0');
       this.len = tex.w;
       this.height = tex.h;
+      this.det = tex.detail;
     }
   }
 
@@ -313,8 +319,8 @@ export class CritterAgent {
     const glass = this.onGlass && this.mode === 'climb';
     const zT = glass ? 0 : this.z;
     const depthScale = 0.8 + 0.2 * zT;
-    this.sprite.scaleX = this.heading * depthScale;
-    this.sprite.scaleY = depthScale;
+    this.sprite.scaleX = (this.heading * depthScale) / this.det;
+    this.sprite.scaleY = depthScale / this.det;
     // Snails on the glass turn to face the way they glide (up or down).
     const climbing = glass && Math.abs(this.ty - this.y) > 4 * S;
     const rot = climbing ? (this.ty < this.y ? -Math.PI / 2 : Math.PI / 2) * this.heading * 0.9 : 0;
@@ -324,7 +330,7 @@ export class CritterAgent {
     const c = Math.round(255 * k);
     this.sprite.setTint((c << 16) | (c << 8) | Math.round(255 * clamp(k + 0.06 * (1 - zT), 0, 1)));
     this.sprite.setFlipY(false);
-    this.sprite.setPosition(Math.round(this.x), Math.round(this.y + this.lift));
+    this.sprite.setPosition(this.x, this.y + this.lift);
     // Glass climbers are behind everything (climbing land animals sit on the back wall in
     // front of the background); ground critters among the decor layers.
     this.sprite.setDepth(glass ? (this.land ? 6 : 4.8) : this.mode === 'float' ? 20 : 10 + this.z * 9);
