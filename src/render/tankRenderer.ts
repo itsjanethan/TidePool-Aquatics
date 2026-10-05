@@ -26,7 +26,7 @@ import { FloatingLayer } from './floatingLayer';
 import { LightMap, waterLook, type LightBox } from './lighting';
 import { AdaptiveQuality, detailScale, qualitySettings } from './quality';
 import { OpticsHost } from './fx/opticsHost';
-import type { OpticsInput } from './fx/waterOptics';
+import type { OpticsInput } from './fx/opticsParams';
 import { hardscapeTint, mulmAlpha, pearlRate, stepLightLevel, surfaceFilm } from './stateVisuals';
 import { portionCover } from '../sim/floating';
 import { makeTexture } from './art/pixel';

@@ -11,10 +11,13 @@ import { getMorph } from '../../sim/fish';
 import { hashString, phenotypeKey, type Phenotype } from '../../sim/phenotype';
 import { mix } from './pixel';
 import { paintFishSheet, SHEET_FRAMES, SWIM_FRAMES, TURN_FRAMES } from './fishPainter';
+import { fishTexels, MAX_TEXELS, type FishTexSize } from './fishBudget';
+
+export { fishTexels, MAX_TEXELS };
 
 export { SHEET_FRAMES, SWIM_FRAMES, TURN_FRAMES };
 
-export interface FishTex {
+export interface FishTex extends FishTexSize {
   key: string;
   /** Size in tank canvas pixels (the texture holds `detail` times as many). */
   width: number;
@@ -90,13 +93,6 @@ function texels(): number {
   for (const t of info.values()) n += fishTexels(t);
   return n;
 }
-
-export function fishTexels(t: FishTex): number {
-  return Math.round(t.width * t.detail + 1) * SHEET_FRAMES * Math.round(t.height * t.detail);
-}
-
-/** About 64 MB of RGBA at most; a sheet not drawn for 2 s may go when over budget. */
-export const MAX_TEXELS = 16_000_000;
 
 function evict(scene: Phaser.Scene, now: number): void {
   let total = texels();

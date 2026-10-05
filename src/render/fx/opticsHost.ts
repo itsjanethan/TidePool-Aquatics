@@ -7,7 +7,8 @@
 import Phaser from 'phaser';
 import type { LightMap } from '../lighting';
 import { CAUSTIC_SIZE, paintCaustics } from './causticTexture';
-import { opticsUniforms, registerWaterOptics, WATER_OPTICS, WaterOpticsFX, type OpticsInput } from './waterOptics';
+import { registerWaterOptics, WATER_OPTICS, WaterOpticsFX } from './waterOptics';
+import { opticsUniforms, type OpticsInput } from './opticsParams';
 
 const CAUSTIC_KEY = 'fx-caustics';
 
