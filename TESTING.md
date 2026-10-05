@@ -37,6 +37,7 @@ npm run check       # all of the above, in order. Must pass before a task is don
 | `scapepreview.test.ts` | Layout score components add up to the score and respect their maxima; for every freshwater decor item at three positions and depths the preview's score equals what really placing it gives, and the preview never changes the tank; changed components sum to the change; provisions come from the habitat numbers (cover %, cave spaces, nitrate); young plants get a grown preview; caps and diminishing returns are flagged; moves are previewed without moving; fish care is reported separately from the score; refusals and money are reported without blocking the preview |
 | `tapguard.test.ts` | (happy-dom) No double-tap zoom from the controls: every touch gesture on them is cancelled and ghost clicks never reach the page; rapid taps on B give exactly one press each and B plus a direction still runs; rotation releases held buttons; on the game area and menus a single tap is untouched, a quick second tap is cancelled and its click delivered exactly once, slow taps, swipes (list scrolling) and text fields are left alone, the canvas gets no synthetic click |
 | `visuals.test.ts` | (happy-dom) Quality levels never add work at lower levels; Auto steps down after a sustained slow window, ignores the opening seconds and short hitches, never steps up, only in Auto; bounded texture caches keep recent textures and never drop the one in use; reduced motion follows the setting or the device; each new effect follows tank state (mulm with detritus, film needs dirt and a still surface, only healthy lit fed plants pearl, hardscape shade and algae, light ramp) |
+| `realism.test.ts` | Near-realistic tank view: world rectangles map through the camera to the optics uniforms (desktop and a scrolled phone camera), land enclosures have no water and get haze, colours as 0..1; detail scale by zoom and quality; Low turns the optics pass off; the caustic generator is deterministic, seamless at the tile edges and sparse; the light map export; every fish species and morph paints soft-edged, distinct sheets at 2x; a 2x sheet is twice the size; the fish texel budget; every land animal and invertebrate morph paints all frames and frog morphs differ; the relief pass keeps silhouettes |
 | `marine_retail.test.ts` | Salinity evaporation and RO top-off, salt-mix water changes, SG display, freshwater/marine separation, salinity damage; retail stock space, an equipment customer visiting the basement and paying, bundle preference, bundle stock and margin, equipment advice (right vs plausible wrong), marine kit gated; every species and morph paints a full sheet |
 
 ### Long-run simulation
@@ -143,6 +144,50 @@ Same machine, same builds apart from this change, 8-second steady windows.
 
 
 Summary: at Standard (the level Auto starts at), mean update time fell 30 to 43% on the planted and capped tanks (plants now redraw at 30 Hz in staggered buckets) while adding pearling, mulm, surface film, hardscape shading and the light ramp. High adds reflections and more pearls for roughly the old High cost. Renderer submit and open time are unchanged within noise. Tour (24 tanks, twice): substrate textures held 24 before, now capped at 6 (plus 6 mulm); heap stays about 70 MB.
+
+### Near-realistic tank view (2026-10-04), before → after
+
+`perf-tank.mjs` now waits until every animal's sheet is painted (sprites become visible once painted) plus one second before the steady window (`SETTLE_MS`, default 40 s), so texture painting is not counted as steady-state cost, and it reports the median. Both builds were measured with this method on the same machine (one CPU, headless Chromium, SwiftShader), 8-second windows. "Settle" is how long until every animal was painted.
+
+| Quality | Viewport | Tank (fish) | Update mean ms | Update median ms | Update p95 ms | Render submit ms | Open ms | Settle s | Heap MB | Texture MP |
+|---|---|---|---|---|---|---|---|---|---|---|
+| standard | desktop | A1 ordinary (7) | 1.69 → 2.15 | 1.1 → 1.5 | 4.1 → 5.3 | 2.85 → 7.36 | 353 → 864 | 0.0 → 3.7 | 43.9 → 59.6 | 5.27 → 5.1 |
+| standard | desktop | M6 densely planted (23) | 4.04 → 3.35 | 3.7 → 3.2 | 6.6 → 6.8 | 7.41 → 6.5 | 317 → 679 | 0.0 → 5.8 | 76.8 → 71.3 | 5.2 → 5.06 |
+| standard | desktop | Q1 population cap (70) | 5.64 → 5.69 | 5.3 → 4.9 | 11.5 → 13.9 | 11.99 → 10.71 | 273 → 565 | 11.6 → 28.3 | 92.3 → 59 | 7.53 → 7.41 |
+| standard | phone | A1 ordinary (7) | 1.44 → 1.9 | 1.1 → 1.5 | 3.3 → 4.1 | 2.59 → 7.96 | 442 → 863 | 0.0 → 4.3 | 46.1 → 52.8 | 5.27 → 5.1 |
+| standard | phone | M6 densely planted (23) | 3.68 → 3.64 | 3.3 → 3.5 | 7.3 → 7 | 7.26 → 5.7 | 426 → 794 | 0.0 → 7.3 | 61.1 → 56.8 | 5.2 → 5.06 |
+| standard | phone | Q1 population cap (70) | 5.71 → 5.7 | 4.9 → 5.1 | 15.1 → 15.1 | 12.08 → 9.8 | 366 → 590 | 7.6 → 32.1 | 81.6 → 60.3 | 7.76 → 7.41 |
+| low | desktop | A1 ordinary (7) | 1.47 → 1.45 | 1 → 1 | 3.8 → 2.6 | 2.34 → 6.69 | 392 → 824 | 0.0 → 2.0 | 44.6 → 62.2 | 5.27 → 5.03 |
+| low | desktop | M6 densely planted (23) | 3.44 → 2.65 | 2.4 → 1.9 | 9.2 → 4.9 | 6.72 → 5.39 | 311 → 664 | 0.0 → 2.8 | 48.7 → 67.7 | 5.32 → 5.02 |
+| low | desktop | Q1 population cap (70) | 5.39 → 4.14 | 4.1 → 2.6 | 6.4 → 13.3 | 10.36 → 8.79 | 325 → 579 | 10.0 → 17.7 | 93.6 → 63.1 | 7.64 → 7.34 |
+| low | phone | A1 ordinary (7) | 1.54 → 1.37 | 1 → 0.9 | 4.2 → 3.3 | 2.58 → 6.74 | 420 → 863 | 0.0 → 0.5 | 42.7 → 43.4 | 5.44 → 5.01 |
+| low | phone | M6 densely planted (23) | 2.56 → 2.53 | 2.3 → 1.8 | 5.2 → 6.1 | 5.88 → 5.51 | 418 → 734 | 0.0 → 0.8 | 64.5 → 72.4 | 5.22 → 5 |
+| low | phone | Q1 population cap (70) | 4.82 → 3.6 | 4.1 → 2.5 | 10 → 8.3 | 11.3 → 8.26 | 374 → 452 | 6.5 → 11.8 | 95.8 → 64.3 | 7.59 → 7.34 |
+| high | desktop | A1 ordinary (7) | 2.28 → 4.61 | 1.9 → 3.2 | 4.5 → 15 | 2.66 → 9.89 | 364 → 858 | 0.0 → 4.2 | 51.5 → 61.3 | 5.19 → 4.89 |
+| high | desktop | M6 densely planted (23) | 5.77 → 5.33 | 4.9 → 4.8 | 9.2 → 12.4 | 6.84 → 5.61 | 379 → 697 | 0.0 → 5.8 | 81.7 → 52.2 | 5.27 → 5.06 |
+| high | desktop | Q1 population cap (70) | 7.6 → 7.04 | 6.2 → 6 | 22.3 → 14 | 13.01 → 9.65 | 300 → 570 | 11.2 → 30.3 | 66.1 → 91.2 | 7.53 → 7.41 |
+| high | phone | A1 ordinary (7) | 1.92 → 3.35 | 1.5 → 2.8 | 4.7 → 15 | 2.47 → 8.06 | 475 → 931 | 0.0 → 4.8 | 49.7 → 50.9 | 5.17 → 4.96 |
+| high | phone | M6 densely planted (23) | 5.52 → 5.09 | 4.8 → 5.1 | 10.4 → 9.5 | 6.78 → 5.58 | 423 → 759 | 0.0 → 6.3 | 79.1 → 78.5 | 5.32 → 5.06 |
+| high | phone | Q1 population cap (70) | 8.51 → 8.52 | 7.3 → 6.1 | 13.9 → 24.5 | 11.79 → 10.25 | 426 → 493 | 8.0 → 34.0 | 102.6 → 85.2 | 7.51 → 7.41 |
+
+What the numbers say:
+
+- **Our update cost (JavaScript per frame) is about the same as before on the planted and capped tanks** (M6 and Q1 within about ±0.5 ms at Standard, lower at Low), and up to 0.5 ms higher on the ordinary tank (the optics inputs are computed every frame); A1 at High rose more (2.3 to 4.6 ms on desktop, p95 15 ms) and is worth a look on hardware. The vertex-shaded plants first made dense planted tanks much costlier (M6 at Low rose from about 3.4 to 8.6 ms); one light sample per leaf, colours computed once per spine point into a reused buffer and fewer segments on short leaves brought it back.
+- **Opening a tank takes about twice as long the first time** (caustic network, relit walls, shaded grains are generated once per session; revisits reuse them).
+- **No more long frames from painting.** Sheets are painted one animation frame per step inside the 10 ms budget; before, a large sheet could take one 90 ms frame on this machine.
+- **Painting a sheet costs about 1.3x what it did** (lighting, iridescence, anti-aliasing), so busy tanks take longer until every fish has appeared ("Settle"). On this machine frames are slow, so that wait is exaggerated; on a device running at 30 to 60 fps it is roughly 1.3x the old wait.
+- **"Render submit" includes the optics pass**, which SwiftShader rasterises on the CPU here. On a GPU the pass is one full-screen draw.
+- Heap and texture memory are within noise; phones paint at detail 1, so phone texture memory does not grow.
+
+**Limits.** No real phone or desktop GPU was available. The 30 fps target on a mid-range phone in the tank view, and Auto stepping down on weak devices, are designed for (Low drops the optics pass, detail stays 1 on phones, painting is spread across frames) but not measured on hardware. Please check on a phone: open Q1 and M6 at Auto and watch the quality label in Settings.
+
+### Functional checks (2026-10-04)
+
+`node scripts/realism-check.mjs <url> <outdir>` (developer build) checks that Standard attaches the optics pass and Low does not (older rays and caustics shown instead), that with WebGL disabled the game falls back to Canvas and M6, V1 and R2 open without errors, that reduced motion reaches the tank view, that tapping a fish on a phone selects it, that aquascape ghost previews draw for a plant, a rock and a coral, and night views of M6, V1 and R2. Result on 2026-10-04: 13/13 passed.
+
+### Visual review (2026-10-04)
+
+`scripts/tank-shots.mjs <url> <outdir> <prefix> [tanks] [viewports] [quality]` opens tanks in a developer build and saves full and canvas-only screenshots at desktop 960x640, large 1440x900, phone 390x844 and phone landscape 844x390; `CLOSEUP=4 SPECIES=neon_tetra` adds a camera close-up. Before and after shots of M6, V1, R2, T1, P1, F1 and Q1 are in the review zip delivered with the branch (not committed). Judged from those screenshots, not from tests alone. Painter dumps at large sizes (fish 200 px, critters 160 px) were used to judge anatomy.
 
 ## Developer Sandbox
 

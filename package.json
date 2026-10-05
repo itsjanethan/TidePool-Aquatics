@@ -7,6 +7,7 @@
     "dev": "vite",
     "sandbox": "vite --mode sandbox --open /?sandbox",
     "build:sandbox": "tsc --noEmit && vite build --mode sandbox",
+    "build:sandbox-single": "tsc --noEmit && vite build --mode sandbox-single",
     "verify:public": "node scripts/verify-public-build.mjs dist",
     "build": "tsc --noEmit && vite build",
     "build:single": "tsc --noEmit && vite build --mode single",

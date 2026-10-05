@@ -79,6 +79,21 @@ The aquarium view became a core product feature. See ART_DIRECTION.md.
 - DONE Aquarium visuals tied to tank state (pearling, mulm, surface film, hardscape shade and algae, light ramp, reflections), Auto quality, reduced motion, bounded texture caches, profiling tools
 - DONE Individual fish "Not for sale"
 
+## Milestone 0.7: Near-realistic tank view (DONE 2026-10-04, pending merge)
+
+See ART_DIRECTION.md (Near-realistic tank view) and DECISIONS.md (2026-10-04).
+
+- DONE Water optics pass: caustics on surfaces, light shafts, depth absorption, surface mirror and refraction, glass, edge smoothing, humid haze in enclosures; off at Low and on Canvas
+- DONE Detail scale tied to camera zoom and quality; linear filtering and sub-pixel motion in the tank view; fish texture memory bounded by texels
+- DONE Fish: lighting, scales, iridescence, translucent fins, wet eyes, soft anti-aliased patterns and edges for every species and morph
+- DONE Frogs, geckos, tarantulas, shrimp, snails and hermit crabs rebuilt as shaded soft bodies
+- DONE Plants vertex-shaded; substrate grains, sand, leaf litter; rock and wood relief; corals supersampled and relit
+- DONE Vivarium walls (moss and bark, cork, sandstone) as relit height fields; condensation, mould, algae, dirt, bubbles, equipment, backgrounds and the selection pointer redone
+- DONE Regression tests (`tests/realism.test.ts`), `scripts/tank-shots.mjs`, before/after profile
+- NEXT Measure on real mid-range and low-end phones; tune Auto thresholds if needed
+- NEXT Floating plant mats and roots in the same lit style; per-leaf texture for broad leaves at High
+- LATER Animated (rope) fish bodies for continuous tail motion; shrimp and coral polish
+
 ## Comparison follow-ups (NEXT, ranked; see COMPARISON.md)
 
 From the sourced comparison with Megaquarium, Two Point Hospital, Planet Zoo, Stardew Valley, Supermarket Simulator and others. DONE in this pass: All tanks overview, forgiving animal taps on touch screens.
