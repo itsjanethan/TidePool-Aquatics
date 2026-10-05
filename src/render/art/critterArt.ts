@@ -86,52 +86,280 @@ function patternAt(c: CritterColours, x: number, y: number, seed: number): boole
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Soft-body painting (v0.7): anti-aliased ellipsoids and limb capsules shaded
+// as solids under the tank light (wrapped diffuse, a sharp wet specular, rim
+// darkening), with smooth patterns and fine skin bump. Shared by the frog,
+// gecko and tarantula painters.
+
+const LX = -0.38;
+const LY = -0.74;
+const LZ = 0.56;
+// Half vector between the light and a viewer straight in front.
+const HN = Math.hypot(LX, LY, LZ + 1);
+const HX = LX / HN;
+const HY = LY / HN;
+const HZ = (LZ + 1) / HN;
+
+function hh(x: number, y: number, s: number): number {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function vn(x: number, y: number, s: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const u = x - xi;
+  const v = y - yi;
+  const su = u * u * (3 - 2 * u);
+  const sv = v * v * (3 - 2 * v);
+  const a = hh(xi, yi, s);
+  const b = hh(xi + 1, yi, s);
+  const c = hh(xi, yi + 1, s);
+  const d = hh(xi + 1, yi + 1, s);
+  return a + (b - a) * su + (c - a) * sv + (a - b - c + d) * su * sv;
+}
+
+interface Skin {
+  base: RGB;
+  /** Belly colour, blended in where the surface faces down. */
+  belly?: RGB;
+  /** 0..1 strength of the wet specular highlight. */
+  gloss?: number;
+  /** Fine bump (granular skin, tubercles, hair) 0..1. */
+  bump?: number;
+  bumpScale?: number;
+  seed?: number;
+  /** Pattern colour and an amount function in sheet pixels (0..1, soft). */
+  patCol?: RGB;
+  pattern?: (x: number, y: number) => number;
+}
+
+/** Shades one surface point with normal (nx, ny, nz) in screen space. */
+function shadeSkin(sk: Skin, x: number, y: number, nx: number, ny: number, nz: number): RGB {
+  if (sk.bump) {
+    const s = sk.bumpScale ?? 1.4;
+    const seed = sk.seed ?? 1;
+    const bx = vn((x + 0.5) / s, y / s, seed) - vn((x - 0.5) / s, y / s, seed);
+    const by = vn(x / s, (y + 0.5) / s, seed) - vn(x / s, (y - 0.5) / s, seed);
+    nx += bx * sk.bump * 1.6;
+    ny += by * sk.bump * 1.6;
+    const n = Math.hypot(nx, ny, nz) || 1;
+    nx /= n;
+    ny /= n;
+    nz /= n;
+  }
+  let c = sk.base;
+  if (sk.belly) c = mixC(c, sk.belly, Math.min(1, Math.max(0, (ny - 0.15) * 2.2)));
+  if (sk.pattern && sk.patCol) {
+    const p = sk.pattern(x, y);
+    if (p > 0) c = mixC(c, sk.patCol, Math.min(1, p));
+  }
+  const d = nx * LX + ny * LY + nz * LZ;
+  const wrap = Math.max(0, (d + 0.35) / 1.35);
+  let col = lit(c, 0.3 + 0.82 * wrap);
+  // Rim: the silhouette turns away into shadow.
+  col = lit(col, 1 - Math.pow(1 - Math.max(0, nz), 3) * 0.28);
+  const g = sk.gloss ?? 0;
+  if (g > 0) {
+    const sp = Math.pow(Math.max(0, nx * HX + ny * HY + nz * HZ), 36) * g;
+    if (sp > 0.004) col = mixC(col, [255, 255, 250], Math.min(0.9, sp));
+  }
+  return col;
+}
+
+/** Anti-aliased ellipsoid at (cx, cy), radii rx, ry, rotated by rot. */
+function blob(b: Buf, cx: number, cy: number, rx: number, ry: number, rot: number, sk: Skin, alpha = 1): void {
+  const cs = Math.cos(rot);
+  const sn = Math.sin(rot);
+  const R = Math.ceil(Math.max(rx, ry)) + 1;
+  const m = Math.min(rx, ry);
+  for (let y = Math.floor(cy - R); y <= Math.ceil(cy + R); y++) {
+    for (let x = Math.floor(cx - R); x <= Math.ceil(cx + R); x++) {
+      const dx = x + 0.5 - cx;
+      const dy = y + 0.5 - cy;
+      const u = (dx * cs + dy * sn) / rx;
+      const v = (-dx * sn + dy * cs) / ry;
+      const d = Math.sqrt(u * u + v * v);
+      const cover = Math.min(1, Math.max(0, (1 - d) * m + 0.5));
+      if (cover <= 0) continue;
+      const dd = Math.min(0.999, d);
+      const nz = Math.sqrt(1 - dd * dd);
+      // Local normal back to screen space.
+      const lnx = u * (d > 0 ? dd / d : 0);
+      const lny = v * (d > 0 ? dd / d : 0);
+      const nx = lnx * cs - lny * sn;
+      const ny = lnx * sn + lny * cs;
+      b.set(x, y, shadeSkin(sk, x, y, nx, ny, nz), cover * alpha);
+    }
+  }
+}
+
+/** A tapered limb segment shaded as a cylinder, with round ends. */
+function limb(b: Buf, x0: number, y0: number, x1: number, y1: number, w0: number, w1: number, sk: Skin, alpha = 1): void {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len2 = dx * dx + dy * dy || 1;
+  const len = Math.sqrt(len2);
+  const R = Math.max(w0, w1) / 2 + 1;
+  const ax = dx / len;
+  const ay = dy / len;
+  for (let y = Math.floor(Math.min(y0, y1) - R); y <= Math.ceil(Math.max(y0, y1) + R); y++) {
+    for (let x = Math.floor(Math.min(x0, x1) - R); x <= Math.ceil(Math.max(x0, x1) + R); x++) {
+      const px = x + 0.5 - x0;
+      const py = y + 0.5 - y0;
+      const t = Math.max(0, Math.min(1, (px * dx + py * dy) / len2));
+      const r = (w0 + (w1 - w0) * t) / 2;
+      const qx = px - dx * t;
+      const qy = py - dy * t;
+      const d = Math.hypot(qx, qy);
+      const cover = Math.min(1, Math.max(0, r - d + 0.5));
+      if (cover <= 0) continue;
+      const across = Math.min(0.999, d / Math.max(0.5, r));
+      const nz = Math.sqrt(1 - across * across);
+      // Normal points away from the axis (perpendicular part of q).
+      const along = qx * ax + qy * ay;
+      let nx = (qx - along * ax) / Math.max(0.001, d);
+      let ny = (qy - along * ay) / Math.max(0.001, d);
+      nx *= across;
+      ny *= across;
+      b.set(x, y, shadeSkin(sk, x, y, nx, ny, nz), cover * alpha);
+    }
+  }
+}
+
+/** Glossy eye: dark globe, iris tint, two reflections. */
+function eyeball(b: Buf, cx: number, cy: number, r: number, iris: RGB, pupil: 'round' | 'slit' | 'h' = 'round'): void {
+  blob(b, cx, cy, r, r, 0, { base: [14, 12, 12], gloss: 0.9 });
+  const ir = r * 0.82;
+  for (let y = Math.floor(cy - ir); y <= Math.ceil(cy + ir); y++) {
+    for (let x = Math.floor(cx - ir); x <= Math.ceil(cx + ir); x++) {
+      const u = (x + 0.5 - cx) / ir;
+      const v = (y + 0.5 - cy) / ir;
+      const d = Math.hypot(u, v);
+      if (d > 1) continue;
+      const inPupil = pupil === 'slit' ? Math.abs(u) < 0.16 * (1 - v * v) + 0.02 : pupil === 'h' ? Math.abs(v) < 0.22 * (1 - u * u) + 0.03 : d < 0.48;
+      if (inPupil) continue;
+      const vein = Math.sin(Math.atan2(v, u) * 14 + d * 6) * 0.08;
+      b.set(x, y, lit(iris, 0.7 + (1 - d) * 0.4 - v * 0.2 + vein), Math.min(1, (1 - d) * ir * 0.8 + 0.3) * 0.9);
+    }
+  }
+  const hr = Math.max(0.6, r * 0.28);
+  blob(b, cx - r * 0.32, cy - r * 0.36, hr, hr * 0.8, -0.4, { base: [255, 255, 255] }, 0.92);
+  if (r > 2.5) blob(b, cx + r * 0.34, cy + r * 0.3, hr * 0.45, hr * 0.35, 0, { base: [210, 225, 240] }, 0.5);
+}
+
+/** Smooth frog and gecko patterns from the morph's pattern name. */
+function skinPattern(kind: string, L: number, seed: number): ((x: number, y: number) => number) | undefined {
+  const s = L / 10;
+  switch (kind) {
+    case 'spots':
+      return (x, y) => {
+        const n = vn(x / (s * 0.9), y / (s * 0.9), seed);
+        return Math.max(0, Math.min(1, (n - 0.66) * 9));
+      };
+    case 'blotch':
+      return (x, y) => {
+        const n = vn(x / (s * 1.6), y / (s * 1.3), seed) * 0.7 + vn(x / (s * 0.6), y / (s * 0.6), seed + 3) * 0.3;
+        return Math.max(0, Math.min(1, (n - 0.52) * 8));
+      };
+    case 'stripes':
+      return (x, y) => {
+        const w = Math.sin((y / (s * 1.05)) * Math.PI + vn(x / (s * 2.5), y / (s * 2), seed) * 2.6);
+        return Math.max(0, Math.min(1, (w - 0.25) * 3));
+      };
+    case 'speckle':
+      return (x, y) => {
+        const n = hh(Math.floor(x / Math.max(1, s * 0.35)), Math.floor(y / Math.max(1, s * 0.35)), seed);
+        return n > 0.96 ? 0.85 : 0;
+      };
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Frog, side view facing right: a glossy body sloping down to the rump, a
+ * rounded head with a protruding eye, a folded hind leg (thigh, shin, long
+ * foot), a front leg with splayed fingers, toe pads on climbers, the morph's
+ * pattern in smooth patches, a paler throat that pulses, and wet highlights.
+ * Frames: 0-1 sitting (breathing), 2 crouched, 3 mid-leap with legs trailing.
+ */
 function paintFrog(b: Buf, L: number, c: CritterColours, frame: number, dead: boolean, ft: CritterFeatures): void {
   const body = hex(c.body);
   const belly = hex(c.belly);
-  const limb = hex(c.fin);
+  const limbC = hex(c.fin);
   const accent = hex(c.accent);
   const g = b.h - 2;
   const leap = frame === 3 && !dead;
   const crouch = frame === 2;
-  const breathe = frame === 1 ? 0.04 : 0;
-  // Body: a squat teardrop, rump low at the back, head up at the front.
-  const cx = b.w * 0.45;
-  const cy = g - L * (leap ? 0.42 : crouch ? 0.24 : 0.3);
-  const rx = L * 0.42;
-  const ry = L * (0.24 + breathe) * (leap ? 0.85 : 1);
-  b.ellipse(cx, cy, rx, ry, (nx, ny) => {
-    let col = ny > 0.35 ? belly : body;
-    if (ny <= 0.35 && patternAt(c, (nx + 1) * rx, (ny + 1) * ry, 3)) col = accent;
-    return [lit(col, 1.15 - ny * 0.35 - Math.abs(nx) * 0.1), 1];
-  });
-  // Head.
-  const hx = cx + rx * 0.82;
-  const hy = cy - ry * 0.25;
-  b.ellipse(hx, hy, L * 0.2, L * 0.16, (_nx, ny) => [lit(ny > 0.3 ? belly : body, 1.15 - ny * 0.3), 1]);
-  // Big eye with a highlight.
-  b.ellipse(hx + L * 0.03, hy - L * 0.09, L * 0.075, L * 0.075, (nx, ny) => [nx < -0.2 && ny < -0.2 ? [240, 240, 230] : [12, 12, 16], 1]);
-  b.line(hx + L * 0.16, hy + L * 0.03, hx + L * 0.07, hy + L * 0.06, lit(body, 0.6), 1);
-  // Throat pulse.
-  if (frame === 1) b.ellipse(hx - L * 0.02, hy + L * 0.12, L * 0.07, L * 0.04, () => [lit(belly, 1.1), 0.9]);
-  // Hind leg: thigh, shin, long foot.
-  const lc = lit(limb, 0.95);
+  const breathe = frame === 1 ? 1 : 0;
+  const seed = Math.round(body[0] + body[1] * 3 + L);
+  const pat = skinPattern(c.pattern, L, seed);
+  const toad = !ft.toePads && c.pattern === 'spots' && belly[0] > 180; // warty fire-bellied toads
+  const sk: Skin = { base: body, belly, gloss: toad ? 0.35 : 0.75, bump: toad ? 0.9 : 0.15, bumpScale: L / 22, seed, patCol: accent, pattern: pat };
+  const legSk: Skin = { ...sk, base: limbC, belly: mixC(limbC, belly, 0.3), pattern: c.pattern === 'speckle' ? pat : undefined };
+  const padC = mixC(limbC, [255, 236, 200], 0.25);
+  const cx = b.w * 0.44;
+  const lift = leap ? L * 0.16 : crouch ? -L * 0.03 : 0;
+  const cy = g - L * 0.25 - lift;
+  const tilt = leap ? -0.42 : crouch ? -0.12 : -0.24;
+  // Far legs, darker, peeking out behind.
+  const farSk: Skin = { ...legSk, base: lit(limbC, 0.6), gloss: 0.2 };
+  if (!leap) {
+    limb(b, cx + L * 0.16, cy + L * 0.08, cx + L * 0.34, g - L * 0.02, L * 0.06, L * 0.045, farSk);
+    limb(b, cx - L * 0.24, cy + L * 0.04, cx - L * 0.36, g - L * 0.04, L * 0.08, L * 0.05, farSk);
+  }
+  // Body and head.
+  blob(b, cx, cy, L * 0.37, L * 0.21 * (crouch ? 0.9 : 1), tilt, sk);
+  const hx = cx + L * 0.3;
+  const hy = cy - L * (leap ? 0.13 : 0.07);
+  blob(b, hx, hy, L * 0.18, L * 0.135, tilt * 0.4, sk);
+  blob(b, hx + L * 0.13, hy + L * 0.025, L * 0.08, L * 0.065, 0.2, sk);
+  // Throat pouch: paler, swelling as the frog breathes.
+  blob(b, hx + L * 0.02, hy + L * 0.1, L * (0.09 + breathe * 0.02), L * (0.045 + breathe * 0.018), 0, { ...sk, base: mixC(belly, body, 0.3), pattern: undefined }, 0.95);
+  // Mouth line and nostril.
+  b.line(hx + L * 0.2, hy + L * 0.035, hx - L * 0.02, hy + L * 0.05, lit(body, 0.42), 0.55, Math.max(1, L * 0.012));
+  b.set(hx + L * 0.19, hy - L * 0.01, lit(body, 0.4), 0.8);
+  // Tympanum behind the eye.
+  blob(b, hx - L * 0.07, hy - L * 0.005, L * 0.035, L * 0.035, 0, { ...sk, base: lit(body, 0.8), pattern: undefined }, 0.7);
+  // Eye, raised above the head line.
+  const er = L * (ft.toePads ? 0.075 : 0.065);
+  blob(b, hx + L * 0.04, hy - L * 0.07, er * 1.25, er * 1.05, 0, { ...sk, pattern: undefined });
+  eyeball(b, hx + L * 0.045, hy - L * 0.085, er, ft.toePads ? [190, 120, 30] : toad ? [190, 90, 30] : [36, 30, 30], ft.toePads ? 'h' : 'round');
+  // Hind leg.
   if (leap) {
-    b.line(cx - rx * 0.6, cy + ry * 0.3, cx - rx * 1.3, cy + ry * 0.9, lc, 1, Math.max(2, L * 0.08));
-    b.line(cx - rx * 1.3, cy + ry * 0.9, cx - rx * 1.9, cy + ry * 1.3, lc, 1, Math.max(1, L * 0.05));
-    b.line(cx + rx * 0.5, cy + ry * 0.6, cx + rx * 1.1, cy + ry * 1.4, lc, 1, Math.max(1, L * 0.05));
+    const hip = [cx - L * 0.3, cy + L * 0.04];
+    const knee = [cx - L * 0.56, cy + L * 0.16];
+    const heel = [cx - L * 0.78, cy + L * 0.26];
+    const toes = [cx - L * 0.98, cy + L * 0.34];
+    limb(b, hip[0], hip[1], knee[0], knee[1], L * 0.15, L * 0.1, legSk);
+    limb(b, knee[0], knee[1], heel[0], heel[1], L * 0.09, L * 0.06, legSk);
+    limb(b, heel[0], heel[1], toes[0], toes[1], L * 0.05, L * 0.03, legSk);
+    limb(b, cx + L * 0.26, cy + L * 0.12, cx + L * 0.4, cy + L * 0.3, L * 0.06, L * 0.04, legSk);
   } else {
-    b.ellipse(cx - rx * 0.55, cy + ry * 0.45, L * 0.16, L * 0.1, (_nx, ny) => [lit(limb, 1.05 - ny * 0.3), 1]);
-    b.line(cx - rx * 0.7, g - 1, cx - rx * 0.05, g - 1, lc, 1, Math.max(1, L * 0.05));
-    b.line(cx + rx * 0.55, cy + ry * 0.5, cx + rx * 0.62, g - 1, lc, 1, Math.max(1, L * 0.05));
-    b.line(cx + rx * 0.62, g - 1, cx + rx * 0.85, g - 1, lc, 1, Math.max(1, L * 0.04));
+    const hip = [cx - L * 0.27, cy + L * 0.02];
+    const knee = [cx + L * 0.02, cy + L * 0.13];
+    const heel = [cx - L * 0.27, g - L * 0.05];
+    const toe = [cx + L * 0.16, g - L * 0.015];
+    limb(b, heel[0], heel[1], toe[0], toe[1], L * 0.055, L * 0.03, legSk);
+    for (const k of [-1, 0, 1]) limb(b, toe[0] - L * 0.05, toe[1], toe[0] + L * 0.04, toe[1] + k * L * 0.018, L * 0.022, L * 0.016, legSk);
+    if (ft.toePads) for (const k of [-1, 0, 1]) blob(b, toe[0] + L * 0.045, toe[1] + k * L * 0.018, L * 0.02, L * 0.018, 0, { base: padC, gloss: 0.4 });
+    limb(b, knee[0], knee[1], heel[0], heel[1], L * 0.1, L * 0.07, legSk);
+    limb(b, hip[0], hip[1], knee[0], knee[1], L * 0.17, L * 0.11, legSk);
+    // Front leg and splayed fingers.
+    const sh = [cx + L * 0.2, cy + L * 0.08];
+    const el = [cx + L * 0.25, g - L * 0.1];
+    const wr = [cx + L * 0.31, g - L * 0.015];
+    limb(b, sh[0], sh[1], el[0], el[1], L * 0.07, L * 0.05, legSk);
+    limb(b, el[0], el[1], wr[0], wr[1], L * 0.05, L * 0.035, legSk);
+    for (const k of [-0.6, 0, 0.6]) {
+      const fx = wr[0] + L * 0.06 * Math.cos(k);
+      const fy = g - L * 0.012 + Math.sin(k) * L * 0.01;
+      limb(b, wr[0], wr[1], fx, fy, L * 0.02, L * 0.014, legSk);
+      if (ft.toePads) blob(b, fx, fy, L * 0.018, L * 0.016, 0, { base: padC, gloss: 0.4 });
+    }
   }
-  if (ft.toePads) {
-    b.set(cx + rx * 0.85, g - 1, lit(belly, 1.2));
-    b.set(cx - rx * 0.05, g - 1, lit(belly, 1.2));
-  }
-  // Wet sheen.
-  for (let i = 0; i < 4; i++) b.set(cx - rx * 0.2 + i * 2, cy - ry * 0.75, [255, 255, 255], 0.55);
   if (dead) for (let i = 0; i < b.data.length; i += 4) b.data[i + 3] *= 0.85;
 }
 
